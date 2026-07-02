@@ -7,12 +7,15 @@
  * - Shell applicativa (HTML/JS/CSS): cache per avvio offline completo.
  */
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL_CACHE = `timone-shell-${VERSION}`;
 const TILE_CACHE = `timone-tiles-${VERSION}`;
 const DATA_CACHE = `timone-data-${VERSION}`;
 
-const SHELL_URLS = ['/', '/index.html', '/manifest.webmanifest'];
+// Percorso base ricavato dalla posizione del service worker: funziona sia
+// alla radice del dominio sia in una sottocartella (GitHub Pages).
+const BASE = new URL('./', self.location).pathname;
+const SHELL_URLS = [BASE, `${BASE}index.html`, `${BASE}manifest.webmanifest`];
 
 const TILE_HOSTS = [
   'tiles.openseamap.org',
@@ -91,7 +94,7 @@ async function shellNetworkFirst(request) {
     const cached = await cache.match(request, { ignoreVary: true });
     if (cached) return cached;
     if (request.mode === 'navigate') {
-      const shell = await cache.match('/index.html');
+      const shell = await cache.match(`${BASE}index.html`);
       if (shell) return shell;
     }
     throw err;

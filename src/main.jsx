@@ -13,7 +13,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
-      .register('/service-worker.js')
+      .register(`${import.meta.env.BASE_URL}service-worker.js`)
       .catch((err) => console.warn('Service worker non registrato:', err))
   })
 }

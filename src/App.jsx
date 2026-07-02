@@ -25,6 +25,30 @@ const LAYER_DEFS = [
 export default function App() {
   const geo = useGeolocation()
 
+  // Wake lock: al timone lo schermo dell'iPad non deve mai spegnersi.
+  // Ri-acquisito quando l'app torna in primo piano (iOS lo rilascia in background).
+  useEffect(() => {
+    let lock = null
+    async function acquire() {
+      try {
+        if ('wakeLock' in navigator) {
+          lock = await navigator.wakeLock.request('screen')
+        }
+      } catch {
+        // negato o non supportato: nessun fallback possibile
+      }
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') acquire()
+    }
+    acquire()
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      if (lock) lock.release().catch(() => {})
+    }
+  }, [])
+
   const [view, setView] = useState({ center: DEFAULT_CENTER, bounds: null })
   const [layers, setLayers] = useState({
     bathy: true,
