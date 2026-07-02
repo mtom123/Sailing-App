@@ -56,7 +56,7 @@ export default function AnchoragePanel({
   onMuteAlarm,
 }) {
   return (
-    <div className="flex h-full flex-col border-l border-line bg-ink">
+    <div className="flex h-full flex-col bg-ink">
       {/* --- Anchor Watch ------------------------------------------------- */}
       <div className={`border-b border-line p-2 ${alarmActive ? 'alarm-flash' : ''}`}>
         <div className="label pb-1.5">Anchor Watch</div>

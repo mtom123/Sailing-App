@@ -4,10 +4,10 @@ import { formatDeg } from '../lib/geo.js'
 import { SAFETY_COLORS } from '../lib/anchorageSafety.js'
 
 /*
- * Mappa centrale: base CARTO Dark Matter + batimetria EMODnet +
- * seamarks OpenSeaMap. Overlay vento su canvas, marker AIS triangolari
- * orientati secondo la prua, ancoraggi con semaforo di sicurezza,
- * posizione barca e cerchio di guardia dell'ancora.
+ * Mappa centrale: base CARTO Dark Matter + batimetria EMODnet + seamarks
+ * OpenSeaMap + radar pioggia RainViewer. Overlay vento su canvas, navi AIS,
+ * ancoraggi con semaforo, rotta editabile con waypoint trascinabili, aree
+ * marine protette, traccia GPS, MOB e cerchio di guardia dell'ancora.
  */
 
 const BASE_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
@@ -17,6 +17,7 @@ const BATHY_URL = 'https://tiles.emodnet-bathymetry.eu/2020/baselayer/web_mercat
 const BATHY_ATTR = '&copy; <a href="https://emodnet.ec.europa.eu">EMODnet Bathymetry</a>'
 const SEAMARK_URL = 'https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'
 const SEAMARK_ATTR = '&copy; <a href="https://www.openseamap.org">OpenSeaMap</a>'
+const RAIN_ATTR = '&copy; <a href="https://www.rainviewer.com">RainViewer</a>'
 
 function vesselIcon(v) {
   const rot = v.cog != null ? v.cog : v.hdg != null ? v.hdg : 0
@@ -51,6 +52,24 @@ function anchorageIcon(color) {
   })
 }
 
+function waypointIcon(index, active) {
+  const color = active ? '#3DFF7A' : '#F2F2F2'
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:24px;height:24px;border-radius:50%;background:#0D0D0D;border:2px solid ${color};color:${color};display:flex;align-items:center;justify-content:center;font:bold 10px ui-monospace,monospace">${index}</div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  })
+}
+
+const mobIcon = () =>
+  L.divIcon({
+    className: '',
+    html: `<div style="width:30px;height:30px;border-radius:50%;background:#FF4545;border:3px solid #F2F2F2;color:#0D0D0D;display:flex;align-items:center;justify-content:center;font:bold 11px ui-monospace,monospace;box-shadow:0 0 12px #FF4545">MOB</div>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+  })
+
 function vesselPopup(v) {
   return `<div style="min-width:150px">
     <div style="color:#3DFF7A;font-weight:bold">${v.name || 'MMSI ' + v.mmsi}</div>
@@ -68,6 +87,22 @@ function anchoragePopup(a, safety) {
     <div style="margin-top:4px;color:${color};font-weight:bold">&#9679; ${safety.reason}</div>
     <div style="margin-top:4px;font-size:11px">Fondale ${a.depth[0]}–${a.depth[1]} m · ${a.seabed}</div>
     <div style="color:#9BA0A6;font-size:10px;margin-top:2px">${a.notes}</div>
+  </div>`
+}
+
+function parkPopup(park, status) {
+  const banner =
+    status === 'inside'
+      ? '<div style="color:#FF4545;font-weight:bold">SEI DENTRO L\'AREA</div>'
+      : status === 'near'
+        ? '<div style="color:#FFC933;font-weight:bold">Area a meno di 1 nm</div>'
+        : ''
+  return `<div style="min-width:210px">
+    <div style="color:#F2F2F2;font-weight:bold">${park.name}</div>
+    <div style="color:#9BA0A6;font-size:10px">${park.authority}</div>
+    ${banner}
+    <div style="margin-top:4px;font-size:11px;line-height:1.45">${park.rules}</div>
+    <div style="color:#9BA0A6;font-size:9px;margin-top:4px">Perimetro indicativo — fanno fede le ordinanze ufficiali.</div>
   </div>`
 }
 
@@ -114,7 +149,6 @@ function WindCanvas({ map, field }) {
           const len = Math.min(34, 12 + best.speed * 1.1)
           ctx.save()
           ctx.translate(px, py)
-          // la freccia punta DOVE VA il vento (direzione di provenienza + 180)
           ctx.rotate(((best.dir + 180) * Math.PI) / 180)
           ctx.strokeStyle = colorFor(best.speed)
           ctx.fillStyle = colorFor(best.speed)
@@ -162,6 +196,11 @@ export default function MapView({
   anchorages,
   anchorWatch,
   focusTarget,
+  route,
+  parks,
+  trackPoints,
+  mob,
+  rainTileUrl,
   onViewChange,
   onUserPan,
 }) {
@@ -170,15 +209,27 @@ export default function MapView({
   const [mapReady, setMapReady] = useState(false)
 
   const tileRefs = useRef({})
+  const rainLayerRef = useRef(null)
   const vesselMarkersRef = useRef(new Map())
   const vesselGroupRef = useRef(null)
   const anchorMarkersRef = useRef(new Map())
   const anchorGroupRef = useRef(null)
+  const routeGroupRef = useRef(null)
+  const parksGroupRef = useRef(null)
+  const trackLineRef = useRef(null)
+  const mobMarkerRef = useRef(null)
   const boatMarkerRef = useRef(null)
   const boatCircleRef = useRef(null)
   const watchLayersRef = useRef(null)
-  const callbacksRef = useRef({ onViewChange, onUserPan })
-  callbacksRef.current = { onViewChange, onUserPan }
+  const callbacksRef = useRef({})
+  callbacksRef.current = {
+    onViewChange,
+    onUserPan,
+    editing: route.editing,
+    addWaypoint: route.addWaypoint,
+    removeWaypoint: route.removeWaypoint,
+    moveWaypoint: route.moveWaypoint,
+  }
 
   // Inizializzazione mappa (una sola volta)
   useEffect(() => {
@@ -190,7 +241,6 @@ export default function MapView({
       touchZoom: true, // pinch-to-zoom
       tap: false,
     })
-    L.control.zoom({ position: 'bottomright' }).addTo(map)
     L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(map)
 
     L.tileLayer(BASE_URL, { attribution: BASE_ATTR, maxZoom: 19 }).addTo(map)
@@ -204,9 +254,18 @@ export default function MapView({
       maxZoom: 18,
     })
 
+    parksGroupRef.current = L.layerGroup().addTo(map)
+    routeGroupRef.current = L.layerGroup().addTo(map)
     vesselGroupRef.current = L.layerGroup().addTo(map)
     anchorGroupRef.current = L.layerGroup().addTo(map)
     watchLayersRef.current = L.layerGroup().addTo(map)
+
+    trackLineRef.current = L.polyline([], {
+      color: '#3DFF7A',
+      weight: 2,
+      opacity: 0.7,
+      dashArray: '1 6',
+    }).addTo(map)
 
     const emitView = () => {
       const c = map.getCenter()
@@ -223,6 +282,11 @@ export default function MapView({
     }
     map.on('moveend', emitView)
     map.on('dragstart', () => callbacksRef.current.onUserPan())
+    map.on('click', (e) => {
+      if (callbacksRef.current.editing) {
+        callbacksRef.current.addWaypoint(e.latlng.lat, e.latlng.lng)
+      }
+    })
     emitView()
 
     mapRef.current = map
@@ -243,6 +307,23 @@ export default function MapView({
       if (!layers[key] && map.hasLayer(layer)) map.removeLayer(layer)
     }
   }, [layers.bathy, layers.seamarks, mapReady])
+
+  // Radar pioggia
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    if (rainLayerRef.current) {
+      map.removeLayer(rainLayerRef.current)
+      rainLayerRef.current = null
+    }
+    if (rainTileUrl) {
+      rainLayerRef.current = L.tileLayer(rainTileUrl, {
+        attribution: RAIN_ATTR,
+        opacity: 0.65,
+        maxZoom: 18,
+      }).addTo(map)
+    }
+  }, [rainTileUrl, mapReady])
 
   // Marker AIS (diff per MMSI: aggiorna senza chiudere i popup)
   useEffect(() => {
@@ -296,6 +377,90 @@ export default function MapView({
       }
     }
   }, [anchorages, mapReady])
+
+  // Aree marine protette
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const group = parksGroupRef.current
+    group.clearLayers()
+    if (!layers.parks) return
+    for (const p of parks) {
+      const color =
+        p.status === 'inside' ? '#FF4545' : p.status === 'near' ? '#FFC933' : '#FF7A45'
+      L.polygon(
+        p.polygon.map(([lat, lon]) => [lat, lon]),
+        {
+          color,
+          weight: p.status ? 2.5 : 1.5,
+          dashArray: '8 5',
+          fillColor: color,
+          fillOpacity: p.status === 'inside' ? 0.18 : 0.07,
+        }
+      )
+        .bindPopup(parkPopup(p, p.status))
+        .addTo(group)
+    }
+  }, [parks, layers.parks, mapReady])
+
+  // Rotta: polyline + waypoint (trascinabili in modifica)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const group = routeGroupRef.current
+    group.clearLayers()
+    const wps = route.waypoints
+    if (!wps.length) return
+
+    if (wps.length > 1) {
+      L.polyline(
+        wps.map((w) => [w.lat, w.lon]),
+        { color: '#3DFF7A', weight: 2.5, opacity: 0.9 }
+      ).addTo(group)
+    }
+    wps.forEach((w, i) => {
+      const isActiveDest = route.nav && route.nav.idx === i
+      const m = L.marker([w.lat, w.lon], {
+        icon: waypointIcon(i + 1, isActiveDest),
+        draggable: route.editing,
+        zIndexOffset: 500,
+      })
+      if (route.editing) {
+        m.on('dragend', () => {
+          const pos = m.getLatLng()
+          callbacksRef.current.moveWaypoint(w.id, pos.lat, pos.lng)
+        })
+        m.on('click', () => callbacksRef.current.removeWaypoint(w.id))
+      } else {
+        m.bindPopup(
+          `<b>${w.name}</b><br/><span style="color:#9BA0A6;font-size:10px">${w.lat.toFixed(4)}, ${w.lon.toFixed(4)}</span>`
+        )
+      }
+      m.addTo(group)
+    })
+  }, [route.waypoints, route.editing, route.nav && route.nav.idx, mapReady])
+
+  // Traccia GPS
+  useEffect(() => {
+    if (!trackLineRef.current) return
+    trackLineRef.current.setLatLngs(trackPoints.map((p) => [p.lat, p.lon]))
+  }, [trackPoints, mapReady])
+
+  // MOB
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    if (mobMarkerRef.current) {
+      map.removeLayer(mobMarkerRef.current)
+      mobMarkerRef.current = null
+    }
+    if (mob) {
+      mobMarkerRef.current = L.marker([mob.lat, mob.lon], {
+        icon: mobIcon(),
+        zIndexOffset: 2000,
+      }).addTo(map)
+    }
+  }, [mob, mapReady])
 
   // Posizione barca + cerchio di accuratezza + follow
   useEffect(() => {
@@ -362,7 +527,10 @@ export default function MapView({
 
   return (
     <div className="relative h-full w-full">
-      <div ref={containerRef} className="h-full w-full" />
+      <div
+        ref={containerRef}
+        className={`h-full w-full ${route.editing ? 'cursor-crosshair' : ''}`}
+      />
       {mapReady && layers.wind && (
         <WindCanvas map={mapRef.current} field={windField} />
       )}

@@ -51,3 +51,11 @@ export function stopAlarm() {
 export function isAlarmRunning() {
   return intervalId != null
 }
+
+/** Tripla nota di avviso (allarme vento): non interferisce con la sirena. */
+export function warnBeep() {
+  armAudio()
+  beep(1040, 180)
+  setTimeout(() => beep(1040, 180), 260)
+  setTimeout(() => beep(1040, 320), 520)
+}

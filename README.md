@@ -9,9 +9,46 @@ Navionics e Navily usando **solo sorgenti dati gratuite**.
 
 | Zona | Contenuto |
 |---|---|
-| Sidebar sinistra (25%) | SOG e COG giganti dal GPS dell'iPad, bussola del vento analogica, dati vento/onde, grafici 72h (vento, raffiche, onda) e curva di marea, selettore sorgente AIS |
-| Area centrale (55%) | Mappa Leaflet con pinch-to-zoom: base CARTO Dark Matter, batimetria EMODnet, seamarks OpenSeaMap, overlay frecce vento, navi AIS (triangoli orientati sulla prua), posizione barca |
-| Sidebar destra (20%) | Ancoraggi del Mediterraneo ordinati per distanza con semaforo Verde/Giallo/Rosso calcolato confrontando i settori di ridosso della baia con il vento attuale, e **Anchor Watch** (allarme scarroccio GPS con raggio regolabile) |
+| Sidebar sinistra (25%) | SOG e COG giganti dal GPS dell'iPad, bussola del vento analogica, vento/onde/barometro con tendenza, alba/tramonto e fase lunare, allarme raffica configurabile, grafici 72h e curva di marea, selettore sorgente AIS |
+| Area centrale (55%) | Mappa Leaflet con pinch-to-zoom: base CARTO Dark Matter, batimetria EMODnet, seamarks OpenSeaMap, radar pioggia RainViewer, frecce vento, navi AIS, aree marine protette con preallarme, rotta editabile, traccia GPS, MOB, modalità notte (rosso) |
+| Sidebar destra (20%) | Tre schede: **ROTTA** (tratte con weather routing assistito, finestra di partenza consigliata, guida live DTW/BTW/XTE, pilota automatico), **ANCORE** (ancoraggi con semaforo + Anchor Watch), **LOG** (registro di bordo con export GPX) |
+
+## Rotta e weather routing assistito
+
+Attivare la modalità rotta (pulsante bussola sulla mappa) e toccare il mare
+per aggiungere waypoint; trascinarli per correggerli, toccarli per eliminarli.
+Per ogni tratta l'app interroga Open-Meteo **all'orario di passaggio previsto**
+(vento, raffiche, onda) e assegna un giudizio Buono/Impegnativo/Critico,
+segnalando le tratte di bolina stretta. Valuta inoltre le partenze nelle
+successive 24 ore e suggerisce la finestra migliore. Con rotta attiva, la
+barra NAV mostra waypoint attivo, distanza, rilevamento, XTE ed ETA, con
+avanzamento automatico al waypoint successivo.
+
+## Pilota automatico (Raymarine e compatibili NMEA0183)
+
+Con rotta attiva e bridge configurato, il pulsante **VAI — PILOTA** trasmette
+le sentenze standard `APB`, `RMB` e `XTE` ogni 2 secondi via
+WebSocket → bridge → UDP → multiplexer di bordo. Il pilota in modalità
+**Track/NAV** segue il waypoint attivo con correzione del cross-track error.
+
+Requisiti hardware: un multiplexer/gateway NMEA con ingresso di rete (o il
+bridge incluso su un computer di bordo) collegato al pilota via NMEA0183
+(per SeaTalk1 serve un convertitore, es. Raymarine E85001 o gateway
+SeaTalk-NG). Avvio del bridge con uscita pilota:
+
+```bash
+node tools/nmea-bridge.mjs --fwd <ip-multiplexer>:10110
+```
+
+⚠ Il pilota va sempre sorvegliato: mantenere una guardia attiva al timone.
+
+## Aree marine protette
+
+Layer con i perimetri **indicativi** di 17 AMP/parchi (Italia, Corsica,
+Baleari) e sintesi delle regole (zone A/B/C, limiti di velocità, divieti di
+ancoraggio su posidonia). Con GPS attivo l'app avvisa quando la barca è a
+meno di 1 nm o dentro un'area. **Fanno fede esclusivamente i decreti e le
+ordinanze delle Capitanerie** (guardiacostiera.gov.it/ordinanze).
 
 ## Sorgenti dati (100% gratuite, nessuna chiave obbligatoria)
 

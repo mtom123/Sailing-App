@@ -14,8 +14,8 @@ function buildForecastUrl(lat, lon) {
   const p = new URLSearchParams({
     latitude: lat.toFixed(3),
     longitude: lon.toFixed(3),
-    current: 'wind_speed_10m,wind_direction_10m,wind_gusts_10m',
-    hourly: 'wind_speed_10m,wind_direction_10m,wind_gusts_10m',
+    current: 'wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure',
+    hourly: 'wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure',
     wind_speed_unit: 'kn',
     forecast_days: '3',
     timezone: 'auto',
@@ -39,6 +39,7 @@ export default function useOpenMeteo(lat, lon) {
   const [state, setState] = useState({
     wind: null, // { speed, dir, gust } in kn / gradi
     wave: null, // { height, dir, period }
+    pressure: null, // { value hPa, trend3h hPa }
     hourly: null, // [{ t, wind, gust, windDir, wave, seaLevel }]
     updatedAt: null,
     error: null,
@@ -99,6 +100,28 @@ export default function useOpenMeteo(lat, lon) {
           }
         : null
 
+      // Barometro: valore attuale + tendenza sulle ultime 3 ore
+      let pressure = null
+      if (forecast?.current?.surface_pressure != null) {
+        const value = forecast.current.surface_pressure
+        let trend3h = null
+        const ph = forecast.hourly?.surface_pressure
+        const times = forecast.hourly?.time
+        if (ph && times) {
+          let nowIdx = 0
+          const nowMs = Date.now()
+          times.forEach((t, i) => {
+            if (Math.abs(new Date(t) - nowMs) < Math.abs(new Date(times[nowIdx]) - nowMs)) {
+              nowIdx = i
+            }
+          })
+          if (nowIdx >= 3 && ph[nowIdx] != null && ph[nowIdx - 3] != null) {
+            trend3h = ph[nowIdx] - ph[nowIdx - 3]
+          }
+        }
+        pressure = { value, trend3h }
+      }
+
       let hourly = null
       const fh = forecast?.hourly
       const mh = marine?.hourly
@@ -117,6 +140,7 @@ export default function useOpenMeteo(lat, lon) {
       setState({
         wind,
         wave,
+        pressure,
         hourly,
         updatedAt: Date.now(),
         error: null,

@@ -80,6 +80,37 @@ body,
   font-size: 20px !important;
 }
 
+/* Modalità notte: tutta l'interfaccia vira al rosso per preservare
+   la visione notturna al timone */
+.night-mode {
+  filter: sepia(0.65) hue-rotate(-35deg) saturate(2.2) brightness(0.7) contrast(1.05);
+}
+
+/* Slider touch-friendly */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: #2a2a2a;
+  outline: none;
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #3dff7a;
+  border: 3px solid #0d0d0d;
+  box-shadow: 0 0 0 1px #3dff7a;
+  cursor: pointer;
+}
+
+/* Numeri tabellari ovunque servano letture stabili */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
 @keyframes alarm-flash {
   0%,
   100% {

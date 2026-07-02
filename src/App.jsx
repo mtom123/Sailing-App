@@ -1,16 +1,35 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Crosshair, Layers } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Anchor,
+  Crosshair,
+  Layers,
+  LifeBuoy,
+  Moon,
+  Navigation2,
+  Route as RouteIcon,
+  ScrollText,
+} from 'lucide-react'
 import MapView from './components/MapView.jsx'
 import InstrumentPanel from './components/InstrumentPanel.jsx'
 import AnchoragePanel from './components/AnchoragePanel.jsx'
+import RoutePanel from './components/RoutePanel.jsx'
+import TrackPanel from './components/TrackPanel.jsx'
 import useGeolocation from './hooks/useGeolocation.js'
 import useOpenMeteo from './hooks/useOpenMeteo.js'
 import useWindField from './hooks/useWindField.js'
 import useAIS from './hooks/useAIS.js'
+import useRoute from './hooks/useRoute.js'
+import useRouteWeather from './hooks/useRouteWeather.js'
+import useAutopilot from './hooks/useAutopilot.js'
+import useTrack from './hooks/useTrack.js'
+import useRainRadar from './hooks/useRainRadar.js'
 import { ANCHORAGES } from './data/anchorages.js'
+import { MARINE_PARKS } from './data/marineParks.js'
 import { evaluateAnchorage } from './lib/anchorageSafety.js'
-import { bearing, haversine } from './lib/geo.js'
-import { armAudio, startAlarm, stopAlarm } from './lib/alarm.js'
+import { fenceStatus } from './lib/geoFence.js'
+import { bearing, cardinal, formatDeg, haversine, metersToNm } from './lib/geo.js'
+import { armAudio, startAlarm, stopAlarm, warnBeep } from './lib/alarm.js'
+import { sunTimes, moonPhase } from './lib/sun.js'
 
 // Centro di default: Bocche di Bonifacio / Costa Smeralda
 const DEFAULT_CENTER = { lat: 41.15, lon: 9.45 }
@@ -20,13 +39,39 @@ const LAYER_DEFS = [
   { key: 'seamarks', label: 'Seamarks' },
   { key: 'wind', label: 'Vettore vento' },
   { key: 'ais', label: 'Navi AIS' },
+  { key: 'parks', label: 'Aree protette' },
+  { key: 'rain', label: 'Radar pioggia' },
 ]
+
+const TABS = [
+  { id: 'route', label: 'ROTTA', icon: RouteIcon },
+  { id: 'anchors', label: 'ANCORE', icon: Anchor },
+  { id: 'log', label: 'LOG', icon: ScrollText },
+]
+
+function MapButton({ active, danger, onClick, title, children }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      className={`flex h-11 w-11 items-center justify-center border transition-colors ${
+        danger
+          ? 'border-danger bg-danger/20 text-danger'
+          : active
+            ? 'border-phos bg-ink text-phos'
+            : 'border-line bg-ink/90 text-fog active:text-paper'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
 
 export default function App() {
   const geo = useGeolocation()
 
   // Wake lock: al timone lo schermo dell'iPad non deve mai spegnersi.
-  // Ri-acquisito quando l'app torna in primo piano (iOS lo rilascia in background).
   useEffect(() => {
     let lock = null
     async function acquire() {
@@ -55,10 +100,14 @@ export default function App() {
     seamarks: true,
     wind: true,
     ais: true,
+    parks: true,
+    rain: false,
   })
   const [layersOpen, setLayersOpen] = useState(false)
   const [follow, setFollow] = useState(true)
+  const [nightMode, setNightMode] = useState(false)
   const [focusTarget, setFocusTarget] = useState(null)
+  const [tab, setTab] = useState('route')
 
   const [aisMode, setAisMode] = useState('sim')
   const [wsUrl, setWsUrl] = useState('ws://192.168.4.1:8484')
@@ -66,6 +115,7 @@ export default function App() {
 
   const weather = useOpenMeteo(view.center.lat, view.center.lon)
   const windField = useWindField(view.bounds, layers.wind)
+  const rainTileUrl = useRainRadar(layers.rain)
   const { vessels, status: aisStatus } = useAIS({
     mode: aisMode,
     wsUrl,
@@ -74,8 +124,28 @@ export default function App() {
     bounds: view.bounds,
   })
 
-  // --- Ancoraggi: sicurezza dinamica dal vento + distanza dalla barca -------
+  // --- Rotta, weather routing e pilota ---------------------------------------
+  const route = useRoute(geo)
+  const routeWx = useRouteWeather(route.waypoints, route.planSpeed)
+  const autopilot = useAutopilot({
+    wsUrl,
+    nav: route.nav,
+    waypoints: route.waypoints,
+    geo,
+  })
+
+  // --- Traccia GPS ------------------------------------------------------------
+  const track = useTrack(geo)
+
+  // --- Effemeridi -------------------------------------------------------------
   const refPoint = geo.lat != null ? { lat: geo.lat, lon: geo.lon } : view.center
+  const sun = useMemo(
+    () => sunTimes(new Date(), refPoint.lat, refPoint.lon),
+    [Math.floor(Date.now() / 3600000), refPoint.lat.toFixed(1), refPoint.lon.toFixed(1)]
+  )
+  const moon = useMemo(() => moonPhase(new Date()), [Math.floor(Date.now() / 86400000)])
+
+  // --- Ancoraggi: sicurezza dinamica dal vento + distanza dalla barca ---------
   const anchorages = useMemo(() => {
     return ANCHORAGES.map((a) => ({
       ...a,
@@ -85,7 +155,46 @@ export default function App() {
     })).sort((x, y) => x.distance - y.distance)
   }, [weather.wind, refPoint.lat, refPoint.lon])
 
-  // --- Anchor Watch ----------------------------------------------------------
+  // --- Aree marine protette: stato rispetto alla posizione --------------------
+  const parks = useMemo(() => {
+    return MARINE_PARKS.map((p) => ({
+      ...p,
+      status:
+        geo.lat != null ? fenceStatus(geo.lat, geo.lon, p.polygon) : null,
+    }))
+  }, [geo.lat != null ? geo.lat.toFixed(3) : null, geo.lon != null ? geo.lon.toFixed(3) : null])
+  const parkAlert = parks.find((p) => p.status === 'inside') || parks.find((p) => p.status === 'near')
+
+  // --- MOB (uomo a mare) -------------------------------------------------------
+  const [mob, setMob] = useState(null)
+  const mobInfo =
+    mob && geo.lat != null
+      ? {
+          dist: haversine(geo.lat, geo.lon, mob.lat, mob.lon),
+          brg: bearing(geo.lat, geo.lon, mob.lat, mob.lon),
+        }
+      : null
+  const dropMob = () => {
+    if (geo.lat == null) return
+    armAudio()
+    warnBeep()
+    setMob({ lat: geo.lat, lon: geo.lon, ts: Date.now() })
+    setFollow(true)
+  }
+
+  // --- Allarme vento -----------------------------------------------------------
+  const [windAlarmOn, setWindAlarmOn] = useState(false)
+  const [windThreshold, setWindThreshold] = useState(30)
+  const gustNow = weather.wind?.gust ?? weather.wind?.speed ?? null
+  const windAlarmActive =
+    windAlarmOn && gustNow != null && gustNow >= windThreshold
+  const windAlarmPrev = useRef(false)
+  useEffect(() => {
+    if (windAlarmActive && !windAlarmPrev.current) warnBeep()
+    windAlarmPrev.current = windAlarmActive
+  }, [windAlarmActive])
+
+  // --- Anchor Watch --------------------------------------------------------------
   const [radius, setRadius] = useState(40)
   const [anchorWatch, setAnchorWatch] = useState(null)
   const [alarmMuted, setAlarmMuted] = useState(false)
@@ -120,12 +229,24 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-ink text-paper">
+    <div
+      className={`flex h-full w-full overflow-hidden bg-ink text-paper ${
+        nightMode ? 'night-mode' : ''
+      }`}
+    >
       {/* SIDEBAR SINISTRA 25%: strumenti di navigazione */}
       <div className="h-full w-1/4 flex-none">
         <InstrumentPanel
           geo={geo}
           weather={weather}
+          sun={sun}
+          moon={moon}
+          windAlarm={{
+            on: windAlarmOn,
+            setOn: setWindAlarmOn,
+            threshold: windThreshold,
+            setThreshold: setWindThreshold,
+          }}
           aisMode={aisMode}
           onAisModeChange={setAisMode}
           wsUrl={wsUrl}
@@ -148,73 +269,194 @@ export default function App() {
           anchorages={anchorages}
           anchorWatch={anchorWatch}
           focusTarget={focusTarget}
+          route={route}
+          parks={parks}
+          trackPoints={track.points}
+          mob={mob}
+          rainTileUrl={layers.rain ? rainTileUrl : null}
           onViewChange={setView}
           onUserPan={() => setFollow(false)}
         />
 
-        {/* Selettore layer */}
-        <div className="absolute right-2 top-2 z-[1000]">
-          <button
-            type="button"
+        {/* Colonna comandi mappa */}
+        <div className="absolute right-2 top-2 z-[1000] flex flex-col gap-1.5">
+          <MapButton
+            title="Layer"
+            active={layersOpen}
             onClick={() => setLayersOpen((o) => !o)}
-            className={`flex h-11 w-11 items-center justify-center border ${
-              layersOpen ? 'border-phos bg-ink text-phos' : 'border-line bg-ink text-paper'
-            }`}
           >
             <Layers size={18} />
-          </button>
-          {layersOpen && (
-            <div className="mt-1 w-44 border border-line bg-ink/95 p-1">
-              {LAYER_DEFS.map((l) => (
-                <button
-                  key={l.key}
-                  type="button"
-                  onClick={() => setLayers((s) => ({ ...s, [l.key]: !s[l.key] }))}
-                  className="flex w-full items-center gap-2 px-2 py-2.5 text-left text-[11px] tracking-widest active:bg-raised"
-                >
-                  <span
-                    className={`flex h-4 w-4 flex-none items-center justify-center border text-[10px] ${
-                      layers[l.key] ? 'border-phos text-phos' : 'border-line text-transparent'
-                    }`}
-                  >
-                    ✓
-                  </span>
-                  <span className={layers[l.key] ? 'text-paper' : 'text-fog'}>
-                    {l.label}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
+          </MapButton>
+          <MapButton
+            title="Segui barca"
+            active={follow}
+            onClick={() => setFollow((f) => !f)}
+          >
+            <Crosshair size={18} />
+          </MapButton>
+          <MapButton
+            title="Modifica rotta"
+            active={route.editing}
+            onClick={() => route.setEditing(!route.editing)}
+          >
+            <Navigation2 size={18} />
+          </MapButton>
+          <MapButton
+            title="Modalità notte"
+            active={nightMode}
+            onClick={() => setNightMode((n) => !n)}
+          >
+            <Moon size={18} />
+          </MapButton>
+          <MapButton title="Uomo a mare" danger={Boolean(mob)} onClick={dropMob}>
+            <LifeBuoy size={18} />
+          </MapButton>
         </div>
 
-        {/* Segui barca */}
-        <button
-          type="button"
-          onClick={() => setFollow((f) => !f)}
-          className={`absolute right-2 top-16 z-[1000] flex h-11 w-11 items-center justify-center border ${
-            follow ? 'border-phos bg-ink text-phos' : 'border-line bg-ink text-fog'
-          }`}
-        >
-          <Crosshair size={18} />
-        </button>
+        {layersOpen && (
+          <div className="absolute right-16 top-2 z-[1000] w-44 border border-line bg-ink/95 p-1">
+            {LAYER_DEFS.map((l) => (
+              <button
+                key={l.key}
+                type="button"
+                onClick={() => setLayers((s) => ({ ...s, [l.key]: !s[l.key] }))}
+                className="flex w-full items-center gap-2 px-2 py-2.5 text-left text-[11px] tracking-widest active:bg-raised"
+              >
+                <span
+                  className={`flex h-4 w-4 flex-none items-center justify-center border text-[10px] ${
+                    layers[l.key] ? 'border-phos text-phos' : 'border-line text-transparent'
+                  }`}
+                >
+                  ✓
+                </span>
+                <span className={layers[l.key] ? 'text-paper' : 'text-fog'}>
+                  {l.label}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Barra NAV rotta attiva */}
+        {route.nav && !mob && (
+          <div className="absolute left-1/2 top-2 z-[900] -translate-x-1/2 border border-phosdim bg-ink/90 px-3 py-1.5 text-[11px] tabular-nums">
+            <span className="font-bold text-phos">→ {route.nav.dest.name}</span>
+            <span className="text-paper">
+              {' '}
+              {route.nav.dtwNm.toFixed(1)} nm · {formatDeg(route.nav.btw)}°
+            </span>
+            <span className="text-fog">
+              {' '}
+              · ETA{' '}
+              {new Date(route.nav.etaMs).toLocaleTimeString('it-IT', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </span>
+          </div>
+        )}
+
+        {/* Banner MOB */}
+        {mob && (
+          <div className="alarm-flash absolute left-1/2 top-2 z-[1100] -translate-x-1/2 border-2 border-danger bg-ink px-3 py-2 text-center">
+            <div className="text-[13px] font-bold tracking-[0.25em] text-danger">
+              ⊕ UOMO A MARE
+            </div>
+            {mobInfo && (
+              <div className="text-[12px] text-paper tabular-nums">
+                {formatDeg(mobInfo.brg)}° {cardinal(mobInfo.brg)} ·{' '}
+                {mobInfo.dist < 1852
+                  ? `${mobInfo.dist.toFixed(0)} m`
+                  : `${metersToNm(mobInfo.dist).toFixed(2)} nm`}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setMob(null)}
+              className="mt-1 border border-line bg-panel px-3 py-1 text-[9px] tracking-widest text-fog"
+            >
+              ANNULLA
+            </button>
+          </div>
+        )}
+
+        {/* Banner area protetta */}
+        {parkAlert && !mob && (
+          <div
+            className={`absolute bottom-8 left-1/2 z-[900] -translate-x-1/2 border px-3 py-1.5 text-center text-[11px] ${
+              parkAlert.status === 'inside'
+                ? 'border-danger bg-danger/20 text-danger'
+                : 'border-warn bg-warn/10 text-warn'
+            }`}
+          >
+            <b>
+              {parkAlert.status === 'inside' ? '⚠ DENTRO ' : '⚠ VICINO A '}
+              {parkAlert.name}
+            </b>
+            <div className="text-[9px] opacity-80">
+              Verifica le ordinanze — tocca l'area sulla mappa per le regole
+            </div>
+          </div>
+        )}
+
+        {/* Banner allarme vento */}
+        {windAlarmActive && !mob && (
+          <div className="absolute left-2 top-2 z-[900] border border-warn bg-warn/15 px-3 py-1.5 text-[11px] font-bold text-warn">
+            ⚠ RAFFICHE {Math.round(gustNow)} kn
+          </div>
+        )}
       </div>
 
-      {/* SIDEBAR DESTRA 20%: ancoraggi e allarmi */}
-      <div className="h-full w-1/5 flex-none">
-        <AnchoragePanel
-          anchorages={anchorages}
-          onSelect={selectAnchorage}
-          gpsOk={geo.lat != null}
-          anchorWatch={anchorWatch}
-          radius={radius}
-          onRadiusChange={setRadius}
-          onDropAnchor={dropAnchor}
-          onRaiseAnchor={raiseAnchor}
-          watchDistance={watchDistance}
-          alarmActive={alarmActive}
-          onMuteAlarm={() => setAlarmMuted(true)}
-        />
+      {/* SIDEBAR DESTRA 20%: rotta / ancoraggi / log */}
+      <div className="flex h-full w-1/5 flex-none flex-col border-l border-line bg-ink">
+        <div className="flex flex-none border-b border-line">
+          {TABS.map((t) => {
+            const Icon = t.icon
+            const active = tab === t.id
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={`flex flex-1 items-center justify-center gap-1 border-b-2 py-2.5 text-[9px] font-bold tracking-widest ${
+                  active
+                    ? 'border-phos text-phos'
+                    : 'border-transparent text-fog active:text-paper'
+                }`}
+              >
+                <Icon size={12} />
+                {t.label}
+              </button>
+            )
+          })}
+        </div>
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {tab === 'route' && (
+            <RoutePanel
+              route={route}
+              routeWx={routeWx}
+              autopilot={autopilot}
+              gpsOk={geo.lat != null}
+              bridgeConfigured={Boolean(wsUrl)}
+            />
+          )}
+          {tab === 'anchors' && (
+            <AnchoragePanel
+              anchorages={anchorages}
+              onSelect={selectAnchorage}
+              gpsOk={geo.lat != null}
+              anchorWatch={anchorWatch}
+              radius={radius}
+              onRadiusChange={setRadius}
+              onDropAnchor={dropAnchor}
+              onRaiseAnchor={raiseAnchor}
+              watchDistance={watchDistance}
+              alarmActive={alarmActive}
+              onMuteAlarm={() => setAlarmMuted(true)}
+            />
+          )}
+          {tab === 'log' && <TrackPanel track={track} gpsOk={geo.lat != null} />}
+        </div>
       </div>
     </div>
   )

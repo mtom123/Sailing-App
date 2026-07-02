@@ -39,9 +39,23 @@ const AIS_MODES = [
   { id: 'aishub', label: 'AISHUB', icon: Radio },
 ]
 
+function pressureTrendGlyph(trend) {
+  if (trend == null) return { glyph: '→', color: '#9BA0A6' }
+  if (trend <= -2) return { glyph: '▼▼', color: '#FF4545' }
+  if (trend <= -0.8) return { glyph: '▼', color: '#FFC933' }
+  if (trend >= 0.8) return { glyph: '▲', color: '#3DFF7A' }
+  return { glyph: '→', color: '#9BA0A6' }
+}
+
+const fmtClock = (d) =>
+  d ? d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '--'
+
 export default function InstrumentPanel({
   geo,
   weather,
+  sun,
+  moon,
+  windAlarm,
   aisMode,
   onAisModeChange,
   wsUrl,
@@ -51,7 +65,8 @@ export default function InstrumentPanel({
   aisStatus,
 }) {
   const gpsOk = geo.lat != null && !geo.error
-  const { wind, wave, hourly } = weather
+  const { wind, wave, hourly, pressure } = weather
+  const trend = pressureTrendGlyph(pressure?.trend3h)
 
   return (
     <div className="flex h-full flex-col border-r border-line bg-ink">
@@ -114,6 +129,49 @@ export default function InstrumentPanel({
             label="Dir onda"
             value={wave && wave.dir != null ? `${formatDeg(wave.dir)}°` : '--'}
           />
+          <div className="border border-line bg-panel px-2 py-1">
+            <div className="label">Barometro</div>
+            <div className="text-sm font-bold text-paper tabular-nums">
+              {pressure ? `${pressure.value.toFixed(0)}` : '--'}
+              <span className="text-[9px] text-fog"> hPa </span>
+              <span style={{ color: trend.color }}>{trend.glyph}</span>
+            </div>
+          </div>
+          <DataCell
+            label="Alba / Tram."
+            value={sun ? `${fmtClock(sun.sunrise)} ${fmtClock(sun.sunset)}` : '--'}
+          />
+          <DataCell
+            label="Luna"
+            value={moon ? `${moon.emoji} ${moon.name}` : '--'}
+          />
+        </div>
+
+        {/* Allarme vento */}
+        <div className="mx-1.5 mt-1.5 flex items-center gap-2 border border-line bg-panel px-2 py-1.5">
+          <button
+            type="button"
+            onClick={() => windAlarm.setOn(!windAlarm.on)}
+            className={`h-5 w-9 flex-none border transition-colors ${
+              windAlarm.on ? 'border-phos bg-phos/25' : 'border-line bg-ink'
+            }`}
+          >
+            <span
+              className={`block h-3.5 w-3.5 transition-transform ${
+                windAlarm.on ? 'translate-x-4 bg-phos' : 'translate-x-0.5 bg-fog'
+              }`}
+            />
+          </button>
+          <span className="label flex-1">All. raffica</span>
+          <input
+            type="number"
+            min="10"
+            max="60"
+            value={windAlarm.threshold}
+            onChange={(e) => windAlarm.setThreshold(Number(e.target.value) || 30)}
+            className="w-12 border border-line bg-ink px-1 py-0.5 text-center text-[11px] text-paper outline-none focus:border-phos"
+          />
+          <span className="text-[9px] text-fog">kn</span>
         </div>
 
         <div className="mt-3 border-t border-line px-1.5 pt-2">
