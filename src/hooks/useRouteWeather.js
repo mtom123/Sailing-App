@@ -49,7 +49,7 @@ function legVerdict(cond) {
   return { level: 'safe', label: 'Buono' }
 }
 
-export default function useRouteWeather(waypoints, planSpeed) {
+export default function useRouteWeather(waypoints, planSpeed, departureMs) {
   const [grid, setGrid] = useState(null) // dati orari per waypoint
   const abortRef = useRef(null)
 
@@ -152,18 +152,18 @@ export default function useRouteWeather(waypoints, planSpeed) {
       return { legReports, score, departureMs }
     }
 
-    const now = evaluate(Date.now())
-    const windows = DEPARTURE_OFFSETS_H.map((h) =>
-      evaluate(Date.now() + h * 3600 * 1000)
-    )
+    const base = departureMs || Date.now()
+    const planned = evaluate(base)
+    const windows = DEPARTURE_OFFSETS_H.map((h) => evaluate(base + h * 3600 * 1000))
     let best = windows[0]
     for (const w of windows) if (w.score < best.score - 0.5) best = w
 
     return {
-      legs: now.legReports,
-      score: now.score,
+      legs: planned.legReports,
+      score: planned.score,
+      etas: etaTimes(waypoints, planSpeed, base),
       bestDeparture:
-        best.departureMs > Date.now() + 30 * 60 * 1000
+        best.departureMs > base + 30 * 60 * 1000
           ? { at: best.departureMs, score: best.score }
           : null,
       describe: (cond) =>
@@ -173,5 +173,6 @@ export default function useRouteWeather(waypoints, planSpeed) {
             }${cond.twa != null && cond.twa < 45 ? ' · BOLINA' : ''}`
           : 'N/D',
     }
-  }, [grid, key, waypoints, planSpeed])
+    // ETA e valutazioni si aggiornano al minuto (la partenza "ORA" scorre)
+  }, [grid, key, waypoints, planSpeed, Math.floor((departureMs || 0) / 60000)])
 }

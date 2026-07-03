@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
-import { formatDeg } from '../lib/geo.js'
+import { formatDeg, metersToNm } from '../lib/geo.js'
 import { SAFETY_COLORS } from '../lib/anchorageSafety.js'
 
 /*
@@ -12,12 +12,16 @@ import { SAFETY_COLORS } from '../lib/anchorageSafety.js'
 
 const MAX_ZOOM = 20 // zoom massimo della mappa: oltre il nativo si upscala
 
+// CHIARA: CARTO Voyager, dettagliata fino a z19 nativo (coste, porti, paesi)
+const CHART_URL =
+  'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'
 const DARK_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-const DARK_ATTR =
+const CARTO_ATTR =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-const NAUTICAL_URL =
+// Batimetria EMODnet: overlay semitrasparente (nativo fino a z12)
+const BATHY_URL =
   'https://tiles.emodnet-bathymetry.eu/2020/baselayer/web_mercator/{z}/{x}/{y}.png'
-const NAUTICAL_ATTR = '&copy; <a href="https://emodnet.ec.europa.eu">EMODnet Bathymetry</a>'
+const BATHY_ATTR = '&copy; <a href="https://emodnet.ec.europa.eu">EMODnet Bathymetry</a>'
 const SEAMARK_URL = 'https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'
 const SEAMARK_ATTR = '&copy; <a href="https://www.openseamap.org">OpenSeaMap</a>'
 const RAIN_ATTR = '&copy; <a href="https://www.rainviewer.com">RainViewer</a>'
@@ -59,9 +63,17 @@ function waypointIcon(index, active) {
   const color = active ? '#3DFF7A' : '#F2F2F2'
   return L.divIcon({
     className: '',
-    html: `<div style="width:24px;height:24px;border-radius:50%;background:#0D0D0D;border:2px solid ${color};color:${color};display:flex;align-items:center;justify-content:center;font:bold 10px ui-monospace,monospace">${index}</div>`,
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
+    html: `<div style="width:28px;height:28px;border-radius:50%;background:#0D0D0D;border:2.5px solid ${color};color:${color};display:flex;align-items:center;justify-content:center;font:bold 11px ui-monospace,monospace;box-shadow:0 1px 6px rgba(0,0,0,.6)">${index}</div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  })
+}
+
+function legLabelIcon(text) {
+  return L.divIcon({
+    className: 'leg-label',
+    html: text,
+    iconSize: null,
   })
 }
 
@@ -269,15 +281,21 @@ export default function MapView({
 
     // maxNativeZoom: oltre lo zoom nativo dei server le tile vengono
     // upscalate invece di sparire (fix "zoom non carica")
-    tileRefs.current.dark = L.tileLayer(DARK_URL, {
-      attribution: DARK_ATTR,
+    tileRefs.current.chart = L.tileLayer(CHART_URL, {
+      attribution: CARTO_ATTR,
       maxZoom: MAX_ZOOM,
       maxNativeZoom: 19,
     })
-    tileRefs.current.nautical = L.tileLayer(NAUTICAL_URL, {
-      attribution: NAUTICAL_ATTR,
+    tileRefs.current.dark = L.tileLayer(DARK_URL, {
+      attribution: CARTO_ATTR,
+      maxZoom: MAX_ZOOM,
+      maxNativeZoom: 19,
+    })
+    tileRefs.current.bathy = L.tileLayer(BATHY_URL, {
+      attribution: BATHY_ATTR,
       maxZoom: MAX_ZOOM,
       maxNativeZoom: 12,
+      opacity: 0.45,
     })
     tileRefs.current.seamarks = L.tileLayer(SEAMARK_URL, {
       attribution: SEAMARK_ATTR,
@@ -348,12 +366,12 @@ export default function MapView({
     }
   }, [])
 
-  // Carta base: NAUTICA (EMODnet, batimetrica) o SCURA (CARTO Dark Matter)
+  // Carta base: CHIARA (Voyager dettagliata) o SCURA (Dark Matter)
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
-    const active = baseStyle === 'dark' ? 'dark' : 'nautical'
-    const inactive = active === 'dark' ? 'nautical' : 'dark'
+    const active = baseStyle === 'dark' ? 'dark' : 'chart'
+    const inactive = active === 'dark' ? 'chart' : 'dark'
     if (map.hasLayer(tileRefs.current[inactive])) {
       map.removeLayer(tileRefs.current[inactive])
     }
@@ -363,14 +381,16 @@ export default function MapView({
     }
   }, [baseStyle, mapReady])
 
-  // Overlay seamarks attivabile
+  // Overlay batimetria e seamarks attivabili
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
-    const layer = tileRefs.current.seamarks
-    if (layers.seamarks && !map.hasLayer(layer)) map.addLayer(layer)
-    if (!layers.seamarks && map.hasLayer(layer)) map.removeLayer(layer)
-  }, [layers.seamarks, mapReady])
+    for (const key of ['bathy', 'seamarks']) {
+      const layer = tileRefs.current[key]
+      if (layers[key] && !map.hasLayer(layer)) map.addLayer(layer)
+      if (!layers[key] && map.hasLayer(layer)) map.removeLayer(layer)
+    }
+  }, [layers.bathy, layers.seamarks, mapReady])
 
   // Radar pioggia
   useEffect(() => {
@@ -496,10 +516,28 @@ export default function MapView({
     if (!wps.length) return
 
     if (wps.length > 1) {
+      // Alone scuro sotto la linea: leggibile sia su carta chiara sia scura
       L.polyline(
         wps.map((w) => [w.lat, w.lon]),
-        { color: '#3DFF7A', weight: 2.5, opacity: 0.9 }
+        { color: '#0D0D0D', weight: 6, opacity: 0.55 }
       ).addTo(group)
+      L.polyline(
+        wps.map((w) => [w.lat, w.lon]),
+        { color: '#00C853', weight: 3, opacity: 0.95 }
+      ).addTo(group)
+      // Etichetta distanza·rotta a metà di ogni tratta
+      for (let i = 0; i < wps.length - 1; i++) {
+        const a = wps[i]
+        const b = wps[i + 1]
+        const distNm = metersToNm(
+          map.distance([a.lat, a.lon], [b.lat, b.lon])
+        )
+        L.marker([(a.lat + b.lat) / 2, (a.lon + b.lon) / 2], {
+          icon: legLabelIcon(`${distNm.toFixed(1)} nm`),
+          interactive: false,
+          keyboard: false,
+        }).addTo(group)
+      }
     }
     wps.forEach((w, i) => {
       const isActiveDest = route.nav && route.nav.idx === i

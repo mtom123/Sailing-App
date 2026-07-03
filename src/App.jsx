@@ -19,6 +19,7 @@ import AnchoragePanel from './components/AnchoragePanel.jsx'
 import RoutePanel from './components/RoutePanel.jsx'
 import TrackPanel from './components/TrackPanel.jsx'
 import SettingsSheet from './components/SettingsSheet.jsx'
+import usePersistentState from './hooks/usePersistentState.js'
 import useGeolocation from './hooks/useGeolocation.js'
 import useOpenMeteo from './hooks/useOpenMeteo.js'
 import useWindField from './hooks/useWindField.js'
@@ -40,6 +41,7 @@ import { sunTimes, moonPhase } from './lib/sun.js'
 const DEFAULT_CENTER = { lat: 41.15, lon: 9.45 }
 
 const LAYER_DEFS = [
+  { key: 'bathy', label: 'Batimetria (fondali)' },
   { key: 'seamarks', label: 'Seamarks (fari/boe)' },
   { key: 'wind', label: 'Vettore vento' },
   { key: 'ais', label: 'Navi AIS' },
@@ -99,25 +101,27 @@ export default function App() {
   }, [])
 
   const [view, setView] = useState({ center: DEFAULT_CENTER, bounds: null })
-  const [baseStyle, setBaseStyle] = useState('nautical') // 'nautical' | 'dark'
-  const [layers, setLayers] = useState({
+  // Preferenze persistenti: sopravvivono a riavvii dell'app
+  const [baseStyle, setBaseStyle] = usePersistentState('timone.base.v2', 'chart') // 'chart' | 'dark'
+  const [layers, setLayers] = usePersistentState('timone.layers.v3', {
+    bathy: true,
     seamarks: true,
     wind: true,
-    ais: true,
+    ais: false,
     parks: true,
     rain: false,
   })
   const [layersOpen, setLayersOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [leftOpen, setLeftOpen] = useState(true)
-  const [drawer, setDrawer] = useState(null) // null | 'route' | 'anchors' | 'log'
+  const [drawer, setDrawer] = useState('route') // null | 'route' | 'anchors' | 'log'
   const [follow, setFollow] = useState(true)
   const [nightMode, setNightMode] = useState(false)
   const [focusTarget, setFocusTarget] = useState(null)
 
-  const [aisMode, setAisMode] = useState('sim')
-  const [wsUrl, setWsUrl] = useState('ws://192.168.4.1:8484')
-  const [aishubUser, setAishubUser] = useState('')
+  const [aisMode, setAisMode] = usePersistentState('timone.aisMode.v1', 'sim')
+  const [wsUrl, setWsUrl] = usePersistentState('timone.wsUrl.v1', 'ws://192.168.4.1:8484')
+  const [aishubUser, setAishubUser] = usePersistentState('timone.aishub.v1', '')
 
   const weather = useOpenMeteo(view.center.lat, view.center.lon)
   const windField = useWindField(view.bounds, layers.wind)
@@ -132,7 +136,7 @@ export default function App() {
 
   // --- Rotta, weather routing e pilota ---------------------------------------
   const route = useRoute(geo)
-  const routeWx = useRouteWeather(route.waypoints, route.planSpeed)
+  const routeWx = useRouteWeather(route.waypoints, route.planSpeed, route.departureMs)
   const autopilot = useAutopilot({
     wsUrl,
     nav: route.nav,
@@ -237,9 +241,13 @@ export default function App() {
   }
 
   const toggleRouteEditing = () => {
-    const next = !route.editing
-    route.setEditing(next)
-    if (next) setDrawer('route')
+    if (route.editing) {
+      route.setEditing(false)
+      return
+    }
+    if (route.waypoints.length === 0) route.newRoute()
+    else route.setEditing(true)
+    setDrawer('route')
   }
 
   const gpsOk = geo.lat != null
@@ -375,7 +383,7 @@ export default function App() {
               <div className="label px-2 pb-1 pt-1.5">Carta base</div>
               <div className="flex gap-1 px-1 pb-1.5">
                 {[
-                  ['nautical', 'NAUTICA'],
+                  ['chart', 'CHIARA'],
                   ['dark', 'SCURA'],
                 ].map(([id, label]) => (
                   <button
@@ -418,13 +426,27 @@ export default function App() {
 
         {/* Barra modalità rotta */}
         {route.editing && (
-          <div className="absolute left-1/2 top-2 z-[950] flex -translate-x-1/2 items-center gap-3 rounded-sm border border-warn bg-ink/95 py-1.5 pl-3 pr-1.5 shadow-lg shadow-black/40">
+          <div className="absolute left-1/2 top-2 z-[950] flex -translate-x-1/2 items-center gap-2 rounded-sm border border-warn bg-ink/95 py-1.5 pl-3 pr-1.5 shadow-lg shadow-black/40">
             <span className="text-[11px] font-bold tracking-wider text-warn">
-              MODALITÀ ROTTA · tocca il mare per i waypoint
+              ROTTA · tocca il mare
+            </span>
+            <span className="text-[11px] font-bold text-paper tabular-nums">
+              {route.waypoints.length} WP · {route.totalNm.toFixed(1)} nm
             </span>
             <button
               type="button"
-              onClick={() => route.setEditing(false)}
+              disabled={!route.waypoints.length}
+              onClick={route.undoWaypoint}
+              className="border border-line bg-panel px-3 py-1.5 text-[10px] font-bold tracking-widest text-paper disabled:opacity-40"
+            >
+              ↶ UNDO
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                route.setEditing(false)
+                setDrawer('route')
+              }}
               className="border border-warn bg-warn/15 px-3 py-1.5 text-[10px] font-bold tracking-widest text-warn"
             >
               FINE
