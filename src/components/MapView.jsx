@@ -113,6 +113,9 @@ function WindCanvas({ map, field }) {
     if (!map) return undefined
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
+    let raf = null
+    let lastW = 0
+    let lastH = 0
 
     function colorFor(speed) {
       if (speed < 11) return '#3DFF7A'
@@ -121,12 +124,18 @@ function WindCanvas({ map, field }) {
     }
 
     function draw() {
+      raf = null
       const size = map.getSize()
       const dpr = window.devicePixelRatio || 1
-      canvas.width = size.x * dpr
-      canvas.height = size.y * dpr
-      canvas.style.width = `${size.x}px`
-      canvas.style.height = `${size.y}px`
+      // Ridimensionare il buffer canvas è costoso: solo quando serve davvero
+      if (size.x !== lastW || size.y !== lastH) {
+        canvas.width = size.x * dpr
+        canvas.height = size.y * dpr
+        canvas.style.width = `${size.x}px`
+        canvas.style.height = `${size.y}px`
+        lastW = size.x
+        lastH = size.y
+      }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.clearRect(0, 0, size.x, size.y)
       if (!field.length) return
@@ -152,7 +161,7 @@ function WindCanvas({ map, field }) {
           ctx.rotate(((best.dir + 180) * Math.PI) / 180)
           ctx.strokeStyle = colorFor(best.speed)
           ctx.fillStyle = colorFor(best.speed)
-          ctx.globalAlpha = 0.85
+          ctx.globalAlpha = 0.8
           ctx.lineWidth = 2
           ctx.beginPath()
           ctx.moveTo(0, len / 2)
@@ -164,18 +173,22 @@ function WindCanvas({ map, field }) {
           ctx.lineTo(5, -len / 2 + 9)
           ctx.closePath()
           ctx.fill()
-          ctx.rotate(-(((best.dir + 180) * Math.PI) / 180))
-          ctx.globalAlpha = 0.9
-          ctx.font = '9px ui-monospace, monospace'
-          ctx.fillText(`${Math.round(best.speed)}`, 8, len / 2 + 2)
           ctx.restore()
         }
       }
     }
 
-    draw()
-    map.on('move zoom resize viewreset', draw)
-    return () => map.off('move zoom resize viewreset', draw)
+    // Throttle a un frame per refresh: niente ridisegni multipli per evento
+    function schedule() {
+      if (raf == null) raf = requestAnimationFrame(draw)
+    }
+
+    schedule()
+    map.on('move zoom moveend zoomend resize viewreset', schedule)
+    return () => {
+      if (raf != null) cancelAnimationFrame(raf)
+      map.off('move zoom moveend zoomend resize viewreset', schedule)
+    }
   }, [map, field])
 
   return (
@@ -210,12 +223,16 @@ export default function MapView({
 
   const tileRefs = useRef({})
   const rainLayerRef = useRef(null)
+  const interactingRef = useRef(false)
   const vesselMarkersRef = useRef(new Map())
   const vesselGroupRef = useRef(null)
   const anchorMarkersRef = useRef(new Map())
+  const anchorStateRef = useRef(new Map())
   const anchorGroupRef = useRef(null)
   const routeGroupRef = useRef(null)
   const parksGroupRef = useRef(null)
+  const parkLayersRef = useRef(new Map())
+  const parkStateRef = useRef(new Map())
   const trackLineRef = useRef(null)
   const mobMarkerRef = useRef(null)
   const boatMarkerRef = useRef(null)
@@ -241,6 +258,7 @@ export default function MapView({
       touchZoom: true, // pinch-to-zoom
       tap: false,
     })
+    L.control.zoom({ position: 'bottomright' }).addTo(map)
     L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(map)
 
     L.tileLayer(BASE_URL, { attribution: BASE_ATTR, maxZoom: 19 }).addTo(map)
@@ -281,7 +299,20 @@ export default function MapView({
       })
     }
     map.on('moveend', emitView)
-    map.on('dragstart', () => callbacksRef.current.onUserPan())
+    // Traccia le interazioni dirette: il follow non deve combattere col pinch
+    map.on('zoomstart', () => {
+      interactingRef.current = true
+    })
+    map.on('zoomend', () => {
+      interactingRef.current = false
+    })
+    map.on('dragstart', () => {
+      interactingRef.current = true
+      callbacksRef.current.onUserPan()
+    })
+    map.on('dragend', () => {
+      interactingRef.current = false
+    })
     map.on('click', (e) => {
       if (callbacksRef.current.editing) {
         callbacksRef.current.addWaypoint(e.latlng.lat, e.latlng.lng)
@@ -365,41 +396,60 @@ export default function MapView({
 
     for (const a of anchorages) {
       const color = SAFETY_COLORS[a.safety.level]
+      const stateKey = `${a.safety.level}|${a.safety.reason}`
       const existing = markers.get(a.id)
       if (existing) {
-        existing.setIcon(anchorageIcon(color))
-        existing.getPopup().setContent(anchoragePopup(a, a.safety))
+        // Aggiorna solo se il semaforo è davvero cambiato: evita churn DOM
+        if (anchorStateRef.current.get(a.id) !== stateKey) {
+          existing.setIcon(anchorageIcon(color))
+          existing.getPopup().setContent(anchoragePopup(a, a.safety))
+          anchorStateRef.current.set(a.id, stateKey)
+        }
       } else {
         const m = L.marker([a.lat, a.lon], { icon: anchorageIcon(color) })
         m.bindPopup(anchoragePopup(a, a.safety))
         m.addTo(group)
         markers.set(a.id, m)
+        anchorStateRef.current.set(a.id, stateKey)
       }
     }
   }, [anchorages, mapReady])
 
-  // Aree marine protette
+  // Aree marine protette (poligoni creati una volta, ristilizzati sul cambio stato)
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
     const group = parksGroupRef.current
-    group.clearLayers()
-    if (!layers.parks) return
+    if (!layers.parks) {
+      group.clearLayers()
+      parkLayersRef.current.clear()
+      parkStateRef.current.clear()
+      return
+    }
     for (const p of parks) {
       const color =
         p.status === 'inside' ? '#FF4545' : p.status === 'near' ? '#FFC933' : '#FF7A45'
-      L.polygon(
-        p.polygon.map(([lat, lon]) => [lat, lon]),
-        {
-          color,
-          weight: p.status ? 2.5 : 1.5,
-          dashArray: '8 5',
-          fillColor: color,
-          fillOpacity: p.status === 'inside' ? 0.18 : 0.07,
-        }
-      )
-        .bindPopup(parkPopup(p, p.status))
-        .addTo(group)
+      const style = {
+        color,
+        weight: p.status ? 2.5 : 1.5,
+        dashArray: '8 5',
+        fillColor: color,
+        fillOpacity: p.status === 'inside' ? 0.18 : 0.07,
+      }
+      let poly = parkLayersRef.current.get(p.id)
+      if (!poly) {
+        poly = L.polygon(
+          p.polygon.map(([lat, lon]) => [lat, lon]),
+          style
+        ).bindPopup(parkPopup(p, p.status))
+        poly.addTo(group)
+        parkLayersRef.current.set(p.id, poly)
+        parkStateRef.current.set(p.id, p.status)
+      } else if (parkStateRef.current.get(p.id) !== p.status) {
+        poly.setStyle(style)
+        poly.getPopup().setContent(parkPopup(p, p.status))
+        parkStateRef.current.set(p.id, p.status)
+      }
     }
   }, [parks, layers.parks, mapReady])
 
@@ -486,8 +536,14 @@ export default function MapView({
       boatCircleRef.current.setLatLng([boat.lat, boat.lon])
       boatCircleRef.current.setRadius(boat.accuracy || 0)
     }
-    if (follow) {
-      map.panTo([boat.lat, boat.lon], { animate: true, duration: 0.5 })
+    // Follow senza animazione e mai durante pinch/drag: evita che il
+    // ricentraggio interrompa i gesti dell'utente e generi jank
+    if (follow && !interactingRef.current) {
+      const boatPt = map.latLngToContainerPoint([boat.lat, boat.lon])
+      const centerPt = map.latLngToContainerPoint(map.getCenter())
+      if (boatPt.distanceTo(centerPt) > 12) {
+        map.panTo([boat.lat, boat.lon], { animate: false })
+      }
     }
   }, [boat.lat, boat.lon, boat.cog, boat.accuracy, follow, mapReady])
 

@@ -8,7 +8,9 @@ import {
   Navigation2,
   Route as RouteIcon,
   ScrollText,
+  Settings,
 } from 'lucide-react'
+import SettingsSheet from './components/SettingsSheet.jsx'
 import MapView from './components/MapView.jsx'
 import InstrumentPanel from './components/InstrumentPanel.jsx'
 import AnchoragePanel from './components/AnchoragePanel.jsx'
@@ -104,6 +106,7 @@ export default function App() {
     rain: false,
   })
   const [layersOpen, setLayersOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [follow, setFollow] = useState(true)
   const [nightMode, setNightMode] = useState(false)
   const [focusTarget, setFocusTarget] = useState(null)
@@ -146,14 +149,17 @@ export default function App() {
   const moon = useMemo(() => moonPhase(new Date()), [Math.floor(Date.now() / 86400000)])
 
   // --- Ancoraggi: sicurezza dinamica dal vento + distanza dalla barca ---------
+  // Chiave arrotondata (~1 km): niente ricalcoli/re-render a ogni tick GPS
+  const refKey = `${refPoint.lat.toFixed(2)},${refPoint.lon.toFixed(2)}`
   const anchorages = useMemo(() => {
+    const [rLat, rLon] = refKey.split(',').map(Number)
     return ANCHORAGES.map((a) => ({
       ...a,
       safety: evaluateAnchorage(a, weather.wind),
-      distance: haversine(refPoint.lat, refPoint.lon, a.lat, a.lon),
-      bearing: bearing(refPoint.lat, refPoint.lon, a.lat, a.lon),
+      distance: haversine(rLat, rLon, a.lat, a.lon),
+      bearing: bearing(rLat, rLon, a.lat, a.lon),
     })).sort((x, y) => x.distance - y.distance)
-  }, [weather.wind, refPoint.lat, refPoint.lon])
+  }, [weather.wind, refKey])
 
   // --- Aree marine protette: stato rispetto alla posizione --------------------
   const parks = useMemo(() => {
@@ -236,25 +242,7 @@ export default function App() {
     >
       {/* SIDEBAR SINISTRA 25%: strumenti di navigazione */}
       <div className="h-full w-1/4 flex-none">
-        <InstrumentPanel
-          geo={geo}
-          weather={weather}
-          sun={sun}
-          moon={moon}
-          windAlarm={{
-            on: windAlarmOn,
-            setOn: setWindAlarmOn,
-            threshold: windThreshold,
-            setThreshold: setWindThreshold,
-          }}
-          aisMode={aisMode}
-          onAisModeChange={setAisMode}
-          wsUrl={wsUrl}
-          onWsUrlChange={setWsUrl}
-          aishubUser={aishubUser}
-          onAishubUserChange={setAishubUser}
-          aisStatus={aisStatus}
-        />
+        <InstrumentPanel geo={geo} weather={weather} sun={sun} moon={moon} />
       </div>
 
       {/* AREA CENTRALE 55%: mappa */}
@@ -297,7 +285,11 @@ export default function App() {
           <MapButton
             title="Modifica rotta"
             active={route.editing}
-            onClick={() => route.setEditing(!route.editing)}
+            onClick={() => {
+              const next = !route.editing
+              route.setEditing(next)
+              if (next) setTab('route')
+            }}
           >
             <Navigation2 size={18} />
           </MapButton>
@@ -311,10 +303,24 @@ export default function App() {
           <MapButton title="Uomo a mare" danger={Boolean(mob)} onClick={dropMob}>
             <LifeBuoy size={18} />
           </MapButton>
+          <MapButton
+            title="Impostazioni"
+            active={settingsOpen}
+            onClick={() => setSettingsOpen(true)}
+          >
+            <Settings size={18} />
+          </MapButton>
         </div>
 
         {layersOpen && (
-          <div className="absolute right-16 top-2 z-[1000] w-44 border border-line bg-ink/95 p-1">
+          <>
+            <button
+              type="button"
+              aria-label="Chiudi menu layer"
+              onClick={() => setLayersOpen(false)}
+              className="absolute inset-0 z-[990] cursor-default"
+            />
+            <div className="absolute right-16 top-2 z-[1000] w-44 border border-line bg-ink/95 p-1">
             {LAYER_DEFS.map((l) => (
               <button
                 key={l.key}
@@ -334,6 +340,14 @@ export default function App() {
                 </span>
               </button>
             ))}
+            </div>
+          </>
+        )}
+
+        {/* Hint modalità rotta */}
+        {route.editing && (
+          <div className="absolute left-1/2 top-14 z-[900] -translate-x-1/2 border border-warn bg-ink/95 px-3 py-1.5 text-[10px] tracking-wider text-warn">
+            MODALITÀ ROTTA — tocca il mare per aggiungere waypoint
           </div>
         )}
 
@@ -405,6 +419,25 @@ export default function App() {
             ⚠ RAFFICHE {Math.round(gustNow)} kn
           </div>
         )}
+
+        <SettingsSheet
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          aisMode={aisMode}
+          onAisModeChange={setAisMode}
+          wsUrl={wsUrl}
+          onWsUrlChange={setWsUrl}
+          aishubUser={aishubUser}
+          onAishubUserChange={setAishubUser}
+          aisStatus={aisStatus}
+          windAlarm={{
+            on: windAlarmOn,
+            setOn: setWindAlarmOn,
+            threshold: windThreshold,
+            setThreshold: setWindThreshold,
+          }}
+          weatherError={weather.error}
+        />
       </div>
 
       {/* SIDEBAR DESTRA 20%: rotta / ancoraggi / log */}
