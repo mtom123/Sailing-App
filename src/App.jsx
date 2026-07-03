@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Anchor,
+  ChevronLeft,
+  ChevronRight,
   Crosshair,
   Layers,
   LifeBuoy,
@@ -9,13 +11,14 @@ import {
   Route as RouteIcon,
   ScrollText,
   Settings,
+  X,
 } from 'lucide-react'
-import SettingsSheet from './components/SettingsSheet.jsx'
 import MapView from './components/MapView.jsx'
 import InstrumentPanel from './components/InstrumentPanel.jsx'
 import AnchoragePanel from './components/AnchoragePanel.jsx'
 import RoutePanel from './components/RoutePanel.jsx'
 import TrackPanel from './components/TrackPanel.jsx'
+import SettingsSheet from './components/SettingsSheet.jsx'
 import useGeolocation from './hooks/useGeolocation.js'
 import useOpenMeteo from './hooks/useOpenMeteo.js'
 import useWindField from './hooks/useWindField.js'
@@ -37,8 +40,7 @@ import { sunTimes, moonPhase } from './lib/sun.js'
 const DEFAULT_CENTER = { lat: 41.15, lon: 9.45 }
 
 const LAYER_DEFS = [
-  { key: 'bathy', label: 'Batimetria' },
-  { key: 'seamarks', label: 'Seamarks' },
+  { key: 'seamarks', label: 'Seamarks (fari/boe)' },
   { key: 'wind', label: 'Vettore vento' },
   { key: 'ais', label: 'Navi AIS' },
   { key: 'parks', label: 'Aree protette' },
@@ -57,12 +59,12 @@ function MapButton({ active, danger, onClick, title, children }) {
       type="button"
       title={title}
       onClick={onClick}
-      className={`flex h-11 w-11 items-center justify-center border transition-colors ${
+      className={`flex h-11 w-11 items-center justify-center rounded-sm border shadow-lg shadow-black/40 transition-colors ${
         danger
-          ? 'border-danger bg-danger/20 text-danger'
+          ? 'border-danger bg-danger/25 text-danger'
           : active
             ? 'border-phos bg-ink text-phos'
-            : 'border-line bg-ink/90 text-fog active:text-paper'
+            : 'border-line bg-ink/95 text-fog active:text-paper'
       }`}
     >
       {children}
@@ -97,8 +99,8 @@ export default function App() {
   }, [])
 
   const [view, setView] = useState({ center: DEFAULT_CENTER, bounds: null })
+  const [baseStyle, setBaseStyle] = useState('nautical') // 'nautical' | 'dark'
   const [layers, setLayers] = useState({
-    bathy: true,
     seamarks: true,
     wind: true,
     ais: true,
@@ -107,10 +109,11 @@ export default function App() {
   })
   const [layersOpen, setLayersOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [leftOpen, setLeftOpen] = useState(true)
+  const [drawer, setDrawer] = useState(null) // null | 'route' | 'anchors' | 'log'
   const [follow, setFollow] = useState(true)
   const [nightMode, setNightMode] = useState(false)
   const [focusTarget, setFocusTarget] = useState(null)
-  const [tab, setTab] = useState('route')
 
   const [aisMode, setAisMode] = useState('sim')
   const [wsUrl, setWsUrl] = useState('ws://192.168.4.1:8484')
@@ -165,11 +168,11 @@ export default function App() {
   const parks = useMemo(() => {
     return MARINE_PARKS.map((p) => ({
       ...p,
-      status:
-        geo.lat != null ? fenceStatus(geo.lat, geo.lon, p.polygon) : null,
+      status: geo.lat != null ? fenceStatus(geo.lat, geo.lon, p.polygon) : null,
     }))
   }, [geo.lat != null ? geo.lat.toFixed(3) : null, geo.lon != null ? geo.lon.toFixed(3) : null])
-  const parkAlert = parks.find((p) => p.status === 'inside') || parks.find((p) => p.status === 'near')
+  const parkAlert =
+    parks.find((p) => p.status === 'inside') || parks.find((p) => p.status === 'near')
 
   // --- MOB (uomo a mare) -------------------------------------------------------
   const [mob, setMob] = useState(null)
@@ -192,8 +195,7 @@ export default function App() {
   const [windAlarmOn, setWindAlarmOn] = useState(false)
   const [windThreshold, setWindThreshold] = useState(30)
   const gustNow = weather.wind?.gust ?? weather.wind?.speed ?? null
-  const windAlarmActive =
-    windAlarmOn && gustNow != null && gustNow >= windThreshold
+  const windAlarmActive = windAlarmOn && gustNow != null && gustNow >= windThreshold
   const windAlarmPrev = useRef(false)
   useEffect(() => {
     if (windAlarmActive && !windAlarmPrev.current) warnBeep()
@@ -234,21 +236,28 @@ export default function App() {
     setFocusTarget({ id: a.id, lat: a.lat, lon: a.lon, ts: Date.now() })
   }
 
-  return (
-    <div
-      className={`flex h-full w-full overflow-hidden bg-ink text-paper ${
-        nightMode ? 'night-mode' : ''
-      }`}
-    >
-      {/* SIDEBAR SINISTRA 25%: strumenti di navigazione */}
-      <div className="h-full w-1/4 flex-none">
-        <InstrumentPanel geo={geo} weather={weather} sun={sun} moon={moon} />
-      </div>
+  const toggleRouteEditing = () => {
+    const next = !route.editing
+    route.setEditing(next)
+    if (next) setDrawer('route')
+  }
 
-      {/* AREA CENTRALE 55%: mappa */}
+  const gpsOk = geo.lat != null
+
+  return (
+    <div className="relative flex h-full w-full overflow-hidden bg-ink text-paper">
+      {/* PANNELLO STRUMENTI (richiudibile) */}
+      {leftOpen && (
+        <div className="h-full w-[300px] min-w-[240px] max-w-[28%] flex-none">
+          <InstrumentPanel geo={geo} weather={weather} sun={sun} moon={moon} />
+        </div>
+      )}
+
+      {/* MAPPA A TUTTO SCHERMO */}
       <div className="relative h-full min-w-0 flex-1">
         <MapView
           initialCenter={DEFAULT_CENTER}
+          baseStyle={baseStyle}
           boat={geo}
           follow={follow}
           layers={layers}
@@ -265,6 +274,51 @@ export default function App() {
           onViewChange={setView}
           onUserPan={() => setFollow(false)}
         />
+
+        {/* Maniglia apri/chiudi strumenti */}
+        <button
+          type="button"
+          title={leftOpen ? 'Nascondi strumenti' : 'Mostra strumenti'}
+          onClick={() => setLeftOpen((o) => !o)}
+          className="absolute left-0 top-1/2 z-[950] flex h-16 w-7 -translate-y-1/2 items-center justify-center rounded-r-sm border border-l-0 border-line bg-ink/95 text-fog shadow-lg shadow-black/40 active:text-paper"
+        >
+          {leftOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+        </button>
+
+        {/* Strumenti compatti quando il pannello è chiuso */}
+        {!leftOpen && (
+          <button
+            type="button"
+            onClick={() => setLeftOpen(true)}
+            className="absolute left-9 top-2 z-[900] flex items-center gap-3 rounded-sm border border-line bg-ink/95 px-3 py-2 shadow-lg shadow-black/40"
+          >
+            <span
+              className={`h-2 w-2 rounded-full ${gpsOk ? 'bg-phos' : 'bg-danger'}`}
+            />
+            <span className="text-left">
+              <span className="label block">SOG</span>
+              <span className="text-lg font-bold leading-none text-phos tabular-nums">
+                {geo.sog != null ? geo.sog.toFixed(1) : '--'}
+              </span>
+            </span>
+            <span className="text-left">
+              <span className="label block">COG</span>
+              <span className="text-lg font-bold leading-none text-paper tabular-nums">
+                {geo.cog != null ? formatDeg(geo.cog) : '---'}°
+              </span>
+            </span>
+            <span className="text-left">
+              <span className="label block">Vento</span>
+              <span className="text-lg font-bold leading-none text-paper tabular-nums">
+                {weather.wind ? `${Math.round(weather.wind.speed)}` : '--'}
+                <span className="text-[10px] text-fog">
+                  {' '}
+                  {weather.wind ? cardinal(weather.wind.dir) : ''}
+                </span>
+              </span>
+            </span>
+          </button>
+        )}
 
         {/* Colonna comandi mappa */}
         <div className="absolute right-2 top-2 z-[1000] flex flex-col gap-1.5">
@@ -285,11 +339,7 @@ export default function App() {
           <MapButton
             title="Modifica rotta"
             active={route.editing}
-            onClick={() => {
-              const next = !route.editing
-              route.setEditing(next)
-              if (next) setTab('route')
-            }}
+            onClick={toggleRouteEditing}
           >
             <Navigation2 size={18} />
           </MapButton>
@@ -312,6 +362,7 @@ export default function App() {
           </MapButton>
         </div>
 
+        {/* Menu layer */}
         {layersOpen && (
           <>
             <button
@@ -320,40 +371,70 @@ export default function App() {
               onClick={() => setLayersOpen(false)}
               className="absolute inset-0 z-[990] cursor-default"
             />
-            <div className="absolute right-16 top-2 z-[1000] w-44 border border-line bg-ink/95 p-1">
-            {LAYER_DEFS.map((l) => (
-              <button
-                key={l.key}
-                type="button"
-                onClick={() => setLayers((s) => ({ ...s, [l.key]: !s[l.key] }))}
-                className="flex w-full items-center gap-2 px-2 py-2.5 text-left text-[11px] tracking-widest active:bg-raised"
-              >
-                <span
-                  className={`flex h-4 w-4 flex-none items-center justify-center border text-[10px] ${
-                    layers[l.key] ? 'border-phos text-phos' : 'border-line text-transparent'
-                  }`}
+            <div className="absolute right-16 top-2 z-[1000] w-52 rounded-sm border border-line bg-ink/95 p-1 shadow-lg shadow-black/40">
+              <div className="label px-2 pb-1 pt-1.5">Carta base</div>
+              <div className="flex gap-1 px-1 pb-1.5">
+                {[
+                  ['nautical', 'NAUTICA'],
+                  ['dark', 'SCURA'],
+                ].map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setBaseStyle(id)}
+                    className={`flex-1 border py-2 text-[10px] font-bold tracking-widest ${
+                      baseStyle === id
+                        ? 'border-phos bg-phos/10 text-phos'
+                        : 'border-line bg-panel text-fog'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="label px-2 pb-1">Overlay</div>
+              {LAYER_DEFS.map((l) => (
+                <button
+                  key={l.key}
+                  type="button"
+                  onClick={() => setLayers((s) => ({ ...s, [l.key]: !s[l.key] }))}
+                  className="flex w-full items-center gap-2 px-2 py-2.5 text-left text-[11px] tracking-widest active:bg-raised"
                 >
-                  ✓
-                </span>
-                <span className={layers[l.key] ? 'text-paper' : 'text-fog'}>
-                  {l.label}
-                </span>
-              </button>
-            ))}
+                  <span
+                    className={`flex h-4 w-4 flex-none items-center justify-center border text-[10px] ${
+                      layers[l.key] ? 'border-phos text-phos' : 'border-line text-transparent'
+                    }`}
+                  >
+                    ✓
+                  </span>
+                  <span className={layers[l.key] ? 'text-paper' : 'text-fog'}>
+                    {l.label}
+                  </span>
+                </button>
+              ))}
             </div>
           </>
         )}
 
-        {/* Hint modalità rotta */}
+        {/* Barra modalità rotta */}
         {route.editing && (
-          <div className="absolute left-1/2 top-14 z-[900] -translate-x-1/2 border border-warn bg-ink/95 px-3 py-1.5 text-[10px] tracking-wider text-warn">
-            MODALITÀ ROTTA — tocca il mare per aggiungere waypoint
+          <div className="absolute left-1/2 top-2 z-[950] flex -translate-x-1/2 items-center gap-3 rounded-sm border border-warn bg-ink/95 py-1.5 pl-3 pr-1.5 shadow-lg shadow-black/40">
+            <span className="text-[11px] font-bold tracking-wider text-warn">
+              MODALITÀ ROTTA · tocca il mare per i waypoint
+            </span>
+            <button
+              type="button"
+              onClick={() => route.setEditing(false)}
+              className="border border-warn bg-warn/15 px-3 py-1.5 text-[10px] font-bold tracking-widest text-warn"
+            >
+              FINE
+            </button>
           </div>
         )}
 
         {/* Barra NAV rotta attiva */}
-        {route.nav && !mob && (
-          <div className="absolute left-1/2 top-2 z-[900] -translate-x-1/2 border border-phosdim bg-ink/90 px-3 py-1.5 text-[11px] tabular-nums">
+        {route.nav && !route.editing && !mob && (
+          <div className="absolute left-1/2 top-2 z-[900] -translate-x-1/2 rounded-sm border border-phosdim bg-ink/95 px-4 py-2 text-[13px] shadow-lg shadow-black/40 tabular-nums">
             <span className="font-bold text-phos">→ {route.nav.dest.name}</span>
             <span className="text-paper">
               {' '}
@@ -372,12 +453,12 @@ export default function App() {
 
         {/* Banner MOB */}
         {mob && (
-          <div className="alarm-flash absolute left-1/2 top-2 z-[1100] -translate-x-1/2 border-2 border-danger bg-ink px-3 py-2 text-center">
-            <div className="text-[13px] font-bold tracking-[0.25em] text-danger">
+          <div className="alarm-flash absolute left-1/2 top-2 z-[1100] -translate-x-1/2 border-2 border-danger bg-ink px-4 py-2 text-center">
+            <div className="text-[14px] font-bold tracking-[0.25em] text-danger">
               ⊕ UOMO A MARE
             </div>
             {mobInfo && (
-              <div className="text-[12px] text-paper tabular-nums">
+              <div className="text-[13px] text-paper tabular-nums">
                 {formatDeg(mobInfo.brg)}° {cardinal(mobInfo.brg)} ·{' '}
                 {mobInfo.dist < 1852
                   ? `${mobInfo.dist.toFixed(0)} m`
@@ -397,7 +478,7 @@ export default function App() {
         {/* Banner area protetta */}
         {parkAlert && !mob && (
           <div
-            className={`absolute bottom-8 left-1/2 z-[900] -translate-x-1/2 border px-3 py-1.5 text-center text-[11px] ${
+            className={`absolute bottom-8 left-1/2 z-[900] -translate-x-1/2 rounded-sm border px-3 py-1.5 text-center text-[11px] shadow-lg shadow-black/40 ${
               parkAlert.status === 'inside'
                 ? 'border-danger bg-danger/20 text-danger'
                 : 'border-warn bg-warn/10 text-warn'
@@ -415,8 +496,90 @@ export default function App() {
 
         {/* Banner allarme vento */}
         {windAlarmActive && !mob && (
-          <div className="absolute left-2 top-2 z-[900] border border-warn bg-warn/15 px-3 py-1.5 text-[11px] font-bold text-warn">
+          <div className="absolute left-2 top-2 z-[900] rounded-sm border border-warn bg-warn/15 px-3 py-1.5 text-[11px] font-bold text-warn">
             ⚠ RAFFICHE {Math.round(gustNow)} kn
+          </div>
+        )}
+
+        {/* Rail schede (destra, centrato) */}
+        {!drawer && (
+          <div className="absolute right-0 top-1/2 z-[950] flex -translate-y-1/2 flex-col gap-1">
+            {TABS.map((t) => {
+              const Icon = t.icon
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setDrawer(t.id)}
+                  className="flex h-14 w-12 flex-col items-center justify-center gap-0.5 rounded-l-sm border border-r-0 border-line bg-ink/95 text-fog shadow-lg shadow-black/40 active:text-paper"
+                >
+                  <Icon size={16} />
+                  <span className="text-[7px] font-bold tracking-widest">{t.label}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Drawer schede */}
+        {drawer && (
+          <div className="absolute right-0 top-0 z-[1050] flex h-full w-[320px] max-w-[75%] flex-col border-l border-line bg-ink shadow-2xl shadow-black/60">
+            <div className="flex flex-none items-center border-b border-line">
+              {TABS.map((t) => {
+                const Icon = t.icon
+                const active = drawer === t.id
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setDrawer(t.id)}
+                    className={`flex flex-1 items-center justify-center gap-1.5 border-b-2 py-3 text-[10px] font-bold tracking-widest ${
+                      active
+                        ? 'border-phos text-phos'
+                        : 'border-transparent text-fog active:text-paper'
+                    }`}
+                  >
+                    <Icon size={13} />
+                    {t.label}
+                  </button>
+                )
+              })}
+              <button
+                type="button"
+                aria-label="Chiudi pannello"
+                onClick={() => setDrawer(null)}
+                className="flex h-full w-11 flex-none items-center justify-center border-l border-line text-fog active:text-paper"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-hidden">
+              {drawer === 'route' && (
+                <RoutePanel
+                  route={route}
+                  routeWx={routeWx}
+                  autopilot={autopilot}
+                  gpsOk={gpsOk}
+                  bridgeConfigured={Boolean(wsUrl)}
+                />
+              )}
+              {drawer === 'anchors' && (
+                <AnchoragePanel
+                  anchorages={anchorages}
+                  onSelect={selectAnchorage}
+                  gpsOk={gpsOk}
+                  anchorWatch={anchorWatch}
+                  radius={radius}
+                  onRadiusChange={setRadius}
+                  onDropAnchor={dropAnchor}
+                  onRaiseAnchor={raiseAnchor}
+                  watchDistance={watchDistance}
+                  alarmActive={alarmActive}
+                  onMuteAlarm={() => setAlarmMuted(true)}
+                />
+              )}
+              {drawer === 'log' && <TrackPanel track={track} gpsOk={gpsOk} />}
+            </div>
           </div>
         )}
 
@@ -440,57 +603,14 @@ export default function App() {
         />
       </div>
 
-      {/* SIDEBAR DESTRA 20%: rotta / ancoraggi / log */}
-      <div className="flex h-full w-1/5 flex-none flex-col border-l border-line bg-ink">
-        <div className="flex flex-none border-b border-line">
-          {TABS.map((t) => {
-            const Icon = t.icon
-            const active = tab === t.id
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setTab(t.id)}
-                className={`flex flex-1 items-center justify-center gap-1 border-b-2 py-2.5 text-[9px] font-bold tracking-widest ${
-                  active
-                    ? 'border-phos text-phos'
-                    : 'border-transparent text-fog active:text-paper'
-                }`}
-              >
-                <Icon size={12} />
-                {t.label}
-              </button>
-            )
-          })}
-        </div>
-        <div className="min-h-0 flex-1 overflow-hidden">
-          {tab === 'route' && (
-            <RoutePanel
-              route={route}
-              routeWx={routeWx}
-              autopilot={autopilot}
-              gpsOk={geo.lat != null}
-              bridgeConfigured={Boolean(wsUrl)}
-            />
-          )}
-          {tab === 'anchors' && (
-            <AnchoragePanel
-              anchorages={anchorages}
-              onSelect={selectAnchorage}
-              gpsOk={geo.lat != null}
-              anchorWatch={anchorWatch}
-              radius={radius}
-              onRadiusChange={setRadius}
-              onDropAnchor={dropAnchor}
-              onRaiseAnchor={raiseAnchor}
-              watchDistance={watchDistance}
-              alarmActive={alarmActive}
-              onMuteAlarm={() => setAlarmMuted(true)}
-            />
-          )}
-          {tab === 'log' && <TrackPanel track={track} gpsOk={geo.lat != null} />}
-        </div>
-      </div>
+      {/* Modalità notte: overlay in blend-mode (i filtri CSS sull'intera app
+          rompono il compositing della mappa su Safari iOS) */}
+      {nightMode && (
+        <>
+          <div className="night-red pointer-events-none absolute inset-0 z-[3000]" />
+          <div className="night-dim pointer-events-none absolute inset-0 z-[3001]" />
+        </>
+      )}
     </div>
   )
 }

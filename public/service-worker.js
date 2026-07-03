@@ -7,7 +7,7 @@
  * - Shell applicativa (HTML/JS/CSS): cache per avvio offline completo.
  */
 
-const VERSION = 'v4';
+const VERSION = 'v5';
 const SHELL_CACHE = `timone-shell-${VERSION}`;
 const TILE_CACHE = `timone-tiles-${VERSION}`;
 const DATA_CACHE = `timone-data-${VERSION}`;

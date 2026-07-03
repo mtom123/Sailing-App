@@ -80,10 +80,15 @@ body,
   font-size: 20px !important;
 }
 
-/* Modalità notte: tutta l'interfaccia vira al rosso per preservare
-   la visione notturna al timone */
-.night-mode {
-  filter: sepia(0.65) hue-rotate(-35deg) saturate(2.2) brightness(0.7) contrast(1.05);
+/* Modalità notte: overlay rosso in mix-blend-mode. NON usare filter sul
+   contenitore dell'app: su Safari iOS rompe il compositing GPU della mappa
+   (schermo nero). */
+.night-red {
+  background: rgba(255, 45, 0, 0.55);
+  mix-blend-mode: multiply;
+}
+.night-dim {
+  background: rgba(40, 0, 0, 0.25);
 }
 
 /* Slider touch-friendly */

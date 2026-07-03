@@ -10,11 +10,14 @@ import { SAFETY_COLORS } from '../lib/anchorageSafety.js'
  * marine protette, traccia GPS, MOB e cerchio di guardia dell'ancora.
  */
 
-const BASE_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-const BASE_ATTR =
+const MAX_ZOOM = 20 // zoom massimo della mappa: oltre il nativo si upscala
+
+const DARK_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+const DARK_ATTR =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-const BATHY_URL = 'https://tiles.emodnet-bathymetry.eu/2020/baselayer/web_mercator/{z}/{x}/{y}.png'
-const BATHY_ATTR = '&copy; <a href="https://emodnet.ec.europa.eu">EMODnet Bathymetry</a>'
+const NAUTICAL_URL =
+  'https://tiles.emodnet-bathymetry.eu/2020/baselayer/web_mercator/{z}/{x}/{y}.png'
+const NAUTICAL_ATTR = '&copy; <a href="https://emodnet.ec.europa.eu">EMODnet Bathymetry</a>'
 const SEAMARK_URL = 'https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'
 const SEAMARK_ATTR = '&copy; <a href="https://www.openseamap.org">OpenSeaMap</a>'
 const RAIN_ATTR = '&copy; <a href="https://www.rainviewer.com">RainViewer</a>'
@@ -201,6 +204,7 @@ function WindCanvas({ map, field }) {
 
 export default function MapView({
   initialCenter,
+  baseStyle,
   boat,
   follow,
   layers,
@@ -253,6 +257,8 @@ export default function MapView({
     const map = L.map(containerRef.current, {
       center: [initialCenter.lat, initialCenter.lon],
       zoom: 11,
+      minZoom: 3,
+      maxZoom: MAX_ZOOM,
       zoomControl: false,
       attributionControl: true,
       touchZoom: true, // pinch-to-zoom
@@ -261,16 +267,29 @@ export default function MapView({
     L.control.zoom({ position: 'bottomright' }).addTo(map)
     L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(map)
 
-    L.tileLayer(BASE_URL, { attribution: BASE_ATTR, maxZoom: 19 }).addTo(map)
-    tileRefs.current.bathy = L.tileLayer(BATHY_URL, {
-      attribution: BATHY_ATTR,
-      maxZoom: 18,
-      opacity: 0.55,
+    // maxNativeZoom: oltre lo zoom nativo dei server le tile vengono
+    // upscalate invece di sparire (fix "zoom non carica")
+    tileRefs.current.dark = L.tileLayer(DARK_URL, {
+      attribution: DARK_ATTR,
+      maxZoom: MAX_ZOOM,
+      maxNativeZoom: 19,
+    })
+    tileRefs.current.nautical = L.tileLayer(NAUTICAL_URL, {
+      attribution: NAUTICAL_ATTR,
+      maxZoom: MAX_ZOOM,
+      maxNativeZoom: 12,
     })
     tileRefs.current.seamarks = L.tileLayer(SEAMARK_URL, {
       attribution: SEAMARK_ATTR,
-      maxZoom: 18,
+      maxZoom: MAX_ZOOM,
+      maxNativeZoom: 18,
     })
+
+    // Il pannello strumenti è richiudibile: la mappa deve reagire al resize
+    const resizeObserver = new ResizeObserver(() => {
+      map.invalidateSize({ animate: false })
+    })
+    resizeObserver.observe(containerRef.current)
 
     parksGroupRef.current = L.layerGroup().addTo(map)
     routeGroupRef.current = L.layerGroup().addTo(map)
@@ -323,21 +342,35 @@ export default function MapView({
     mapRef.current = map
     setMapReady(true)
     return () => {
+      resizeObserver.disconnect()
       map.remove()
       mapRef.current = null
     }
   }, [])
 
-  // Layer raster attivabili
+  // Carta base: NAUTICA (EMODnet, batimetrica) o SCURA (CARTO Dark Matter)
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
-    for (const key of ['bathy', 'seamarks']) {
-      const layer = tileRefs.current[key]
-      if (layers[key] && !map.hasLayer(layer)) map.addLayer(layer)
-      if (!layers[key] && map.hasLayer(layer)) map.removeLayer(layer)
+    const active = baseStyle === 'dark' ? 'dark' : 'nautical'
+    const inactive = active === 'dark' ? 'nautical' : 'dark'
+    if (map.hasLayer(tileRefs.current[inactive])) {
+      map.removeLayer(tileRefs.current[inactive])
     }
-  }, [layers.bathy, layers.seamarks, mapReady])
+    if (!map.hasLayer(tileRefs.current[active])) {
+      tileRefs.current[active].addTo(map)
+      tileRefs.current[active].bringToBack()
+    }
+  }, [baseStyle, mapReady])
+
+  // Overlay seamarks attivabile
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const layer = tileRefs.current.seamarks
+    if (layers.seamarks && !map.hasLayer(layer)) map.addLayer(layer)
+    if (!layers.seamarks && map.hasLayer(layer)) map.removeLayer(layer)
+  }, [layers.seamarks, mapReady])
 
   // Radar pioggia
   useEffect(() => {
