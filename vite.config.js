@@ -1,17 +1,16 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
-  // Base relativa: la PWA funziona sia su dominio proprio sia su
-  // GitHub Pages (https://<utente>.github.io/Sailing-App/)
   base: './',
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   server: {
     host: true,
     port: 5173,
   },
   build: {
-    target: 'es2019',
+    target: 'es2020',
     sourcemap: false,
   },
 })

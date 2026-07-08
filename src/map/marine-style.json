@@ -1,0 +1,93 @@
+{
+  "version": 8,
+  "name": "TIMONE Marine Ops v2",
+  "metadata": {
+    "description": "Carta nautica stile Navionics — batimetria EMODnet HR + seamarks + base CARTO",
+    "author": "TIMONE",
+    "license": "Open data sources only"
+  },
+  "sources": {
+    "bathy-hr": {
+      "type": "raster",
+      "tiles": [
+        "https://tiles.emodnet-bathymetry.eu/2020/baselayer/web_mercator/{z}/{x}/{y}.png"
+      ],
+      "tileSize": 256,
+      "maxzoom": 13,
+      "attribution": "© EMODnet Bathymetry"
+    },
+    "carto-voyager": {
+      "type": "raster",
+      "tiles": [
+        "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
+        "https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
+        "https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png"
+      ],
+      "tileSize": 256,
+      "maxzoom": 20,
+      "attribution": "© OpenStreetMap, © CARTO"
+    },
+    "seamarks": {
+      "type": "raster",
+      "tiles": [
+        "https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png"
+      ],
+      "tileSize": 256,
+      "maxzoom": 18,
+      "attribution": "© OpenSeaMap"
+    }
+  },
+  "sprite": "",
+  "glyphs": "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
+  "layers": [
+    {
+      "id": "sea-background",
+      "type": "background",
+      "paint": {
+        "background-color": "#0a1620"
+      }
+    },
+    {
+      "id": "bathymetry-hr",
+      "type": "raster",
+      "source": "bathy-hr",
+      "minzoom": 3,
+      "maxzoom": 14,
+      "paint": {
+        "raster-opacity": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          3, 0.6,
+          10, 0.7,
+          13, 0.5,
+          14, 0.3
+        ],
+        "raster-saturation": -0.3,
+        "raster-contrast": 0.15
+      }
+    },
+    {
+      "id": "land-base",
+      "type": "raster",
+      "source": "carto-voyager",
+      "paint": {
+        "raster-opacity": 0.92,
+        "raster-saturation": -0.55,
+        "raster-contrast": 0.1,
+        "raster-brightness-min": 0.7,
+        "raster-brightness-max": 0.98
+      }
+    },
+    {
+      "id": "seamarks",
+      "type": "raster",
+      "source": "seamarks",
+      "minzoom": 9,
+      "paint": {
+        "raster-opacity": 0.95
+      }
+    }
+  ],
+  "id": "timone-marine-ops-v2"
+}

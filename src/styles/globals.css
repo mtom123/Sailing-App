@@ -1,0 +1,292 @@
+@import 'tailwindcss';
+@import 'maplibre-gl/dist/maplibre-gl.css';
+
+/* ============================================================
+   TIMONE v2 — Marine Ops Design System
+   Palette: deep navy + phosphor teal (leggero, leggibile al sole)
+   Tipografia: Inter UI, JetBrains Mono dati
+   ============================================================ */
+
+@theme {
+  /* Surfaces — profondità del mare */
+  --color-abyss: #0a1620;
+  --color-deep: #0e1d2a;
+  --color-surface: #122a3a;
+  --color-raised: #16323f;
+  --color-line: #1f3a4d;
+  --color-line-bright: #2c4d63;
+
+  /* Foreground */
+  --color-paper: #e8f0f5;
+  --color-fog: #8fa0ae;
+  --color-fog-dim: #5d6e7a;
+
+  /* Azioni */
+  --color-phos: #5ee6c8;
+  --color-phos-dim: #2a8a76;
+  --color-warn: #f5a623;
+  --color-danger: #ff5252;
+  --color-info: #4a9eff;
+
+  /* Bathymetry */
+  --color-bathy-deep: #0d2438;
+  --color-bathy-mid: #1a4566;
+  --color-bathy-shallow: #2e7a9e;
+  --color-bathy-reef: #d97757;
+  --color-bathy-shoal: #ff8c42;
+
+  /* Font */
+  --font-ui: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+
+  /* Shadows — soft, per pannelli galleggianti */
+  --shadow-panel: 0 8px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(46, 122, 158, 0.08);
+  --shadow-hud: 0 4px 20px rgba(0, 0, 0, 0.4);
+  --shadow-glow: 0 0 20px rgba(94, 230, 200, 0.3);
+}
+
+/* Reset + base */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--color-abyss);
+  color: var(--color-paper);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+
+/* Tipografia utility */
+.font-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-fog);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* ============================================================
+   Glassmorphism panels — pannelli galleggianti HUD
+   ============================================================ */
+.glass {
+  background: rgba(18, 42, 58, 0.78);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid rgba(46, 122, 158, 0.18);
+  box-shadow: var(--shadow-panel);
+}
+
+.glass-strong {
+  background: rgba(10, 22, 32, 0.92);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid rgba(46, 122, 158, 0.25);
+  box-shadow: var(--shadow-panel);
+}
+
+/* ============================================================
+   Touch targets — Apple HIG compliant (min 44px)
+   ============================================================ */
+.touch {
+  min-height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ============================================================
+   Scrollbar minimal
+   ============================================================ */
+.scroll-y {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
+}
+.scroll-y::-webkit-scrollbar {
+  width: 4px;
+}
+.scroll-y::-webkit-scrollbar-thumb {
+  background: var(--color-line-bright);
+  border-radius: 2px;
+}
+.scroll-y::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ============================================================
+   MapLibre overrides
+   ============================================================ */
+.maplibregl-map {
+  font-family: var(--font-ui);
+  background: var(--color-abyss);
+}
+
+.maplibregl-ctrl-attrib {
+  background: rgba(10, 22, 32, 0.7) !important;
+  color: var(--color-fog-dim) !important;
+  font-size: 9px !important;
+  border-radius: 6px 0 0 0 !important;
+  padding: 2px 6px !important;
+}
+.maplibregl-ctrl-attrib a {
+  color: var(--color-phos-dim) !important;
+}
+
+.maplibregl-ctrl-group {
+  background: rgba(18, 42, 58, 0.92) !important;
+  border: 1px solid rgba(46, 122, 158, 0.2) !important;
+  border-radius: 10px !important;
+  overflow: hidden;
+  box-shadow: var(--shadow-hud) !important;
+}
+.maplibregl-ctrl-group button {
+  background: transparent !important;
+  color: var(--color-phos) !important;
+  width: 40px !important;
+  height: 40px !important;
+}
+.maplibregl-ctrl-group button span.button-icon {
+  filter: drop-shadow(0 0 4px rgba(94, 230, 200, 0.4));
+}
+.maplibregl-ctrl-group button:hover {
+  background: rgba(94, 230, 200, 0.1) !important;
+}
+
+.maplibregl-popup-content {
+  background: rgba(10, 22, 32, 0.95) !important;
+  color: var(--color-paper) !important;
+  border: 1px solid var(--color-line-bright);
+  border-radius: var(--radius-md) !important;
+  padding: 10px 14px !important;
+  font-family: var(--font-ui) !important;
+  font-size: 12px;
+  box-shadow: var(--shadow-panel);
+}
+.maplibregl-popup-tip {
+  border-top-color: var(--color-line-bright) !important;
+  border-bottom-color: var(--color-line-bright) !important;
+}
+.maplibregl-popup-close-button {
+  color: var(--color-fog) !important;
+  font-size: 16px !important;
+  padding: 4px 8px !important;
+}
+
+/* Markers custom */
+.timone-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* ============================================================
+   Animations
+   ============================================================ */
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.05); }
+}
+.pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+@keyframes slide-up {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.slide-up {
+  animation: slide-up 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+@keyframes alarm-flash {
+  0%, 100% { background-color: rgba(255, 82, 82, 0.15); }
+  50% { background-color: rgba(255, 82, 82, 0.4); }
+}
+.alarm-flash {
+  animation: alarm-flash 0.5s steps(2, end) infinite;
+}
+
+/* ============================================================
+   Night mode (rosso preservazione vista)
+   ============================================================ */
+.night-overlay {
+  background: rgba(255, 45, 0, 0.55);
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+.night-dim {
+  background: rgba(40, 0, 0, 0.25);
+  pointer-events: none;
+}
+
+/* ============================================================
+   Range slider touch-friendly
+   ============================================================ */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: var(--color-line-bright);
+  border-radius: 2px;
+  outline: none;
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-phos);
+  border: 3px solid var(--color-abyss);
+  box-shadow: 0 0 0 1px var(--color-phos), 0 2px 8px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+
+/* ============================================================
+   Route line styling (MapLibre layer)
+   ============================================================ */
+.route-shadow {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
+}

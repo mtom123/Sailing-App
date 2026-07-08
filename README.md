@@ -1,105 +1,115 @@
-# TIMONE — Marine PWA per iPad
+# TIMONE v2 — Marine Weather Routing
 
-App di navigazione marina in stile **Thermal Brutalist**, pensata per stare al
-timone su iPad (Safari, PWA a schermo intero, orientamento orizzontale).
-Integra in un'unica interfaccia le funzioni chiave di MarineTraffic, Windy,
-Navionics e Navily usando **solo sorgenti dati gratuite**.
+PWA di navigazione marina professionale per iPad. Weather routing con algoritmo isocrone, polari della barca, e 3 opzioni di rotta (veloce/comoda/sicura).
 
-## Funzionalità
+## Stack
 
-| Zona | Contenuto |
-|---|---|
-| Sidebar sinistra (25%) | SOG e COG giganti dal GPS dell'iPad, bussola del vento analogica, vento/onde/barometro con tendenza, alba/tramonto e fase lunare, allarme raffica configurabile, grafici 72h e curva di marea, selettore sorgente AIS |
-| Area centrale (55%) | Mappa Leaflet con pinch-to-zoom: base CARTO Dark Matter, batimetria EMODnet, seamarks OpenSeaMap, radar pioggia RainViewer, frecce vento, navi AIS, aree marine protette con preallarme, rotta editabile, traccia GPS, MOB, modalità notte (rosso) |
-| Sidebar destra (20%) | Tre schede: **ROTTA** (tratte con weather routing assistito, finestra di partenza consigliata, guida live DTW/BTW/XTE, pilota automatico), **ANCORE** (ancoraggi con semaforo + Anchor Watch), **LOG** (registro di bordo con export GPX) |
+- **React 18** + **Vite 5**
+- **MapLibre GL JS** — mappa vettoriale con stile nautico custom
+- **Zustand** — state management
+- **Tailwind CSS 4** — design system "Marine Ops"
+- **Open-Meteo API** — vento, onde, pressione (gratuito, no API key)
+- **EMODnet Bathymetry** + **OpenSeaMap** + **CARTO** — cartografia gratuita
 
-## Rotta e weather routing assistito
+## Funzionalità v2
 
-Attivare la modalità rotta (pulsante bussola sulla mappa) e toccare il mare
-per aggiungere waypoint; trascinarli per correggerli, toccarli per eliminarli.
-Per ogni tratta l'app interroga Open-Meteo **all'orario di passaggio previsto**
-(vento, raffiche, onda) e assegna un giudizio Buono/Impegnativo/Critico,
-segnalando le tratte di bolina stretta. Valuta inoltre le partenze nelle
-successive 24 ore e suggerisce la finestra migliore. Con rotta attiva, la
-barra NAV mostra waypoint attivo, distanza, rilevamento, XTE ed ETA, con
-avanzamento automatico al waypoint successivo.
+### Weather Routing (NEW)
+- Engine isocrone che calcola 3 rotte alternative: **veloce**, **comoda**, **sicura**
+- Polare della barca (Dufour 41 Classic predefinito, espandibile)
+- GRIB-like local wind grid 7×7 con dati orari 72h
+- Penalità comfort/sicura basate su vento, onda, TWA, ora del giorno
+- VMG ottimale lungo la rotta
+- Visualizzazione rotte alternative sulla mappa
 
-## Pilota automatico (Raymarine e compatibili NMEA0183)
+### Mappe (UPGRADED)
+- MapLibre GL JS con stile nautico custom (vs Leaflet raster)
+- Batimetria EMODnet HR fino a z14
+- Seamarks OpenSeaMap con fari/boe
+- CARTO Voyager come base (z fino a 20)
+- Markers custom con rotazione, popup styled
+- Wind canvas overlay con frecce colorate per intensità
 
-Con rotta attiva e bridge configurato, il pulsante **VAI — PILOTA** trasmette
-le sentenze standard `APB`, `RMB` e `XTE` ogni 2 secondi via
-WebSocket → bridge → UDP → multiplexer di bordo. Il pilota in modalità
-**Track/NAV** segue il waypoint attivo con correzione del cross-track error.
+### UI/UX (REDESIGNED)
+- Design system "Marine Ops": deep navy + phosphor teal
+- Glassmorphism pannelli galleggianti (vs sidebar rigide)
+- Touch targets ≥44px (Apple HIG)
+- Font: Inter (UI) + JetBrains Mono (dati)
+- Layout responsive iPad landscape/portrait
 
-Requisiti hardware: un multiplexer/gateway NMEA con ingresso di rete (o il
-bridge incluso su un computer di bordo) collegato al pilota via NMEA0183
-(per SeaTalk1 serve un convertitore, es. Raymarine E85001 o gateway
-SeaTalk-NG). Avvio del bridge con uscita pilota:
+### Weather Timeline (NEW)
+- Scrubber animato -12h/+72h (stile Windy)
+- Play con velocità 3×/6×/12×
+- Tick marks a ore/giorni chiave
+- Time display con data
 
-```bash
-node tools/nmea-bridge.mjs --fwd <ip-multiplexer>:10110
-```
+### Components
+- `MapView` — mappa MapLibre con tutti i layer
+- `RoutePanel` — editor rotte + 3 weather routing options
+- `WeatherTimeline` — scrubber animato
+- `InstrumentPanel` — SOG/COG/vento/onda/pressione
+- `AnchoragePanel` — ancoraggi con semaforo sicurezza
+- `TrackPanel` — log con export GPX
 
-⚠ Il pilota va sempre sorvegliato: mantenere una guardia attiva al timone.
+## Routing Engine
 
-## Aree marine protette
+L'algoritmo isocrone (`src/routing/isochroneEngine.js`):
 
-Layer con i perimetri **indicativi** di 17 AMP/parchi (Italia, Corsica,
-Baleari) e sintesi delle regole (zone A/B/C, limiti di velocità, divieti di
-ancoraggio su posidonia). Con GPS attivo l'app avvisa quando la barca è a
-meno di 1 nm o dentro un'area. **Fanno fede esclusivamente i decreti e le
-ordinanze delle Capitanerie** (guardiacostiera.gov.it/ordinanze).
+1. Parte dal punto di start
+2. Per ogni step (30 min) esplora 24 direzioni (15° ciascuna)
+3. Per ogni direzione: legge vento dal GRIB, calcola TWA, risolve polar → boat speed
+4. Dead reckoning per nuova posizione
+5. Pruning Pareto: mantiene solo punti ottimali per cella 0.1°
+6. Quando raggiunge il goal (entro 2nm), backtrack per ricostruire rotta
 
-## Sorgenti dati (100% gratuite, nessuna chiave obbligatoria)
+3 mode di routing:
+- **VELOCE** — min tempo, max 35kn vento, max 4m onda
+- **COMODA** — max 22kn vento, max 1.5m onda
+- **SICURA** — max 18kn vento, max 1.0m onda, penalty notte
 
-- **Cartografia**: [CARTO Dark Matter](https://carto.com/attributions) (base),
-  [EMODnet Bathymetry](https://emodnet.ec.europa.eu) (linee batimetriche),
-  [OpenSeaMap](https://www.openseamap.org) (fari, boe, seamarks).
-- **Meteo/onde/maree**: [Open-Meteo Marine + Forecast API](https://open-meteo.com)
-  — senza chiave, aggiornato sulle coordinate correnti della mappa.
-- **AIS**: tre modalità — `DEMO` (flotta simulata), `NMEA` (AIS reale della barca
-  via bridge WebSocket, vedi sotto), `AISHUB` (con username share personale).
-- **Ancoraggi**: database locale in `src/data/anchorages.js` con settori di
-  ridosso per il calcolo dinamico della sicurezza.
+## Polar
+
+Polar del Dufour 41 Classic in `src/routing/polarSolver.js`:
+- TWS: 4-30 kn (10 righe)
+- TWA: 0-180° (8 colonne)
+- Interpolazione bilineare
+- Espandibile con altre barche (cruiser-41-monohull placeholder)
 
 ## Avvio
 
 ```bash
 npm install
-npm run dev        # sviluppo su http://localhost:5173
-npm run build      # build di produzione in dist/
-npm run preview    # anteprima della build
+npm run dev      # sviluppo su http://localhost:5173
+npm run build    # build produzione in dist/
+npm run preview  # anteprima build
 ```
-
-> La PWA (service worker, geolocalizzazione) richiede HTTPS o localhost.
-> Il service worker usa strategia **network-first con fallback su cache**: i
-> tasselli di mappa già visitati e l'ultima previsione restano disponibili offline.
 
 ## Installazione su iPad
 
-1. Servire la build su HTTPS (es. any static host) e aprirla in Safari.
-2. Condividi → **Aggiungi a schermata Home**.
-3. Avviare dall'icona: l'app parte a schermo intero (`apple-mobile-web-app-capable`).
-4. Al primo avvio concedere il permesso di geolocalizzazione.
+1. Servire la build su HTTPS (GitHub Pages va bene)
+2. Safari → Apri URL → Condividi → Aggiungi a schermata Home
+3. Avviare dall'icona: schermo intero PWA
+4. Concedere geolocalizzazione al primo avvio
 
-## AIS reale della barca (NMEA0183 via UDP/TCP)
+## Sorgenti dati (tutte gratuite)
 
-Safari non può aprire socket UDP/TCP: sul computer di bordo (nella stessa rete
-Wi-Fi del multiplexer NMEA) eseguire il bridge incluso:
+| Dato | Fonte |
+|---|---|
+| Cartografia base | CARTO Voyager (OSM) |
+| Batimetria | EMODnet Bathymetry HR |
+| Seamarks (fari/boe) | OpenSeaMap |
+| Vento/onda/marea | Open-Meteo Marine + Forecast API |
+| AIS | AISHub (con username) o NMEA via bridge |
+| Pressione | Open-Meteo surface_pressure |
 
-```bash
-npm run bridge                                  # UDP 10110, TCP 10111 → ws://<ip>:8484
-node tools/nmea-bridge.mjs --udp 2000 --ws 9000 # porte personalizzate
-```
+## Roadmap
 
-Poi nell'app: sorgente AIS **NMEA** → `ws://<ip-del-bridge>:8484`.
-Il decoder di bordo gestisce i messaggi AIS 1/2/3 (Classe A), 18 (Classe B) e
-5 (nome nave), inclusi i messaggi multi-frammento, con verifica del checksum.
+- [x] M1: Mappe MapLibre + design system
+- [x] M2: Routing engine isocrone + polare
+- [x] M3: UX restyling Marine Ops
+- [ ] M4: Correnti marine + land mask
+- [ ] M5: GRIB offline + IndexedDB cache
+- [ ] M6: iPad native via Capacitor (opzionale)
 
-## Anchor Watch
+## License
 
-Con fix GPS attivo: regolare il raggio di scarroccio (15–120 m) e premere
-**ANCORA CADUTA**. La posizione corrente diventa il punto di fonda; se l'iPad
-esce dal raggio parte un allarme acustico (WebAudio, sbloccato dal tap) e il
-pannello lampeggia in rosso. `RECUPERA` disattiva la guardia, `TACITA` silenzia
-l'allarme mantenendola attiva.
+MIT — sorgenti dati mantengono proprie licenze (OSM, EMODnet, OpenSeaMap, CARTO).
