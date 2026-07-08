@@ -45,6 +45,33 @@ const POLARS = {
   'cruiser-41-monohull': POLAR_DUFOUR_41,
 }
 
+// Registry per polari custom caricate dinamicamente
+const customPolars = new Map()
+
+export function registerCustomPolar(key, polarData) {
+  if (!polarData || !polarData.tws || !polarData.twa || !polarData.speeds) {
+    throw new Error('Invalid polar data')
+  }
+  customPolars.set(key, polarData)
+}
+
+export function unregisterCustomPolar(key) {
+  customPolars.delete(key)
+}
+
+export function listAvailablePolars() {
+  return [
+    ...BOAT_LIBRARY,
+    ...Array.from(customPolars.keys()).map((k) => ({
+      key: k,
+      name: `Custom: ${k}`,
+      type: 'Custom',
+      year: '-',
+      length: '-',
+    })),
+  ]
+}
+
 /**
  * Trova l'indice del TWS più vicino
  */
@@ -71,7 +98,8 @@ function lerp(a, b, t) {
  * Interpolazione bilineare sulla polar matrix.
  */
 export function solvePolar(polarKey, tws, twa) {
-  const polar = POLARS[polarKey] || POLAR_DUFOUR_41
+  // Check custom polars first
+  const polar = customPolars.get(polarKey) || POLARS[polarKey] || POLAR_DUFOUR_41
   if (tws == null || twa == null || tws < 0) return 0
 
   // TWA normalizzato 0-180
@@ -147,4 +175,7 @@ export default {
   vmg,
   BOAT_LIBRARY,
   POLARS,
+  registerCustomPolar,
+  unregisterCustomPolar,
+  listAvailablePolars,
 }

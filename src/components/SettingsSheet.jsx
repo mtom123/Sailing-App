@@ -1,6 +1,8 @@
-import { Radio, Ship, Wifi, X, Sailboat, Gauge, Database, Activity } from 'lucide-react'
+import { Radio, Ship, Wifi, X, Sailboat, Gauge, Database, Activity, Upload, FileText, Trash } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
 import { useAppStore } from '../store/useAppStore.js'
-import { BOAT_LIBRARY } from '../routing/polarSolver.js'
+import { BOAT_LIBRARY, registerCustomPolar, listAvailablePolars } from '../routing/polarSolver.js'
+import { parsePolarFile, saveCustomPolar, listCustomPolars } from '../lib/polarParser.js'
 
 /*
  * Foglio impostazioni: tutto ciò che si configura una volta e poi si dimentica
@@ -41,6 +43,43 @@ export default function SettingsSheet({
   gribStatus,
 }) {
   const { boat, setBoat } = useAppStore()
+  const [customPolars, setCustomPolars] = useState([])
+  const [uploadStatus, setUploadStatus] = useState(null)
+  const fileInputRef = useRef(null)
+
+  // Load custom polars from IndexedDB
+  useEffect(() => {
+    if (open) {
+      listCustomPolars().then((p) => setCustomPolars(p))
+    }
+  }, [open])
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadStatus({ type: 'loading', msg: 'Parsing file...' })
+    try {
+      const content = await file.text()
+      const polar = parsePolarFile(content, file.name)
+      const key = `custom-${file.name.replace(/\.[^.]+$/, '')}`
+      registerCustomPolar(key, polar)
+      await saveCustomPolar(key, file.name, polar)
+      setCustomPolars(await listCustomPolars())
+      setUploadStatus({
+        type: 'success',
+        msg: `Caricato! ${polar.tws.length} TWS × ${polar.twa.length} TWA`,
+      })
+      // Auto-select new polar
+      setBoat({ type: key, name: file.name, polarProfile: key })
+      setTimeout(() => setUploadStatus(null), 3000)
+    } catch (err) {
+      setUploadStatus({ type: 'error', msg: err.message })
+      setTimeout(() => setUploadStatus(null), 5000)
+    }
+    // Reset input
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
   if (!open) return null
 
   return (
@@ -92,6 +131,63 @@ export default function SettingsSheet({
                   </button>
                 )
               })}
+              {/* Custom polars */}
+              {customPolars.map((p) => {
+                const active = boat.type === p.key
+                return (
+                  <button
+                    key={p.key}
+                    type="button"
+                    onClick={() => setBoat({ type: p.key, name: p.name, polarProfile: p.key })}
+                    className={`flex items-center gap-2.5 rounded-md border px-3 py-2.5 text-left transition-all ${
+                      active ? 'border-phos bg-phos/10' : 'border-line bg-surface hover:bg-raised'
+                    }`}
+                  >
+                    <FileText size={15} className={active ? 'text-phos' : 'text-fog'} />
+                    <span className="flex-1">
+                      <span className={`block text-xs font-semibold ${active ? 'text-phos' : 'text-paper'}`}>
+                        {p.name}
+                      </span>
+                      <span className="block text-[10px] text-fog">
+                        Custom · {p.polarData?.tws?.length || 0} TWS × {p.polarData?.twa?.length || 0} TWA
+                      </span>
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Upload custom polar */}
+            <div className="mt-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,.pol,.txt"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex w-full items-center justify-center gap-2 rounded-md border border-line bg-surface px-3 py-2.5 text-xs font-semibold text-paper hover:bg-raised touch"
+              >
+                <Upload size={13} className="text-phos" />
+                CARICA POLAR (.csv / .pol)
+              </button>
+              {uploadStatus && (
+                <div
+                  className={`mt-1.5 text-[10px] ${
+                    uploadStatus.type === 'success' ? 'text-phos' :
+                    uploadStatus.type === 'error' ? 'text-danger' : 'text-fog'
+                  }`}
+                >
+                  {uploadStatus.msg}
+                </div>
+              )}
+              <div className="mt-1 text-[9px] text-fog-dim leading-snug">
+                Format: CSV (TWA col × TWS row) o MaxSea .pol (TWS TWA BS per riga).
+                La polar viene salvata localmente (IndexedDB) e usata dal routing engine.
+              </div>
             </div>
             <div className="label pt-3 pb-1 flex items-center gap-1.5">
               <Gauge size={11} /> Velocità motore

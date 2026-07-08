@@ -7,7 +7,7 @@
  * - Shell applicativa (HTML/JS/CSS): cache per avvio offline completo.
  */
 
-const VERSION = 'v6';
+const VERSION = 'v2.2';
 const SHELL_CACHE = `timone-shell-${VERSION}`;
 const TILE_CACHE = `timone-tiles-${VERSION}`;
 const DATA_CACHE = `timone-data-${VERSION}`;
@@ -47,8 +47,23 @@ self.addEventListener('activate', (event) => {
         Promise.all(keys.filter((k) => !keep.includes(k)).map((k) => caches.delete(k)))
       )
       .then(() => self.clients.claim())
+      .then(() => {
+        // Notifica tutti i clients che c'è una nuova versione → auto-reload
+        return self.clients.matchAll({ type: 'window' })
+      })
+      .then((clients) => {
+        for (const c of clients) {
+          c.postMessage({ type: 'NEW_VERSION', version: VERSION })
+        }
+      })
   );
 });
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting()
+  }
+})
 
 function fetchWithTimeout(request, ms) {
   const controller = new AbortController();

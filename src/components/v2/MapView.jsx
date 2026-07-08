@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import maplibregl from 'maplibre-gl'
 import marineStyle from '../../map/marine-style.json'
-import { formatDeg, metersToNm } from '../../lib/geo.js'
+import { formatDeg, metersToNm, haversine, bearing } from '../../lib/geo.js'
 import { useAppStore } from '../../store/useAppStore.js'
 import ConnectivityIndicator from './ConnectivityIndicator.jsx'
 import MapContextMenu from './MapContextMenu.jsx'
@@ -279,6 +279,30 @@ export default function MapView({
           'line-color': '#5EE6C8',
           'line-width': 3,
           'line-opacity': 0.95,
+        },
+      })
+
+      // Leg labels (distance + bearing) — symbol layer
+      map.addSource('leg-labels', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      })
+      map.addLayer({
+        id: 'leg-labels',
+        type: 'symbol',
+        source: 'leg-labels',
+        layout: {
+          'text-field': ['get', 'label'],
+          'text-font': ['Noto Sans Regular'],
+          'text-size': 10,
+          'text-anchor': 'center',
+          'text-offset': [0, -0.5],
+          'text-allow-overlap': true,
+        },
+        paint: {
+          'text-color': '#5EE6C8',
+          'text-halo-color': '#0a1620',
+          'text-halo-width': 2,
         },
       })
 
@@ -560,6 +584,9 @@ export default function MapView({
     const wps = route.waypoints
     if (wps.length < 2) {
       src.setData({ type: 'FeatureCollection', features: [] })
+      // Clear leg labels
+      const legSrc = map.getSource('leg-labels')
+      if (legSrc) legSrc.setData({ type: 'FeatureCollection', features: [] })
     } else {
       src.setData({
         type: 'FeatureCollection',
@@ -574,6 +601,26 @@ export default function MapView({
           },
         ],
       })
+
+      // Build leg labels (distance + bearing) at midpoint of each leg
+      const legFeatures = []
+      for (let i = 0; i < wps.length - 1; i++) {
+        const a = wps[i]
+        const b = wps[i + 1]
+        const distNm = metersToNm(haversine(a.lat, a.lon, b.lat, b.lon))
+        const brg = bearing(a.lat, a.lon, b.lat, b.lon)
+        const midLat = (a.lat + b.lat) / 2
+        const midLon = (a.lon + b.lon) / 2
+        legFeatures.push({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [midLon, midLat] },
+          properties: {
+            label: `${distNm.toFixed(1)}nm ${formatDeg(brg)}°`,
+          },
+        })
+      }
+      const legSrc = map.getSource('leg-labels')
+      if (legSrc) legSrc.setData({ type: 'FeatureCollection', features: legFeatures })
     }
 
     // Sync waypoint markers — ricrea solo quando cambia index/active/editing,

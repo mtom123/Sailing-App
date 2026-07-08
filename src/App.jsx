@@ -8,6 +8,8 @@ import AnchoragePanel from './components/AnchoragePanel.jsx'
 import SettingsSheet from './components/SettingsSheet.jsx'
 import TrackPanel from './components/TrackPanel.jsx'
 import { useAppStore } from './store/useAppStore.js'
+import { registerCustomPolar } from './routing/polarSolver.js'
+import { listCustomPolars } from './lib/polarParser.js'
 
 // Hooks riusabili
 import useGeolocation from './hooks/useGeolocation.js'
@@ -142,6 +144,19 @@ export default function App() {
       document.removeEventListener('visibilitychange', onVis)
       if (lock) lock.release().catch(() => {})
     }
+  }, [])
+
+  // Load custom polars from IndexedDB on app start
+  useEffect(() => {
+    listCustomPolars().then((polars) => {
+      for (const p of polars) {
+        try {
+          registerCustomPolar(p.key, p.polarData)
+        } catch (e) {
+          console.warn('Failed to register polar:', p.key, e)
+        }
+      }
+    }).catch(() => {})
   }, [])
 
   // Data hooks
