@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, useMemo } from 'react'
-import maplibregl from 'maplibre-gl'
-import marineStyle from '../../map/marine-style.json'
-import { formatDeg, metersToNm, haversine, bearing } from '../../lib/geo.js'
+import { useEffect, useRef, useState } from 'react'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+import { formatDeg, metersToNm, haversine, bearing, cardinal } from '../../lib/geo.js'
 import { useAppStore } from '../../store/useAppStore.js'
 import { logStep, failStep, hideLoadingScreen } from '../../lib/debugLogger.js'
 import ConnectivityIndicator from './ConnectivityIndicator.jsx'
@@ -21,76 +21,59 @@ import {
   Waves,
 } from 'lucide-react'
 
-const MAX_ZOOM = 19
-const MIN_ZOOM = 3
-
 // ============================================================
-// Marker HTML helpers
+// Marker HTML helpers — Leaflet divIcon
 // ============================================================
 function boatMarkerEl(cog) {
   const rot = cog != null ? cog : 0
-  const el = document.createElement('div')
-  el.className = 'timone-marker'
-  el.innerHTML = `
-    <svg width="32" height="32" viewBox="0 0 32 32" style="transform:rotate(${rot}deg);filter:drop-shadow(0 2px 6px rgba(0,0,0,0.7))">
+  return L.divIcon({
+    className: 'timone-marker',
+    html: `<svg width="32" height="32" viewBox="0 0 32 32" style="transform:rotate(${rot}deg);filter:drop-shadow(0 2px 6px rgba(0,0,0,0.7))">
       <polygon points="16,2 26,28 16,22 6,28" fill="#E8F0F5" stroke="#0a1620" stroke-width="2"/>
       <circle cx="16" cy="14" r="2" fill="#5EE6C8"/>
-    </svg>`
-  return el
+    </svg>`,
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
+  })
 }
 
-function waypointMarkerEl(index, active, draggable = false) {
+function waypointMarkerEl(index, active) {
   const color = active ? '#5EE6C8' : '#E8F0F5'
-  const el = document.createElement('div')
-  el.className = 'timone-marker'
-  el.style.cursor = draggable ? 'grab' : 'pointer'
-  el.innerHTML = `
-    <div style="
-      width:30px;height:30px;border-radius:50%;
-      background:#0a1620;border:2.5px solid ${color};
-      color:${color};display:flex;align-items:center;justify-content:center;
-      font:bold 12px 'JetBrains Mono',monospace;
-      box-shadow:0 2px 8px rgba(0,0,0,0.6),0 0 0 1px rgba(0,0,0,0.4);
-    ">${index}</div>`
-  return el
+  return L.divIcon({
+    className: 'timone-marker',
+    html: `<div style="width:30px;height:30px;border-radius:50%;background:#0a1620;border:2.5px solid ${color};color:${color};display:flex;align-items:center;justify-content:center;font:bold 12px 'JetBrains Mono',monospace;box-shadow:0 2px 8px rgba(0,0,0,0.6),0 0 0 1px rgba(0,0,0,0.4);">${index}</div>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+  })
 }
 
 function mobMarkerEl() {
-  const el = document.createElement('div')
-  el.className = 'timone-marker'
-  el.innerHTML = `
-    <div style="
-      width:36px;height:36px;border-radius:50%;
-      background:#FF5252;border:3px solid #E8F0F5;
-      color:#0a1620;display:flex;align-items:center;justify-content:center;
-      font:bold 11px 'JetBrains Mono',monospace;
-      box-shadow:0 0 16px #FF5252,0 4px 8px rgba(0,0,0,0.6);
-      animation:pulse-soft 1s ease-in-out infinite;
-    ">MOB</div>`
-  return el
+  return L.divIcon({
+    className: 'timone-marker',
+    html: `<div style="width:36px;height:36px;border-radius:50%;background:#FF5252;border:3px solid #E8F0F5;color:#0a1620;display:flex;align-items:center;justify-content:center;font:bold 11px 'JetBrains Mono',monospace;box-shadow:0 0 16px #FF5252,0 4px 8px rgba(0,0,0,0.6);animation:pulse-soft 1s ease-in-out infinite;">MOB</div>`,
+    iconSize: [36, 36],
+    iconAnchor: [18, 18],
+  })
 }
 
 function anchorageMarkerEl(color) {
-  const el = document.createElement('div')
-  el.className = 'timone-marker'
-  el.innerHTML = `
-    <div style="
-      width:24px;height:24px;border-radius:50%;
-      background:#0a1620;border:2px solid ${color};
-      color:${color};font-size:13px;line-height:1;
-      display:flex;align-items:center;justify-content:center;
-      box-shadow:0 2px 6px rgba(0,0,0,0.6);
-    ">⚓</div>`
-  return el
+  return L.divIcon({
+    className: 'timone-marker',
+    html: `<div style="width:24px;height:24px;border-radius:50%;background:#0a1620;border:2px solid ${color};color:${color};font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.6);">⚓</div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  })
 }
 
 function vesselMarkerEl(rot) {
-  const el = document.createElement('div')
-  el.className = 'timone-marker'
-  el.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" style="transform:rotate(${rot}deg)">
-    <polygon points="12,2 20,22 12,17 4,22" fill="#5EE6C8" stroke="#0a1620" stroke-width="1.5"/>
-  </svg>`
-  return el
+  return L.divIcon({
+    className: 'timone-marker',
+    html: `<svg width="24" height="24" viewBox="0 0 24 24" style="transform:rotate(${rot}deg)">
+      <polygon points="12,2 20,22 12,17 4,22" fill="#5EE6C8" stroke="#0a1620" stroke-width="1.5"/>
+    </svg>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  })
 }
 
 function popupHTML(title, lines) {
@@ -107,10 +90,36 @@ function popupHTML(title, lines) {
 }
 
 // ============================================================
-// MapView main component
+// Tile layer URLs
+// ============================================================
+const TILES = {
+  bathy: {
+    url: 'https://tiles.emodnet-bathymetry.eu/2020/baselayer/web_mercator/{z}/{x}/{y}.png',
+    attribution: '© EMODnet Bathymetry',
+    maxZoom: 13,
+    opacity: 0.65,
+  },
+  carto: {
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+    subdomains: 'abc',
+    attribution: '© OpenStreetMap, © CARTO',
+    maxZoom: 20,
+    opacity: 0.92,
+  },
+  seamarks: {
+    url: 'https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',
+    attribution: '© OpenSeaMap',
+    maxZoom: 18,
+    opacity: 0.95,
+  },
+}
+
+// ============================================================
+// MapView main — Leaflet based
 // ============================================================
 export default function MapView({
   geo,
+  weather,
   windField,
   currentField,
   vessels,
@@ -124,24 +133,31 @@ export default function MapView({
 }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
+  const tileLayerRefs = useRef({})
   const markersRef = useRef({
     boat: null,
     mob: null,
     vessels: new Map(),
     anchorages: new Map(),
     waypoints: new Map(),
+    watch: null,
+  })
+  const layerGroupRefs = useRef({
+    route: null,
+    routeOptions: null,
+    track: null,
+    parks: null,
   })
 
   const [mapReady, setMapReady] = useState(false)
-  const [meteoPoint, setMeteoPoint] = useState(null) // { lat, lon } | null
-  const [waypointPopupId, setWaypointPopupId] = useState(null) // waypoint id | null
+  const [meteoPoint, setMeteoPoint] = useState(null)
+  const [waypointPopupId, setWaypointPopupId] = useState(null)
 
   const {
     view,
     setView,
     follow,
     setFollow,
-    baseStyle,
     layers,
     toggleLayer,
     leftPanelOpen,
@@ -155,7 +171,7 @@ export default function MapView({
     activeRouteOption,
   } = useAppStore()
 
-  // Action wrappers (need store.getState for callbacks)
+  // Actions via store (per click handler)
   const addWaypoint = (lat, lon) =>
     useAppStore.setState((s) => ({
       routeDraft: {
@@ -177,9 +193,7 @@ export default function MapView({
     useAppStore.setState((s) => ({
       routeDraft: {
         ...s.routeDraft,
-        waypoints: s.routeDraft.waypoints.map((w) =>
-          w.id === id ? { ...w, lat, lon } : w
-        ),
+        waypoints: s.routeDraft.waypoints.map((w) => (w.id === id ? { ...w, lat, lon } : w)),
       },
     }))
 
@@ -187,301 +201,135 @@ export default function MapView({
   useEffect(() => {
     logStep('MapView useEffect starting')
     if (!containerRef.current || mapRef.current) {
-      logStep('MapView skipped (no container or already inited)')
+      logStep('MapView skipped')
       return
     }
 
-    logStep('Container size', 'ok', `${containerRef.current.clientWidth}x${containerRef.current.clientHeight}`)
-
-    // Detect iOS Safari per fix specifici
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-    const isSafari = /^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent)
-    logStep('Device detect', 'ok', `iOS=${isIOS} Safari=${isSafari} UA=${navigator.userAgent.substring(0, 50)}...`)
-
-    // Check WebGL support
-    function checkWebGL() {
-      try {
-        const canvas = document.createElement('canvas')
-        const gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
-        if (!gl) return false
-        logStep('WebGL context', 'ok', gl.getParameter(gl.VERSION))
-        return true
-      } catch (e) {
-        logStep('WebGL check', 'fail', e.message)
-        return false
-      }
-    }
-    if (!checkWebGL()) {
-      failStep('WebGL not supported')
-      return
-    }
-
-    logStep('Loading MapLibre GL JS')
     try {
-    logStep('Creating Map instance')
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: marineStyle,
-      center: [view.center.lon, view.center.lat],
-      zoom: view.zoom || 11,
-      minZoom: MIN_ZOOM,
-      maxZoom: MAX_ZOOM,
-      maxPitch: 0,
-      dragRotate: false,
-      attributionControl: { compact: true },
-      touchZoomRotate: true,
-      touchPitch: false,
-      // iOS Safari fix critici:
-      preserveDrawingBuffer: isIOS, // per canvas rendering su iOS
-      antialias: !isIOS, // disabilita antialias su iOS per performance
-      // Necessario per tap-and-hold waypoint su touch
-      cooperativeGestures: false,
-      // Performance iPad
-      fadeDuration: isIOS ? 0 : 300,
-      crossSourceCollisions: false,
-    })
-
-    // iOS: forza resize dopo 100ms (altrimenti canvas 0x0)
-    if (isIOS) {
-      setTimeout(() => map.resize(), 100)
-      setTimeout(() => map.resize(), 500)
-    }
-
-    map.addControl(
-      new maplibregl.NavigationControl({ visualizePitch: false, showCompass: false }),
-      'bottom-right'
-    )
-    map.addControl(
-      new maplibregl.ScaleControl({ unit: 'metric', maxWidth: 200 }),
-      'bottom-left'
-    )
-
-    map.on('load', () => {
-      logStep('MapLibre loaded style')
-      // Sources
-      map.addSource('route-draft', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-      })
-      map.addSource('route-options', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-      })
-      map.addSource('track-gps', {
-        type: 'geojson',
-        data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } },
-      })
-      map.addSource('parks', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
+      logStep('Creating Leaflet map')
+      const map = L.map(containerRef.current, {
+        center: [view.center.lat, view.center.lon],
+        zoom: view.zoom || 11,
+        minZoom: 3,
+        maxZoom: 19,
+        zoomControl: false,
+        attributionControl: true,
+        touchZoom: true,
+        tap: false,
+        preferCanvas: false,
       })
 
-      // Route draft (shadow + line)
-      map.addLayer({
-        id: 'route-shadow',
-        type: 'line',
-        source: 'route-draft',
-        paint: {
-          'line-color': '#000',
-          'line-width': 7,
-          'line-opacity': 0.5,
-          'line-blur': 1,
-        },
+      L.control.zoom({ position: 'bottomright' }).addTo(map)
+      L.control.scale({ metric: true, imperial: false, position: 'bottomleft', maxWidth: 200 }).addTo(map)
+
+      // Tile layers
+      tileLayerRefs.current.bathy = L.tileLayer(TILES.bathy.url, {
+        attribution: TILES.bathy.attribution,
+        maxZoom: 19,
+        maxNativeZoom: 13,
+        opacity: TILES.bathy.opacity,
       })
-      map.addLayer({
-        id: 'route-line',
-        type: 'line',
-        source: 'route-draft',
-        paint: {
-          'line-color': '#5EE6C8',
-          'line-width': 3,
-          'line-opacity': 0.95,
-        },
+      tileLayerRefs.current.carto = L.tileLayer(TILES.carto.url, {
+        subdomains: TILES.carto.subdomains,
+        attribution: TILES.carto.attribution,
+        maxZoom: 20,
+        maxNativeZoom: 19,
+        opacity: TILES.carto.opacity,
+      })
+      tileLayerRefs.current.seamarks = L.tileLayer(TILES.seamarks.url, {
+        attribution: TILES.seamarks.attribution,
+        maxZoom: 19,
+        maxNativeZoom: 18,
+        opacity: TILES.seamarks.opacity,
       })
 
-      // Leg labels (distance + bearing) — symbol layer
-      map.addSource('leg-labels', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-      })
-      map.addLayer({
-        id: 'leg-labels',
-        type: 'symbol',
-        source: 'leg-labels',
-        layout: {
-          'text-field': ['get', 'label'],
-          'text-font': ['Noto Sans Regular'],
-          'text-size': 10,
-          'text-anchor': 'center',
-          'text-offset': [0, -0.5],
-          'text-allow-overlap': true,
-        },
-        paint: {
-          'text-color': '#5EE6C8',
-          'text-halo-color': '#0a1620',
-          'text-halo-width': 2,
-        },
-      })
+      // Add base + overlays based on layer state
+      map.addLayer(tileLayerRefs.current.carto)
+      if (layers.bathy) map.addLayer(tileLayerRefs.current.bathy)
+      if (layers.seamarks) map.addLayer(tileLayerRefs.current.seamarks)
 
-      // Route alternative options
-      map.addLayer({
-        id: 'route-option-shadow',
-        type: 'line',
-        source: 'route-options',
-        paint: {
-          'line-color': '#000',
-          'line-width': 5,
-          'line-opacity': 0.4,
-        },
-        filter: ['!=', ['get', 'isActive'], true],
-      })
-      map.addLayer({
-        id: 'route-option-line',
-        type: 'line',
-        source: 'route-options',
-        paint: {
-          'line-color': ['get', 'color'],
-          'line-width': 2.5,
-          'line-opacity': 0.75,
-          'line-dasharray': [4, 3],
-        },
-        filter: ['!=', ['get', 'isActive'], true],
-      })
+      // Layer groups for routes, tracks, parks
+      layerGroupRefs.current.route = L.layerGroup().addTo(map)
+      layerGroupRefs.current.routeOptions = L.layerGroup().addTo(map)
+      layerGroupRefs.current.track = L.layerGroup().addTo(map)
+      layerGroupRefs.current.parks = L.layerGroup().addTo(map)
 
       // Track GPS
-      map.addLayer({
-        id: 'track-line',
-        type: 'line',
-        source: 'track-gps',
-        paint: {
-          'line-color': '#5EE6C8',
-          'line-width': 2,
-          'line-opacity': 0.65,
-          'line-dasharray': [1, 5],
-        },
+      const trackLine = L.polyline([], {
+        color: '#5EE6C8',
+        weight: 2,
+        opacity: 0.65,
+        dashArray: '1 5',
+      }).addTo(layerGroupRefs.current.track)
+      markersRef.current.trackLine = trackLine
+
+      // Emit view changes
+      const emitView = () => {
+        const c = map.getCenter()
+        const b = map.getBounds()
+        const z = map.getZoom()
+        setView({
+          center: { lat: c.lat, lon: c.lng },
+          zoom: z,
+          bounds: {
+            south: b.getSouth(),
+            west: b.getWest(),
+            north: b.getNorth(),
+            east: b.getEast(),
+          },
+        })
+      }
+      map.on('moveend', emitView)
+      map.on('dragstart', () => setFollow(false))
+      map.on('click', (e) => {
+        const st = useAppStore.getState()
+        if (st.routeEditing) {
+          addWaypoint(e.latlng.lat, e.latlng.lng)
+        }
       })
 
-      // Parks
-      map.addLayer({
-        id: 'parks-fill',
-        type: 'fill',
-        source: 'parks',
-        paint: {
-          'fill-color': ['get', 'color'],
-          'fill-opacity': ['get', 'fillOpacity'],
-        },
-      })
-      map.addLayer({
-        id: 'parks-border',
-        type: 'line',
-        source: 'parks',
-        paint: {
-          'line-color': ['get', 'color'],
-          'line-width': ['get', 'weight'],
-          'line-dasharray': [6, 4],
-          'line-opacity': 0.85,
-        },
-      })
-
+      mapRef.current = map
       setMapReady(true)
-      logStep('Map ready', 'ok')
+      logStep('Leaflet map ready', 'ok')
       hideLoadingScreen()
-    })
 
-    // Map error handler — mostra errore se stile fallisce
-    map.on('error', (e) => {
-      console.error('MapLibre style/error:', e.error || e)
-      failStep('MapLibre error', e.error || new Error('MapLibre error'))
-    })
-
-    // Style load error — fallback a stile minimale
-    map.on('styleimagemissing', (e) => {
-      console.warn('Style image missing:', e.id)
-    })
-
-    // Timeout: se la mappa non è ready in 10s, mostra warning
-    setTimeout(() => {
-      if (!mapRef.current?._loaded) {
-        console.warn('MapLibre non ha caricato il stile entro 10s')
-        const loading = document.getElementById('app-loading')
-        if (loading) {
-          loading.innerHTML = `
-            <div style="color: #f5a623; font-size: 14px; margin-bottom: 12px; font-family: system-ui;">
-              ⚠️ La mappa sta impiegando troppo tempo
-            </div>
-            <div style="color: #8fa0ae; font-size: 11px; max-width: 320px; line-height: 1.4; font-family: system-ui;">
-              Possibile problema WebGL su questo dispositivo.
-              <br><br>
-              <a href="./diagnostic.html" style="color: #5ee6c8;">Apri diagnostica</a>
-              &nbsp;|&nbsp;
-              <a href="./?nosw=1" style="color: #5ee6c8;">Riprova senza SW</a>
-            </div>
-          `
-        }
-      }
-    }, 10000)
-
-    // Emit view changes
-    map.on('moveend', () => {
-      const c = map.getCenter()
-      const b = map.getBounds()
-      const z = map.getZoom()
-      setView({
-        center: { lat: c.lat, lon: c.lng },
-        zoom: z,
-        bounds: {
-          south: b.getSouth(),
-          west: b.getWest(),
-          north: b.getNorth(),
-          east: b.getEast(),
-        },
+      const ro = new ResizeObserver(() => {
+        try { map.invalidateSize({ animate: false }) } catch (e) {}
       })
-    })
-    map.on('dragstart', () => setFollow(false))
-    map.on('click', (e) => {
-      const st = useAppStore.getState()
-      if (st.routeEditing) {
-        addWaypoint(e.lngLat.lat, e.lngLat.lng)
-      }
-    })
-    map.on('webglcontextlost', (e) => {
-      console.error('WebGL context lost')
-      e.preventDefault()
-      // Try to recover
+      ro.observe(containerRef.current)
+
+      // Force invalidate after a moment (iOS Safari fix)
       setTimeout(() => {
-        if (mapRef.current) {
-          try { mapRef.current.resize() } catch (e) {}
-        }
+        try { map.invalidateSize({ animate: false }) } catch (e) {}
+      }, 300)
+      setTimeout(() => {
+        try { map.invalidateSize({ animate: false }) } catch (e) {}
       }, 1000)
-    })
 
-    mapRef.current = map
-
-    const ro = new ResizeObserver(() => map.resize())
-    ro.observe(containerRef.current)
-
-    return () => {
-      ro.disconnect()
-      map.remove()
-      mapRef.current = null
-    }
+      return () => {
+        ro.disconnect()
+        map.remove()
+        mapRef.current = null
+      }
     } catch (err) {
-      console.error('MapLibre init error:', err)
-      failStep('MapLibre init', err)
+      console.error('Leaflet init error:', err)
+      failStep('Leaflet init', err)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // === Layer visibility toggles ===
+  // === Layer visibility ===
   useEffect(() => {
     if (!mapReady) return
     const map = mapRef.current
     if (!map) return
-    const setVis = (id, vis) => {
-      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis)
+    const setVis = (layer, key) => {
+      if (!layer) return
+      if (layers[key] && !map.hasLayer(layer)) map.addLayer(layer)
+      if (!layers[key] && map.hasLayer(layer)) map.removeLayer(layer)
     }
-    setVis('bathymetry-hr', layers.bathy ? 'visible' : 'none')
-    setVis('seamarks', layers.seamarks ? 'visible' : 'none')
+    setVis(tileLayerRefs.current.bathy, 'bathy')
+    setVis(tileLayerRefs.current.seamarks, 'seamarks')
   }, [layers.bathy, layers.seamarks, mapReady])
 
   // === Follow boat ===
@@ -490,28 +338,24 @@ export default function MapView({
     const map = mapRef.current
     if (!map) return
     const c = map.getCenter()
-    if (Math.abs(geo.lon - c.lng) > 0.001 || Math.abs(geo.lat - c.lat) > 0.001) {
-      map.panTo([geo.lon, geo.lat], { animate: false })
+    if (Math.abs(geo.lat - c.lat) > 0.001 || Math.abs(geo.lon - c.lng) > 0.001) {
+      map.panTo([geo.lat, geo.lon], { animate: false })
     }
   }, [geo.lat, geo.lon, follow, mapReady])
 
-  // === Boat marker (create once, update position+rotation) ===
+  // === Boat marker ===
   useEffect(() => {
     if (!mapReady || geo.lat == null) return
     const map = mapRef.current
     if (!map) return
-
     if (!markersRef.current.boat) {
-      markersRef.current.boat = new maplibregl.Marker({
-        element: boatMarkerEl(geo.cog),
-        rotationAlignment: 'map',
-        rotation: geo.cog || 0,
-      })
-        .setLngLat([geo.lon, geo.lat])
-        .addTo(map)
+      markersRef.current.boat = L.marker([geo.lat, geo.lon], {
+        icon: boatMarkerEl(geo.cog),
+        zIndexOffset: 1000,
+      }).addTo(map)
     } else {
-      markersRef.current.boat.setLngLat([geo.lon, geo.lat])
-      markersRef.current.boat.setRotation(geo.cog || 0)
+      markersRef.current.boat.setLatLng([geo.lat, geo.lon])
+      markersRef.current.boat.setIcon(boatMarkerEl(geo.cog))
     }
   }, [geo.lat, geo.lon, geo.cog, mapReady])
 
@@ -521,19 +365,17 @@ export default function MapView({
     const map = mapRef.current
     if (!map) return
     if (markersRef.current.mob) {
-      markersRef.current.mob.remove()
+      map.removeLayer(markersRef.current.mob)
       markersRef.current.mob = null
     }
     if (mob) {
-      markersRef.current.mob = new maplibregl.Marker({ element: mobMarkerEl() })
-        .setLngLat([mob.lon, mob.lat])
-        .setPopup(
-          new maplibregl.Popup({ offset: 18 }).setHTML(
-            popupHTML('UOMO A MARE', [
-              { label: 'Pos', value: `${mob.lat.toFixed(4)}, ${mob.lon.toFixed(4)}`, color: '#FF5252' },
-            ])
-          )
-        )
+      markersRef.current.mob = L.marker([mob.lat, mob.lon], {
+        icon: mobMarkerEl(),
+        zIndexOffset: 2000,
+      })
+        .bindPopup(popupHTML('UOMO A MARE', [
+          { label: 'Pos', value: `${mob.lat.toFixed(4)}, ${mob.lon.toFixed(4)}`, color: '#FF5252' },
+        ]))
         .addTo(map)
     }
   }, [mob, mapReady])
@@ -546,37 +388,27 @@ export default function MapView({
     const markers = markersRef.current.vessels
     const list = layers.ais ? vessels.filter((v) => v.lat != null) : []
     const seen = new Set()
-
     for (const v of list) {
       seen.add(v.mmsi)
       const rot = v.cog != null ? v.cog : v.hdg != null ? v.hdg : 0
       const existing = markers.get(v.mmsi)
       if (existing) {
-        existing.setLngLat([v.lon, v.lat])
-        existing.setRotation(rot)
+        existing.setLatLng([v.lat, v.lon])
+        existing.setIcon(vesselMarkerEl(rot))
       } else {
-        const m = new maplibregl.Marker({
-          element: vesselMarkerEl(rot),
-          rotationAlignment: 'map',
-          rotation: rot,
-        })
-          .setLngLat([v.lon, v.lat])
-          .setPopup(
-            new maplibregl.Popup({ offset: 16 }).setHTML(
-              popupHTML(v.name || `MMSI ${v.mmsi}`, [
-                { label: 'MMSI', value: v.mmsi, color: '#8FA0AE' },
-                { label: 'SOG', value: `${v.sog != null ? v.sog.toFixed(1) : '--'} kn` },
-                { label: 'COG', value: `${v.cog != null ? formatDeg(v.cog) : '---'}°` },
-              ])
-            )
-          )
+        const m = L.marker([v.lat, v.lon], { icon: vesselMarkerEl(rot) })
+          .bindPopup(popupHTML(v.name || `MMSI ${v.mmsi}`, [
+            { label: 'MMSI', value: v.mmsi, color: '#8FA0AE' },
+            { label: 'SOG', value: `${v.sog != null ? v.sog.toFixed(1) : '--'} kn` },
+            { label: 'COG', value: `${v.cog != null ? formatDeg(v.cog) : '---'}°` },
+          ]))
           .addTo(map)
         markers.set(v.mmsi, m)
       }
     }
     for (const [mmsi, m] of markers) {
       if (!seen.has(mmsi)) {
-        m.remove()
+        map.removeLayer(m)
         markers.delete(mmsi)
       }
     }
@@ -589,39 +421,29 @@ export default function MapView({
     if (!map) return
     const markers = markersRef.current.anchorages
     const colorMap = { safe: '#5EE6C8', caution: '#F5A623', danger: '#FF5252' }
-
-    const popupFor = (a, color) =>
-      new maplibregl.Popup({ offset: 14 }).setHTML(
-        popupHTML(a.name, [
-          { label: 'Regione', value: a.region, color: '#8FA0AE' },
-          { label: 'Stato', value: a.safety.reason, color },
-          { label: 'Fondale', value: `${a.depth[0]}–${a.depth[1]} m` },
-          { label: 'Fondo', value: a.seabed },
-        ])
-      )
-
     for (const a of anchorages) {
       const color = colorMap[a.safety.level] || '#8FA0AE'
       const stateKey = `${a.safety.level}|${a.safety.reason}`
       const existing = markers.get(a.id)
       if (existing) {
         if (existing._stateKey !== stateKey) {
-          existing.remove()
-          const el = anchorageMarkerEl(color)
-          el.dataset.state = stateKey
-          const m = new maplibregl.Marker({ element: el })
-            .setLngLat([a.lon, a.lat])
-            .setPopup(popupFor(a, color))
-            .addTo(map)
-          m._stateKey = stateKey
-          markers.set(a.id, m)
+          existing.setIcon(anchorageMarkerEl(color))
+          existing.setPopupContent(popupHTML(a.name, [
+            { label: 'Regione', value: a.region, color: '#8FA0AE' },
+            { label: 'Stato', value: a.safety.reason, color },
+            { label: 'Fondale', value: `${a.depth[0]}–${a.depth[1]} m` },
+            { label: 'Fondo', value: a.seabed },
+          ]))
+          existing._stateKey = stateKey
         }
       } else {
-        const el = anchorageMarkerEl(color)
-        el.dataset.state = stateKey
-        const m = new maplibregl.Marker({ element: el })
-          .setLngLat([a.lon, a.lat])
-          .setPopup(popupFor(a, color))
+        const m = L.marker([a.lat, a.lon], { icon: anchorageMarkerEl(color) })
+          .bindPopup(popupHTML(a.name, [
+            { label: 'Regione', value: a.region, color: '#8FA0AE' },
+            { label: 'Stato', value: a.safety.reason, color },
+            { label: 'Fondale', value: `${a.depth[0]}–${a.depth[1]} m` },
+            { label: 'Fondo', value: a.seabed },
+          ]))
           .addTo(map)
         m._stateKey = stateKey
         markers.set(a.id, m)
@@ -629,37 +451,30 @@ export default function MapView({
     }
   }, [anchorages, mapReady])
 
-  // === Route draft (line + waypoints) ===
+  // === Route draft (line + waypoints + leg labels) ===
   useEffect(() => {
     if (!mapReady) return
     const map = mapRef.current
     if (!map) return
-    const src = map.getSource('route-draft')
-    if (!src) return
+    const group = layerGroupRefs.current.route
+    if (!group) return
+    group.clearLayers()
 
     const wps = route.waypoints
-    if (wps.length < 2) {
-      src.setData({ type: 'FeatureCollection', features: [] })
-      // Clear leg labels
-      const legSrc = map.getSource('leg-labels')
-      if (legSrc) legSrc.setData({ type: 'FeatureCollection', features: [] })
-    } else {
-      src.setData({
-        type: 'FeatureCollection',
-        features: [
-          {
-            type: 'Feature',
-            geometry: {
-              type: 'LineString',
-              coordinates: wps.map((w) => [w.lon, w.lat]),
-            },
-            properties: {},
-          },
-        ],
-      })
-
-      // Build leg labels (distance + bearing) at midpoint of each leg
-      const legFeatures = []
+    if (wps.length >= 2) {
+      // Shadow
+      L.polyline(wps.map((w) => [w.lat, w.lon]), {
+        color: '#000',
+        weight: 7,
+        opacity: 0.5,
+      }).addTo(group)
+      // Main line
+      L.polyline(wps.map((w) => [w.lat, w.lon]), {
+        color: '#5EE6C8',
+        weight: 3,
+        opacity: 0.95,
+      }).addTo(group)
+      // Leg labels (distance + bearing at midpoint)
       for (let i = 0; i < wps.length - 1; i++) {
         const a = wps[i]
         const b = wps[i + 1]
@@ -667,77 +482,52 @@ export default function MapView({
         const brg = bearing(a.lat, a.lon, b.lat, b.lon)
         const midLat = (a.lat + b.lat) / 2
         const midLon = (a.lon + b.lon) / 2
-        legFeatures.push({
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: [midLon, midLat] },
-          properties: {
-            label: `${distNm.toFixed(1)}nm ${formatDeg(brg)}°`,
-          },
-        })
+        L.marker([midLat, midLon], {
+          icon: L.divIcon({
+            className: 'timone-leg-label',
+            html: `${distNm.toFixed(1)}nm ${formatDeg(brg)}°`,
+            iconSize: null,
+          }),
+          interactive: false,
+          keyboard: false,
+        }).addTo(group)
       }
-      const legSrc = map.getSource('leg-labels')
-      if (legSrc) legSrc.setData({ type: 'FeatureCollection', features: legFeatures })
     }
 
-    // Sync waypoint markers — ricrea solo quando cambia index/active/editing,
-    // altrimenti solo posizione
+    // Waypoint markers
     const markers = markersRef.current.waypoints
-    const seen = new Set()
+    markers.clear()
     wps.forEach((w, i) => {
-      seen.add(w.id)
       const isActive = route.nav && route.nav.idx === i
-      const stateKey = `${i + 1}|${isActive ? 1 : 0}|${route.editing ? 1 : 0}`
-      const existing = markers.get(w.id)
-      if (existing) {
-        existing.setLngLat([w.lon, w.lat])
-        // Update element only when state changed
-        if (existing._stateKey !== stateKey) {
-          existing.remove()
-          const el = waypointMarkerEl(i + 1, isActive, route.editing)
-          el.dataset.id = w.id
-          const m = new maplibregl.Marker({ element: el, draggable: route.editing })
-            .setLngLat([w.lon, w.lat])
-            .addTo(map)
-          m._stateKey = stateKey
-          m.on('dragend', () => {
-            const p = m.getLngLat()
-            moveWaypoint(w.id, p.lat, p.lng)
-          })
-          el.addEventListener('click', (ev) => {
-            ev.stopPropagation()
-            if (route.editing) {
-              removeWaypoint(w.id)
-            } else {
-              setWaypointPopupId(w.id)
-            }
-          })
-          markers.set(w.id, m)
-        }
-      } else {
-        const el = waypointMarkerEl(i + 1, isActive, route.editing)
-        el.dataset.id = w.id
-        const m = new maplibregl.Marker({ element: el, draggable: route.editing })
-          .setLngLat([w.lon, w.lat])
-          .addTo(map)
-        m._stateKey = stateKey
+      const m = L.marker([w.lat, w.lon], {
+        icon: waypointMarkerEl(i + 1, isActive),
+        draggable: route.editing,
+        zIndexOffset: 500,
+      })
+      if (route.editing) {
         m.on('dragend', () => {
-          const p = m.getLngLat()
+          const p = m.getLatLng()
           moveWaypoint(w.id, p.lat, p.lng)
         })
-        el.addEventListener('click', (ev) => {
-          ev.stopPropagation()
-          if (route.editing) {
-            removeWaypoint(w.id)
-          } else {
-            setWaypointPopupId(w.id)
-          }
+        m.on('click', (e) => {
+          L.DomEvent.stopPropagation(e)
+          removeWaypoint(w.id)
         })
-        markers.set(w.id, m)
+      } else {
+        m.on('click', (e) => {
+          L.DomEvent.stopPropagation(e)
+          setWaypointPopupId(w.id)
+        })
       }
+      m.addTo(map)
+      markers.set(w.id, m)
     })
+
+    // Cleanup stale
+    const seen = new Set(wps.map((w) => w.id))
     for (const [id, m] of markers) {
       if (!seen.has(id)) {
-        m.remove()
+        map.removeLayer(m)
         markers.delete(id)
       }
     }
@@ -748,79 +538,57 @@ export default function MapView({
     if (!mapReady) return
     const map = mapRef.current
     if (!map) return
-    const src = map.getSource('route-options')
-    if (!src) return
-
-    if (!routeOptions) {
-      src.setData({ type: 'FeatureCollection', features: [] })
-      return
-    }
+    const group = layerGroupRefs.current.routeOptions
+    if (!group) return
+    group.clearLayers()
+    if (!routeOptions) return
     const colors = {
       fastest: '#5EE6C8',
       comfortable: '#4A9EFF',
       safest: '#F5A623',
     }
-    const features = Object.entries(routeOptions)
-      .filter(([_, r]) => r && r.waypoints && r.waypoints.length >= 2)
-      .map(([key, r]) => ({
-        type: 'Feature',
-        geometry: {
-          type: 'LineString',
-          coordinates: r.waypoints.map((w) => [w.lon, w.lat]),
-        },
-        properties: {
-          option: key,
-          color: colors[key] || '#8FA0AE',
-          isActive: key === activeRouteOption,
-        },
-      }))
-    src.setData({ type: 'FeatureCollection', features })
+    for (const [key, r] of Object.entries(routeOptions)) {
+      if (!r || !r.waypoints || r.waypoints.length < 2) continue
+      if (key === activeRouteOption) continue // skip active (it's the main)
+      L.polyline(r.waypoints.map((w) => [w.lat, w.lon]), {
+        color: colors[key] || '#8FA0AE',
+        weight: 2.5,
+        opacity: 0.75,
+        dashArray: '4 3',
+      }).addTo(group)
+    }
   }, [routeOptions, activeRouteOption, mapReady])
 
   // === Track GPS ===
   useEffect(() => {
     if (!mapReady) return
-    const map = mapRef.current
-    if (!map) return
-    const src = map.getSource('track-gps')
-    if (!src) return
-    src.setData({
-      type: 'Feature',
-      geometry: {
-        type: 'LineString',
-        coordinates: trackPoints.map((p) => [p.lon, p.lat]),
-      },
-    })
+    if (!markersRef.current.trackLine) return
+    markersRef.current.trackLine.setLatLngs(trackPoints.map((p) => [p.lat, p.lon]))
   }, [trackPoints, mapReady])
 
   // === Parks polygons ===
   useEffect(() => {
     if (!mapReady) return
-    const map = mapRef.current
-    if (!map) return
-    const src = map.getSource('parks')
-    if (!src) return
-    if (!layers.parks) {
-      src.setData({ type: 'FeatureCollection', features: [] })
-      return
-    }
-    const features = parks.map((p) => {
+    const group = layerGroupRefs.current.parks
+    if (!group) return
+    group.clearLayers()
+    if (!layers.parks) return
+    for (const p of parks) {
       const color = p.status === 'inside' ? '#FF5252' : p.status === 'near' ? '#F5A623' : '#D97757'
-      return {
-        type: 'Feature',
-        geometry: {
-          type: 'Polygon',
-          coordinates: [p.polygon.map(([lat, lon]) => [lon, lat])],
-        },
-        properties: {
-          color,
-          fillOpacity: p.status === 'inside' ? 0.18 : 0.07,
-          weight: p.status ? 2.5 : 1.5,
-          name: p.name,
-        },
-      }
-    })
-    src.setData({ type: 'FeatureCollection', features })
+      L.polygon(p.polygon.map(([lat, lon]) => [lat, lon]), {
+        color,
+        weight: p.status ? 2.5 : 1.5,
+        dashArray: '6 4',
+        fillColor: color,
+        fillOpacity: p.status === 'inside' ? 0.18 : 0.07,
+      })
+        .bindPopup(popupHTML(p.name, [
+          { label: 'Authority', value: p.authority, color: '#8FA0AE' },
+          { label: 'Status', value: p.status || 'unknown', color },
+          { label: 'Rules', value: (p.rules || '').substring(0, 80) + '...', color: '#8FA0AE' },
+        ]))
+        .addTo(group)
+    }
   }, [parks, layers.parks, mapReady])
 
   const toggleRouteEditing = () => {
@@ -846,10 +614,10 @@ export default function MapView({
         ref={containerRef}
         className={`absolute inset-0 h-full w-full ${route.editing ? 'cursor-crosshair' : ''}`}
         style={{
-          touchAction: 'none', // fondamentale per pinch-zoom su iOS
-          // iOS Safari a volte non applica 100% height. Forza con vh fallback.
+          touchAction: 'none',
           height: '100%',
           width: '100%',
+          background: '#0a1620',
         }}
       />
 
@@ -866,7 +634,7 @@ export default function MapView({
       {/* Floating instrument HUD */}
       <FloatingHUD geo={geo} />
 
-      {/* Connectivity indicator (top-left of map, below HUD) */}
+      {/* Connectivity indicator */}
       <div className="absolute left-3 top-16 z-[900] fade-in">
         <ConnectivityIndicator
           gribAvailable={!!currentField}
@@ -882,21 +650,13 @@ export default function MapView({
         <MapButton title="Segui barca" active={follow} onClick={() => setFollow(!follow)}>
           <Crosshair size={18} />
         </MapButton>
-        <MapButton
-          title="Modifica rotta"
-          active={route.editing}
-          onClick={toggleRouteEditing}
-        >
+        <MapButton title="Modifica rotta" active={route.editing} onClick={toggleRouteEditing}>
           <Navigation2 size={18} />
         </MapButton>
         <MapButton title="Modalità notte" active={nightMode} onClick={() => setNightMode(!nightMode)}>
           <Moon size={18} />
         </MapButton>
-        <MapButton
-          title="Uomo a mare"
-          danger={Boolean(mob)}
-          onClick={() => onDropMob?.()}
-        >
+        <MapButton title="Uomo a mare" danger={Boolean(mob)} onClick={() => onDropMob?.()}>
           <LifeBuoy size={18} />
         </MapButton>
         <MapButton title="Impostazioni" onClick={() => setSettingsOpen(true)}>
@@ -979,25 +739,13 @@ export default function MapView({
         </div>
       )}
 
-      {/* Long-press context menu (touch UX) */}
+      {/* Long-press context menu */}
       <MapContextMenu
         map={mapRef.current}
         mapReady={mapReady}
         enabled={!route.editing}
-        onAddWaypoint={(lat, lon) => {
-          useAppStore.setState((s) => ({
-            routeDraft: {
-              ...s.routeDraft,
-              waypoints: [
-                ...s.routeDraft.waypoints,
-                { id: `w${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`, lat, lon, name: `WP${s.routeDraft.waypoints.length + 1}` },
-              ],
-            },
-            activeDrawer: 'route',
-          }))
-        }}
+        onAddWaypoint={(lat, lon) => addWaypoint(lat, lon)}
         onSetDestination={(lat, lon) => {
-          // Set come unico waypoint destinazione
           useAppStore.setState((s) => ({
             routeDraft: {
               name: 'Destinazione',
@@ -1021,7 +769,7 @@ export default function MapView({
         />
       )}
 
-      {/* Waypoint popup (tap su waypoint in modalità non editing) */}
+      {/* Waypoint popup */}
       {waypointPopupId && (() => {
         const idx = route.waypoints.findIndex((w) => w.id === waypointPopupId)
         if (idx < 0) return null
@@ -1168,7 +916,6 @@ function FloatingHUD({ geo }) {
 
 function WindCanvas({ map, field }) {
   const canvasRef = useRef(null)
-
   useEffect(() => {
     if (!map) return undefined
     const canvas = canvasRef.current
@@ -1176,9 +923,6 @@ function WindCanvas({ map, field }) {
     let raf = null
     let lastW = 0
     let lastH = 0
-    let particles = []
-    let lastFieldUpdate = 0
-
     const colorFor = (speed) => {
       if (speed < 8) return '#5EE6C8'
       if (speed < 14) return '#7FE0A8'
@@ -1186,33 +930,6 @@ function WindCanvas({ map, field }) {
       if (speed < 28) return '#FF8A4A'
       return '#FF5252'
     }
-
-    const sampleWindAt = (px, py) => {
-      const ll = map.unproject([px, py])
-      let best = null
-      let bestDist = Infinity
-      for (const f of field) {
-        const d = (f.lat - ll.lat) ** 2 + (f.lon - ll.lng) ** 2
-        if (d < bestDist) {
-          bestDist = d
-          best = f
-        }
-      }
-      return best
-    }
-
-    const initParticles = (w, h) => {
-      const NUM = Math.min(180, Math.floor((w * h) / 7000))
-      particles = []
-      for (let i = 0; i < NUM; i++) {
-        particles.push({
-          x: Math.random() * w,
-          y: Math.random() * h,
-          age: Math.random() * 80,
-        })
-      }
-    }
-
     const draw = () => {
       raf = null
       const container = map.getContainer()
@@ -1226,114 +943,61 @@ function WindCanvas({ map, field }) {
         canvas.style.height = `${h}px`
         lastW = w
         lastH = h
-        initParticles(w, h)
       }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-
-      if (!field.length) {
-        ctx.clearRect(0, 0, w, h)
-        return
-      }
-
-      // Trail effect: use destination-out to fade previous frame (transparent fade)
-      ctx.globalCompositeOperation = 'destination-out'
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.08)'
-      ctx.fillRect(0, 0, w, h)
-      ctx.globalCompositeOperation = 'source-over'
-
-      // Update + draw particles
-      for (const p of particles) {
-        p.age++
-        if (p.age > 80 + Math.random() * 20) {
-          p.x = Math.random() * w
-          p.y = Math.random() * h
-          p.age = 0
-        }
-        const sample = sampleWindAt(p.x, p.y)
-        if (!sample || sample.speed == null) continue
-
-        // Wind direction: "from" → move toward opposite
-        const rad = ((sample.dir + 180) * Math.PI) / 180
-        const speed = Math.min(3, sample.speed * 0.15)
-        const dx = Math.sin(rad) * speed
-        const dy = -Math.cos(rad) * speed
-
-        const alpha = Math.min(1, p.age / 20) * Math.min(1, (80 - p.age) / 20) * 0.85
-        ctx.strokeStyle = colorFor(sample.speed)
-        ctx.globalAlpha = alpha
-        ctx.lineWidth = 1.4
-        ctx.beginPath()
-        ctx.moveTo(p.x, p.y)
-        ctx.lineTo(p.x + dx * 3, p.y + dy * 3)
-        ctx.stroke()
-        ctx.globalAlpha = 1
-
-        p.x += dx * 3
-        p.y += dy * 3
-
-        // Wrap-around
-        if (p.x < 0) p.x = w
-        if (p.x > w) p.x = 0
-        if (p.y < 0) p.y = h
-        if (p.y > h) p.y = 0
-      }
-
-      // Static arrows overlay (less dense, for clear direction reading)
-      const step = 130
-      ctx.globalAlpha = 0.9
+      ctx.clearRect(0, 0, w, h)
+      if (!field || !field.length) return
+      const step = 90
       for (let px = step / 2; px < w; px += step) {
         for (let py = step / 2; py < h; py += step) {
-          const sample = sampleWindAt(px, py)
-          if (!sample) continue
-          const len = Math.min(28, 10 + sample.speed * 0.9)
+          const ll = map.containerPointToLatLng([px, py])
+          let best = null
+          let bestDist = Infinity
+          for (const f of field) {
+            const d = (f.lat - ll.lat) ** 2 + (f.lon - ll.lng) ** 2
+            if (d < bestDist) {
+              bestDist = d
+              best = f
+            }
+          }
+          if (!best) continue
+          const len = Math.min(34, 12 + best.speed * 1.1)
           ctx.save()
           ctx.translate(px, py)
-          ctx.rotate(((sample.dir + 180) * Math.PI) / 180)
-          ctx.strokeStyle = colorFor(sample.speed)
-          ctx.fillStyle = colorFor(sample.speed)
-          ctx.lineWidth = 1.8
+          ctx.rotate(((best.dir + 180) * Math.PI) / 180)
+          ctx.strokeStyle = colorFor(best.speed)
+          ctx.fillStyle = colorFor(best.speed)
+          ctx.globalAlpha = 0.8
+          ctx.lineWidth = 2
           ctx.beginPath()
           ctx.moveTo(0, len / 2)
-          ctx.lineTo(0, -len / 2 + 5)
+          ctx.lineTo(0, -len / 2 + 7)
           ctx.stroke()
           ctx.beginPath()
           ctx.moveTo(0, -len / 2)
-          ctx.lineTo(-4, -len / 2 + 7)
-          ctx.lineTo(4, -len / 2 + 7)
+          ctx.lineTo(-5, -len / 2 + 9)
+          ctx.lineTo(5, -len / 2 + 9)
           ctx.closePath()
           ctx.fill()
           ctx.restore()
         }
       }
-      ctx.globalAlpha = 1
     }
-
-    const loop = () => {
-      draw()
-      raf = requestAnimationFrame(loop)
+    const schedule = () => {
+      if (raf == null) raf = requestAnimationFrame(draw)
     }
-
-    // Start animation loop
-    loop()
+    schedule()
+    map.on('move zoom moveend zoomend resize viewreset', schedule)
     return () => {
       if (raf != null) cancelAnimationFrame(raf)
+      map.off('move zoom moveend zoomend resize viewreset', schedule)
     }
   }, [map, field])
-
-  return (
-    <canvas
-      ref={canvasRef}
-      className="pointer-events-none absolute inset-0 z-[500]"
-    />
-  )
+  return <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 z-[500]" />
 }
 
-// ============================================================
-// Current canvas overlay — frecce blu per correnti marine
-// ============================================================
 function CurrentCanvas({ map, field, timeOffset = 0 }) {
   const canvasRef = useRef(null)
-
   useEffect(() => {
     if (!map) return undefined
     const canvas = canvasRef.current
@@ -1341,7 +1005,6 @@ function CurrentCanvas({ map, field, timeOffset = 0 }) {
     let raf = null
     let lastW = 0
     let lastH = 0
-
     const draw = () => {
       raf = null
       const container = map.getContainer()
@@ -1359,14 +1022,11 @@ function CurrentCanvas({ map, field, timeOffset = 0 }) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.clearRect(0, 0, w, h)
       if (!field?.grid?.length) return
-
       const step = 110
       const now = Date.now() + timeOffset * 3600 * 1000
-
       for (let px = step / 2; px < w; px += step) {
         for (let py = step / 2; py < h; py += step) {
-          const ll = map.unproject([px, py])
-          // Trova punto più vicino
+          const ll = map.containerPointToLatLng([px, py])
           let best = null
           let bestDist = Infinity
           for (const f of field.grid) {
@@ -1377,30 +1037,22 @@ function CurrentCanvas({ map, field, timeOffset = 0 }) {
             }
           }
           if (!best) continue
-
-          // Sample current at time
-          let speed = null
-          let dir = null
+          let speed = null, dir = null
           if (best.times?.length) {
-            let bestI = 0
-            let bestDiff = Infinity
+            let bestI = 0, bestDiff = Infinity
             for (let i = 0; i < best.times.length; i++) {
               const t = new Date(best.times[i]).getTime()
               const diff = Math.abs(t - now)
-              if (diff < bestDiff) {
-                bestDiff = diff
-                bestI = i
-              }
+              if (diff < bestDiff) { bestDiff = diff; bestI = i }
             }
             speed = best.currSpeed?.[bestI]
             dir = best.currDir?.[bestI]
           }
           if (speed == null || dir == null || speed < 0.1) continue
-
           const len = Math.min(40, 14 + speed * 8)
           ctx.save()
           ctx.translate(px, py)
-          ctx.rotate((dir * Math.PI) / 180) // dir = "verso" (流向)
+          ctx.rotate((dir * Math.PI) / 180)
           ctx.strokeStyle = '#4A9EFF'
           ctx.fillStyle = '#4A9EFF'
           ctx.globalAlpha = 0.7
@@ -1423,17 +1075,11 @@ function CurrentCanvas({ map, field, timeOffset = 0 }) {
       if (raf == null) raf = requestAnimationFrame(draw)
     }
     schedule()
-    map.on('move zoom moveend zoomend resize', schedule)
+    map.on('move zoom moveend zoomend resize viewreset', schedule)
     return () => {
       if (raf != null) cancelAnimationFrame(raf)
-      map.off('move zoom moveend zoomend resize', schedule)
+      map.off('move zoom moveend zoomend resize viewreset', schedule)
     }
   }, [map, field, timeOffset])
-
-  return (
-    <canvas
-      ref={canvasRef}
-      className="pointer-events-none absolute inset-0 z-[510]"
-    />
-  )
+  return <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 z-[510]" />
 }

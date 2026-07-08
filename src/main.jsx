@@ -78,16 +78,6 @@ class GlobalErrorBoundary extends React.Component {
               >
                 APRI DIAGNOSTICA
               </button>
-              <button
-                onClick={() => window.location.href = './?nocache=' + Date.now()}
-                style={{
-                  background: 'transparent', color: '#f5a623', border: '1px solid #f5a623',
-                  padding: '12px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
-                  cursor: 'pointer', touchAction: 'manipulation',
-                }}
-              >
-                APRI FRESH (bypass cache)
-              </button>
             </div>
             <div style={{ marginTop: '16px', color: '#8fa0ae', fontSize: '11px' }}>
               User Agent: {navigator.userAgent}
@@ -114,42 +104,9 @@ try {
   failStep('React render', err)
 }
 
-// Service worker: skip se ?nosw=1
-const params = new URLSearchParams(window.location.search)
-const noSW = params.get('nosw') === '1'
-
-if ('serviceWorker' in navigator && !noSW) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register(`${import.meta.env.BASE_URL}sw.js`)
-      .then((reg) => {
-        reg.addEventListener('updatefound', () => {
-          const newWorker = reg.installing
-          if (newWorker) {
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                newWorker.postMessage({ type: 'SKIP_WAITING' })
-              }
-            })
-          }
-        })
-      })
-      .catch((err) => console.warn('Service worker non registrato:', err))
-  })
-
-  let refreshing = false
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (refreshing) return
-    refreshing = true
-    window.location.reload()
-  })
-
-  navigator.serviceWorker.addEventListener('message', (event) => {
-    if (event.data?.type === 'NEW_VERSION') {
-      console.log('New TIMONE version:', event.data.version)
-    }
-  })
-}
+// SERVICE WORKER DISABILITATO — causa troppi problemi cache su iPad Safari 15
+// L'app funziona perfettamente senza SW (cache browser nativa basta per tiles)
+logStep('Service worker disabled (no SW)')
 
 // Capture global errors (outside React)
 window.addEventListener('error', (e) => {
@@ -159,11 +116,14 @@ window.addEventListener('unhandledrejection', (e) => {
   console.error('Unhandled promise rejection:', e.reason)
 })
 
-// Fallback: hide loading screen after 15s in case MapLibre 'load' event never fires
-setTimeout(() => {
-  const loading = document.getElementById('app-loading')
-  if (loading) {
-    logStep('Forcing loading screen hide after 15s timeout', 'warn')
+// Hide loading screen after React mount (con timeout fallback)
+window.addEventListener('load', () => {
+  setTimeout(() => {
     hideLoadingScreen()
-  }
-}, 15000)
+  }, 1000)
+})
+
+// Force hide after 8s无论如何
+setTimeout(() => {
+  hideLoadingScreen()
+}, 8000)

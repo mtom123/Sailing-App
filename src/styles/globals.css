@@ -1,5 +1,5 @@
 @import 'tailwindcss';
-@import 'maplibre-gl/dist/maplibre-gl.css';
+@import 'leaflet/dist/leaflet.css';
 
 /* ============================================================
    TIMONE v2 — Marine Ops Design System
@@ -164,68 +164,84 @@ body,
 }
 
 /* ============================================================
-   MapLibre overrides
+   Leaflet overrides
    ============================================================ */
-.maplibregl-map {
+.leaflet-container {
   font-family: var(--font-ui);
   background: var(--color-abyss);
 }
 
-.maplibregl-ctrl-attrib {
+.leaflet-control-attribution {
   background: rgba(10, 22, 32, 0.7) !important;
   color: var(--color-fog-dim) !important;
   font-size: 9px !important;
   border-radius: 6px 0 0 0 !important;
   padding: 2px 6px !important;
 }
-.maplibregl-ctrl-attrib a {
+.leaflet-control-attribution a {
   color: var(--color-phos-dim) !important;
 }
 
-.maplibregl-ctrl-group {
+.leaflet-bar {
   background: rgba(18, 42, 58, 0.92) !important;
   border: 1px solid rgba(46, 122, 158, 0.2) !important;
   border-radius: 10px !important;
   overflow: hidden;
   box-shadow: var(--shadow-hud) !important;
 }
-.maplibregl-ctrl-group button {
+.leaflet-bar a {
   background: transparent !important;
   color: var(--color-phos) !important;
   width: 40px !important;
   height: 40px !important;
+  line-height: 40px !important;
+  font-size: 20px !important;
+  border-bottom: 1px solid rgba(46, 122, 158, 0.2) !important;
 }
-.maplibregl-ctrl-group button span.button-icon {
-  filter: drop-shadow(0 0 4px rgba(94, 230, 200, 0.4));
-}
-.maplibregl-ctrl-group button:hover {
+.leaflet-bar a:hover {
   background: rgba(94, 230, 200, 0.1) !important;
 }
 
-.maplibregl-popup-content {
+.leaflet-popup-content-wrapper {
   background: rgba(10, 22, 32, 0.95) !important;
   color: var(--color-paper) !important;
   border: 1px solid var(--color-line-bright);
   border-radius: var(--radius-md) !important;
-  padding: 10px 14px !important;
-  font-family: var(--font-ui) !important;
-  font-size: 12px;
   box-shadow: var(--shadow-panel);
 }
-.maplibregl-popup-tip {
-  border-top-color: var(--color-line-bright) !important;
-  border-bottom-color: var(--color-line-bright) !important;
+.leaflet-popup-content {
+  margin: 10px 14px !important;
+  font-family: var(--font-ui) !important;
+  font-size: 12px;
+  line-height: 1.5;
 }
-.maplibregl-popup-close-button {
+.leaflet-popup-tip {
+  background: rgba(10, 22, 32, 0.95) !important;
+  border: 1px solid var(--color-line-bright);
+}
+.leaflet-popup-close-button {
   color: var(--color-fog) !important;
-  font-size: 16px !important;
-  padding: 4px 8px !important;
+  font-size: 18px !important;
+  padding: 6px 8px 0 0 !important;
 }
 
 /* Markers custom */
 .timone-marker {
   background: transparent !important;
   border: none !important;
+}
+
+/* Leg label (route distance + bearing) */
+.timone-leg-label {
+  background: rgba(10, 22, 32, 0.85) !important;
+  color: var(--color-phos) !important;
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font: bold 10px ui-monospace, monospace;
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 
 /* ============================================================

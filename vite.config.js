@@ -10,15 +10,15 @@ export default defineConfig({
     port: 5173,
   },
   build: {
-    target: 'es2020',
+    target: 'es2019', // Safari 15 compat
     sourcemap: false,
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
       output: {
         manualChunks: {
-          'maplibre': ['maplibre-gl'],
           'react-vendor': ['react', 'react-dom'],
           'icons': ['lucide-react'],
+          'leaflet': ['leaflet'],
         },
       },
     },
