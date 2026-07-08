@@ -6,6 +6,7 @@ import { useAppStore } from '../../store/useAppStore.js'
 import ConnectivityIndicator from './ConnectivityIndicator.jsx'
 import MapContextMenu from './MapContextMenu.jsx'
 import MeteogramPopup from './MeteogramPopup.jsx'
+import WaypointPopup from './WaypointPopup.jsx'
 import {
   Anchor,
   Crosshair,
@@ -132,6 +133,7 @@ export default function MapView({
 
   const [mapReady, setMapReady] = useState(false)
   const [meteoPoint, setMeteoPoint] = useState(null) // { lat, lon } | null
+  const [waypointPopupId, setWaypointPopupId] = useState(null) // waypoint id | null
 
   const {
     view,
@@ -649,7 +651,11 @@ export default function MapView({
           })
           el.addEventListener('click', (ev) => {
             ev.stopPropagation()
-            if (route.editing) removeWaypoint(w.id)
+            if (route.editing) {
+              removeWaypoint(w.id)
+            } else {
+              setWaypointPopupId(w.id)
+            }
           })
           markers.set(w.id, m)
         }
@@ -666,7 +672,11 @@ export default function MapView({
         })
         el.addEventListener('click', (ev) => {
           ev.stopPropagation()
-          if (route.editing) removeWaypoint(w.id)
+          if (route.editing) {
+            removeWaypoint(w.id)
+          } else {
+            setWaypointPopupId(w.id)
+          }
         })
         markers.set(w.id, m)
       }
@@ -956,6 +966,40 @@ export default function MapView({
           onClose={() => setMeteoPoint(null)}
         />
       )}
+
+      {/* Waypoint popup (tap su waypoint in modalità non editing) */}
+      {waypointPopupId && (() => {
+        const idx = route.waypoints.findIndex((w) => w.id === waypointPopupId)
+        if (idx < 0) return null
+        const wp = route.waypoints[idx]
+        return (
+          <WaypointPopup
+            waypoint={wp}
+            index={idx}
+            total={route.waypoints.length}
+            boatPosition={geo.lat != null ? { lat: geo.lat, lon: geo.lon } : null}
+            onMoveUp={(id) => useAppStore.getState().moveWaypointUp(id)}
+            onMoveDown={(id) => useAppStore.getState().moveWaypointDown(id)}
+            onDelete={(id) => {
+              useAppStore.setState((s) => ({
+                routeDraft: {
+                  ...s.routeDraft,
+                  waypoints: s.routeDraft.waypoints.filter((w) => w.id !== id),
+                },
+              }))
+              setWaypointPopupId(null)
+            }}
+            onSetActive={(i) => {
+              useAppStore.setState({
+                activeWaypointIdx: i,
+                routeNavigating: true,
+              })
+              setWaypointPopupId(null)
+            }}
+            onClose={() => setWaypointPopupId(null)}
+          />
+        )
+      })()}
     </div>
   )
 }

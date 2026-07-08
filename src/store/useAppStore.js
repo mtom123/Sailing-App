@@ -75,6 +75,22 @@ export const useAppStore = create(
       // === Route draft ===
       routeDraft: { name: '', waypoints: [] },
       setRouteDraft: (routeDraft) => set({ routeDraft }),
+      moveWaypointUp: (id) =>
+        set((s) => {
+          const wps = [...s.routeDraft.waypoints]
+          const i = wps.findIndex((w) => w.id === id)
+          if (i <= 0) return s
+          ;[wps[i - 1], wps[i]] = [wps[i], wps[i - 1]]
+          return { routeDraft: { ...s.routeDraft, waypoints: wps.map((w, idx) => ({ ...w, name: `WP${idx + 1}` })) } }
+        }),
+      moveWaypointDown: (id) =>
+        set((s) => {
+          const wps = [...s.routeDraft.waypoints]
+          const i = wps.findIndex((w) => w.id === id)
+          if (i < 0 || i >= wps.length - 1) return s
+          ;[wps[i + 1], wps[i]] = [wps[i], wps[i + 1]]
+          return { routeDraft: { ...s.routeDraft, waypoints: wps.map((w, idx) => ({ ...w, name: `WP${idx + 1}` })) } }
+        }),
       routeEditing: false,
       setRouteEditing: (routeEditing) => set({ routeEditing }),
       routeNavigating: false,
