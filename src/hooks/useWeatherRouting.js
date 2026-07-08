@@ -1,19 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
-import { computeRouteOptions } from '../routing/isochroneEngine.js'
 import { useAppStore } from '../store/useAppStore.js'
 
 /**
- * Hook: usa il routing isocrone per calcolare 3 opzioni di rotta.
- * Inputs: start (geo position), goal (last waypoint), grib (wind + wave), currentField.
- * Output: routeOptions { fastest, comfortable, safest } | null
+ * Hook: usa il routing isocrone via Web Worker per non bloccare la UI.
+ * Per rotte brevi (<5nm) potrebbe essere più veloce inline, ma usiamo
+ * sempre il worker per consistenza.
  *
- * Esegue in modo asincrono (setTimeout 50ms) per non bloccare la UI.
- * Per rotte lunghe (maxHours > 24), dovrebbe essere spostato in un Web Worker.
+ * Output: routeOptions { fastest, comfortable, safest } | null
  */
 export default function useWeatherRouting({ start, goal, grib, currentField, enabled }) {
   const [routeOptions, setRouteOptions] = useState(null)
   const [computing, setComputing] = useState(false)
-  const abortRef = useRef(null)
+  const [duration, setDuration] = useState(null)
+  const workerRef = useRef(null)
+  const reqIdRef = useRef(0)
   const { boat, departureOffsetH } = useAppStore()
 
   const key =
@@ -22,42 +22,78 @@ export default function useWeatherRouting({ start, goal, grib, currentField, ena
       : null
 
   useEffect(() => {
+    // Init worker once
+    if (!workerRef.current) {
+      try {
+        workerRef.current = new Worker(new URL('../routing/routingWorker.js', import.meta.url), { type: 'module' })
+      } catch (e) {
+        console.warn('Worker init failed, will fallback to inline:', e)
+      }
+    }
+    return () => {
+      if (workerRef.current) {
+        workerRef.current.terminate()
+        workerRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
     if (!key) {
       setRouteOptions(null)
       return undefined
     }
-    if (abortRef.current) abortRef.current.abort = true
-    const myAbort = { abort: false }
-    abortRef.current = myAbort
+
+    const reqId = ++reqIdRef.current
     setComputing(true)
 
-    // Yield al main thread, poi calcola
-    const timer = setTimeout(() => {
-      try {
-        const opts = computeRouteOptions({
-          start,
-          goal,
-          grib,
-          currentField,
-          polarKey: boat.polarProfile,
-          departureMs: Date.now() + departureOffsetH * 3600 * 1000,
-          maxHours: 48,
-        })
-        if (!myAbort.abort) {
-          setRouteOptions(opts)
-        }
-      } catch (err) {
-        console.error('Routing error:', err)
-      } finally {
-        if (!myAbort.abort) setComputing(false)
-      }
-    }, 100)
+    const opts = {
+      start,
+      goal,
+      grib,
+      currentField,
+      polarKey: boat.polarProfile,
+      departureMs: Date.now() + departureOffsetH * 3600 * 1000,
+      maxHours: 48,
+    }
 
-    return () => {
-      clearTimeout(timer)
-      if (abortRef.current) abortRef.current.abort = true
+    const worker = workerRef.current
+    if (worker) {
+      // Use worker
+      const onMessage = (e) => {
+        if (e.data.id !== reqId) return // stale response
+        if (e.data.type === 'success') {
+          setRouteOptions(e.data.result)
+          setDuration(e.data.duration)
+        } else {
+          console.error('Worker routing error:', e.data.error)
+          setRouteOptions(null)
+        }
+        setComputing(false)
+      }
+      worker.addEventListener('message', onMessage)
+      worker.postMessage({ id: reqId, opts })
+      return () => {
+        worker.removeEventListener('message', onMessage)
+      }
+    } else {
+      // Fallback: inline (block UI)
+      console.warn('Worker not available, using inline routing')
+      import('../routing/isochroneEngine.js').then(({ computeRouteOptions }) => {
+        if (reqId !== reqIdRef.current) return // stale
+        try {
+          const t0 = Date.now()
+          const result = computeRouteOptions(opts)
+          setRouteOptions(result)
+          setDuration(Date.now() - t0)
+        } catch (err) {
+          console.error('Inline routing error:', err)
+          setRouteOptions(null)
+        }
+        setComputing(false)
+      })
     }
   }, [key, grib, currentField, boat.polarProfile, departureOffsetH])
 
-  return { routeOptions, computing }
+  return { routeOptions, computing, duration }
 }

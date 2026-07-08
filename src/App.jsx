@@ -188,7 +188,7 @@ export default function App() {
   const goal = route.waypoints.length >= 2
     ? { lat: route.waypoints[route.waypoints.length - 1].lat, lon: route.waypoints[route.waypoints.length - 1].lon }
     : null
-  const { routeOptions, computing } = useWeatherRouting({
+  const { routeOptions, computing, duration } = useWeatherRouting({
     start,
     goal,
     grib,
@@ -429,6 +429,7 @@ export default function App() {
                   route={route}
                   routeOptions={routeOptions}
                   computing={computing}
+                  duration={duration}
                   gpsOk={gpsOk}
                   bridgeConfigured={Boolean(wsUrl)}
                   autopilot={autopilot}

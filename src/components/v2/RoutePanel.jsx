@@ -105,7 +105,7 @@ function SavedRoutes() {
   )
 }
 
-export default function RoutePanel({ route, routeWx, routeOptions, computing, gpsOk, bridgeConfigured, autopilot }) {
+export default function RoutePanel({ route, routeWx, routeOptions, computing, gpsOk, bridgeConfigured, autopilot, duration }) {
   const [nameInput, setNameInput] = useState('')
   const {
     activeRouteOption,
@@ -336,6 +336,9 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
               </div>
               {computing && (
                 <span className="text-[9px] text-phos pulse-soft">CALCOLO…</span>
+              )}
+              {!computing && duration != null && (
+                <span className="text-[9px] text-fog-dim font-mono">{(duration / 1000).toFixed(1)}s</span>
               )}
             </div>
             <div className="grid grid-cols-3 gap-1.5">
