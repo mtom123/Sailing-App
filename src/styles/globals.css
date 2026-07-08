@@ -16,6 +16,10 @@
   --color-line: #1f3a4d;
   --color-line-bright: #2c4d63;
 
+  /* Alias per compatibilità con vecchi componenti v1 */
+  --color-ink: #0a1620;
+  --color-panel: #122a3a;
+
   /* Foreground */
   --color-paper: #e8f0f5;
   --color-fog: #8fa0ae;
@@ -27,6 +31,9 @@
   --color-warn: #f5a623;
   --color-danger: #ff5252;
   --color-info: #4a9eff;
+
+  /* Alias per compatibilità con vecchi componenti v1 */
+  --color-phosdim: #2a8a76;
 
   /* Bathymetry */
   --color-bathy-deep: #0d2438;

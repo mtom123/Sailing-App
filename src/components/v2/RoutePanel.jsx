@@ -382,6 +382,42 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
                 </div>
               </div>
             )}
+
+            {/* Comparison table — tutte e 3 le rotte a confronto */}
+            {routeOptions && (routeOptions.fastest || routeOptions.comfortable || routeOptions.safest) && (
+              <div className="mt-2 rounded-md border border-line bg-surface overflow-hidden">
+                <div className="grid grid-cols-4 gap-1 px-2 py-1.5 border-b border-line text-[9px] font-bold tracking-wider text-fog">
+                  <span>Rot</span>
+                  <span className="text-right">ETA</span>
+                  <span className="text-right">Dist</span>
+                  <span className="text-right">Conf</span>
+                </div>
+                {ROUTE_TYPES.map((t) => {
+                  const opt = routeOptions[t.key]
+                  if (!opt) return null
+                  const isActive = activeRouteOption === t.key
+                  return (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => setActiveRouteOption(t.key)}
+                      className={`grid grid-cols-4 gap-1 px-2 py-1.5 w-full text-[10px] tabular transition-colors ${
+                        isActive ? 'bg-phos/10' : 'hover:bg-raised'
+                      }`}
+                    >
+                      <span style={{ color: t.color }} className="font-semibold">{t.label}</span>
+                      <span className="text-right text-paper">
+                        {new Date(opt.etaMs).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      <span className="text-right text-paper">{opt.distNm.toFixed(1)}nm</span>
+                      <span className={`text-right ${opt.comfortScore > 5 ? 'text-danger' : opt.comfortScore > 2 ? 'text-warn' : 'text-phos'}`}>
+                        {opt.comfortScore.toFixed(1)}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
             {!routeOptions && !computing && (
               <div className="mt-2 text-[10px] text-fog-dim text-center">
                 In attesa dati vento (GRIB)…

@@ -3,6 +3,7 @@ import maplibregl from 'maplibre-gl'
 import marineStyle from '../../map/marine-style.json'
 import { formatDeg, metersToNm } from '../../lib/geo.js'
 import { useAppStore } from '../../store/useAppStore.js'
+import ConnectivityIndicator from './ConnectivityIndicator.jsx'
 import {
   Anchor,
   Crosshair,
@@ -107,6 +108,7 @@ function popupHTML(title, lines) {
 export default function MapView({
   geo,
   windField,
+  currentField,
   vessels,
   anchorages,
   route,
@@ -693,8 +695,21 @@ export default function MapView({
         <WindCanvas map={mapRef.current} field={windField} />
       )}
 
+      {/* Current overlay */}
+      {mapReady && layers.current && currentField && (
+        <CurrentCanvas map={mapRef.current} field={currentField} timeOffset={useAppStore.getState().timeOffset} />
+      )}
+
       {/* Floating instrument HUD */}
       <FloatingHUD geo={geo} />
+
+      {/* Connectivity indicator (top-left of map, below HUD) */}
+      <div className="absolute left-3 top-16 z-[900] fade-in">
+        <ConnectivityIndicator
+          gribAvailable={!!currentField}
+          weatherAvailable={true}
+        />
+      </div>
 
       {/* Top-right controls */}
       <div className="absolute right-3 top-3 z-[1000] flex flex-col gap-2">
@@ -922,12 +937,172 @@ function WindCanvas({ map, field }) {
     let raf = null
     let lastW = 0
     let lastH = 0
+    let particles = []
+    let lastFieldUpdate = 0
 
     const colorFor = (speed) => {
-      if (speed < 11) return '#5EE6C8'
-      if (speed < 21) return '#F5A623'
+      if (speed < 8) return '#5EE6C8'
+      if (speed < 14) return '#7FE0A8'
+      if (speed < 20) return '#F5A623'
+      if (speed < 28) return '#FF8A4A'
       return '#FF5252'
     }
+
+    const sampleWindAt = (px, py) => {
+      const ll = map.unproject([px, py])
+      let best = null
+      let bestDist = Infinity
+      for (const f of field) {
+        const d = (f.lat - ll.lat) ** 2 + (f.lon - ll.lng) ** 2
+        if (d < bestDist) {
+          bestDist = d
+          best = f
+        }
+      }
+      return best
+    }
+
+    const initParticles = (w, h) => {
+      const NUM = Math.min(180, Math.floor((w * h) / 7000))
+      particles = []
+      for (let i = 0; i < NUM; i++) {
+        particles.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          age: Math.random() * 80,
+        })
+      }
+    }
+
+    const draw = () => {
+      raf = null
+      const container = map.getContainer()
+      const w = container.clientWidth
+      const h = container.clientHeight
+      const dpr = window.devicePixelRatio || 1
+      if (w !== lastW || h !== lastH) {
+        canvas.width = w * dpr
+        canvas.height = h * dpr
+        canvas.style.width = `${w}px`
+        canvas.style.height = `${h}px`
+        lastW = w
+        lastH = h
+        initParticles(w, h)
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+
+      if (!field.length) {
+        ctx.clearRect(0, 0, w, h)
+        return
+      }
+
+      // Trail effect: use destination-out to fade previous frame (transparent fade)
+      ctx.globalCompositeOperation = 'destination-out'
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.08)'
+      ctx.fillRect(0, 0, w, h)
+      ctx.globalCompositeOperation = 'source-over'
+
+      // Update + draw particles
+      for (const p of particles) {
+        p.age++
+        if (p.age > 80 + Math.random() * 20) {
+          p.x = Math.random() * w
+          p.y = Math.random() * h
+          p.age = 0
+        }
+        const sample = sampleWindAt(p.x, p.y)
+        if (!sample || sample.speed == null) continue
+
+        // Wind direction: "from" → move toward opposite
+        const rad = ((sample.dir + 180) * Math.PI) / 180
+        const speed = Math.min(3, sample.speed * 0.15)
+        const dx = Math.sin(rad) * speed
+        const dy = -Math.cos(rad) * speed
+
+        const alpha = Math.min(1, p.age / 20) * Math.min(1, (80 - p.age) / 20) * 0.85
+        ctx.strokeStyle = colorFor(sample.speed)
+        ctx.globalAlpha = alpha
+        ctx.lineWidth = 1.4
+        ctx.beginPath()
+        ctx.moveTo(p.x, p.y)
+        ctx.lineTo(p.x + dx * 3, p.y + dy * 3)
+        ctx.stroke()
+        ctx.globalAlpha = 1
+
+        p.x += dx * 3
+        p.y += dy * 3
+
+        // Wrap-around
+        if (p.x < 0) p.x = w
+        if (p.x > w) p.x = 0
+        if (p.y < 0) p.y = h
+        if (p.y > h) p.y = 0
+      }
+
+      // Static arrows overlay (less dense, for clear direction reading)
+      const step = 130
+      ctx.globalAlpha = 0.9
+      for (let px = step / 2; px < w; px += step) {
+        for (let py = step / 2; py < h; py += step) {
+          const sample = sampleWindAt(px, py)
+          if (!sample) continue
+          const len = Math.min(28, 10 + sample.speed * 0.9)
+          ctx.save()
+          ctx.translate(px, py)
+          ctx.rotate(((sample.dir + 180) * Math.PI) / 180)
+          ctx.strokeStyle = colorFor(sample.speed)
+          ctx.fillStyle = colorFor(sample.speed)
+          ctx.lineWidth = 1.8
+          ctx.beginPath()
+          ctx.moveTo(0, len / 2)
+          ctx.lineTo(0, -len / 2 + 5)
+          ctx.stroke()
+          ctx.beginPath()
+          ctx.moveTo(0, -len / 2)
+          ctx.lineTo(-4, -len / 2 + 7)
+          ctx.lineTo(4, -len / 2 + 7)
+          ctx.closePath()
+          ctx.fill()
+          ctx.restore()
+        }
+      }
+      ctx.globalAlpha = 1
+    }
+
+    const loop = () => {
+      draw()
+      raf = requestAnimationFrame(loop)
+    }
+
+    // Start animation loop
+    loop()
+    return () => {
+      if (raf != null) cancelAnimationFrame(raf)
+    }
+  }, [map, field])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="pointer-events-none absolute inset-0 z-[500]"
+    />
+  )
+}
+
+// ============================================================
+// Current canvas overlay — frecce blu per correnti marine
+// ============================================================
+function CurrentCanvas({ map, field, timeOffset = 0 }) {
+  const canvasRef = useRef(null)
+
+  useEffect(() => {
+    if (!map) return undefined
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+    let raf = null
+    let lastW = 0
+    let lastH = 0
+
     const draw = () => {
       raf = null
       const container = map.getContainer()
@@ -944,15 +1119,18 @@ function WindCanvas({ map, field }) {
       }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.clearRect(0, 0, w, h)
-      if (!field.length) return
+      if (!field?.grid?.length) return
 
-      const step = 90
+      const step = 110
+      const now = Date.now() + timeOffset * 3600 * 1000
+
       for (let px = step / 2; px < w; px += step) {
         for (let py = step / 2; py < h; py += step) {
           const ll = map.unproject([px, py])
+          // Trova punto più vicino
           let best = null
           let bestDist = Infinity
-          for (const f of field) {
+          for (const f of field.grid) {
             const d = (f.lat - ll.lat) ** 2 + (f.lon - ll.lng) ** 2
             if (d < bestDist) {
               bestDist = d
@@ -960,13 +1138,33 @@ function WindCanvas({ map, field }) {
             }
           }
           if (!best) continue
-          const len = Math.min(34, 12 + best.speed * 1.1)
+
+          // Sample current at time
+          let speed = null
+          let dir = null
+          if (best.times?.length) {
+            let bestI = 0
+            let bestDiff = Infinity
+            for (let i = 0; i < best.times.length; i++) {
+              const t = new Date(best.times[i]).getTime()
+              const diff = Math.abs(t - now)
+              if (diff < bestDiff) {
+                bestDiff = diff
+                bestI = i
+              }
+            }
+            speed = best.currSpeed?.[bestI]
+            dir = best.currDir?.[bestI]
+          }
+          if (speed == null || dir == null || speed < 0.1) continue
+
+          const len = Math.min(40, 14 + speed * 8)
           ctx.save()
           ctx.translate(px, py)
-          ctx.rotate(((best.dir + 180) * Math.PI) / 180)
-          ctx.strokeStyle = colorFor(best.speed)
-          ctx.fillStyle = colorFor(best.speed)
-          ctx.globalAlpha = 0.8
+          ctx.rotate((dir * Math.PI) / 180) // dir = "verso" (流向)
+          ctx.strokeStyle = '#4A9EFF'
+          ctx.fillStyle = '#4A9EFF'
+          ctx.globalAlpha = 0.7
           ctx.lineWidth = 2
           ctx.beginPath()
           ctx.moveTo(0, len / 2)
@@ -991,12 +1189,12 @@ function WindCanvas({ map, field }) {
       if (raf != null) cancelAnimationFrame(raf)
       map.off('move zoom moveend zoomend resize', schedule)
     }
-  }, [map, field])
+  }, [map, field, timeOffset])
 
   return (
     <canvas
       ref={canvasRef}
-      className="pointer-events-none absolute inset-0 z-[500]"
+      className="pointer-events-none absolute inset-0 z-[510]"
     />
   )
 }
