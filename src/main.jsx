@@ -2,6 +2,9 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import './styles/globals.css'
 import App from './App.jsx'
+import { logStep, failStep, hideLoadingScreen } from './lib/debugLogger.js'
+
+logStep('main.jsx loading')
 
 // ErrorBoundary globale: mostra errori a schermo invece di schermo bianco
 class GlobalErrorBoundary extends React.Component {
@@ -97,13 +100,19 @@ class GlobalErrorBoundary extends React.Component {
   }
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <GlobalErrorBoundary>
-      <App />
-    </GlobalErrorBoundary>
-  </React.StrictMode>
-)
+try {
+  logStep('Creating React root')
+  ReactDOM.createRoot(document.getElementById('root')).render(
+    <React.StrictMode>
+      <GlobalErrorBoundary>
+        <App />
+      </GlobalErrorBoundary>
+    </React.StrictMode>
+  )
+  logStep('React render done')
+} catch (err) {
+  failStep('React render', err)
+}
 
 // Service worker: skip se ?nosw=1
 const params = new URLSearchParams(window.location.search)
@@ -150,13 +159,11 @@ window.addEventListener('unhandledrejection', (e) => {
   console.error('Unhandled promise rejection:', e.reason)
 })
 
-// Hide loading screen once React is mounted
-window.addEventListener('DOMContentLoaded', () => {
+// Fallback: hide loading screen after 15s in case MapLibre 'load' event never fires
+setTimeout(() => {
   const loading = document.getElementById('app-loading')
   if (loading) {
-    setTimeout(() => {
-      loading.style.opacity = '0'
-      setTimeout(() => loading.remove(), 300)
-    }, 500)
+    logStep('Forcing loading screen hide after 15s timeout', 'warn')
+    hideLoadingScreen()
   }
-})
+}, 15000)

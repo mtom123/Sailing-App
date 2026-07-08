@@ -7,7 +7,7 @@
  * - Shell applicativa (HTML/JS/CSS): cache per avvio offline completo.
  */
 
-const VERSION = 'v2.2';
+const VERSION = 'v2.3';
 const SHELL_CACHE = `timone-shell-${VERSION}`;
 const TILE_CACHE = `timone-tiles-${VERSION}`;
 const DATA_CACHE = `timone-data-${VERSION}`;
@@ -43,12 +43,14 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) =>
-        Promise.all(keys.filter((k) => !keep.includes(k)).map((k) => caches.delete(k)))
-      )
+      .then((keys) => {
+        // Delete ALL caches not in keep (including old v6)
+        const toDelete = keys.filter((k) => !keep.includes(k))
+        console.log('[SW] Deleting old caches:', toDelete)
+        return Promise.all(toDelete.map((k) => caches.delete(k)))
+      })
       .then(() => self.clients.claim())
       .then(() => {
-        // Notifica tutti i clients che c'è una nuova versione → auto-reload
         return self.clients.matchAll({ type: 'window' })
       })
       .then((clients) => {

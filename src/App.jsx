@@ -10,6 +10,7 @@ import TrackPanel from './components/TrackPanel.jsx'
 import { useAppStore } from './store/useAppStore.js'
 import { registerCustomPolar } from './routing/polarSolver.js'
 import { listCustomPolars } from './lib/polarParser.js'
+import { logStep, failStep } from './lib/debugLogger.js'
 
 // Hooks riusabili
 import useGeolocation from './hooks/useGeolocation.js'
@@ -101,6 +102,7 @@ function useRouteAdapter(geo) {
 }
 
 export default function App() {
+  logStep('App component mounting')
   const geo = useGeolocation()
   const {
     view,

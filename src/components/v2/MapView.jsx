@@ -3,6 +3,7 @@ import maplibregl from 'maplibre-gl'
 import marineStyle from '../../map/marine-style.json'
 import { formatDeg, metersToNm, haversine, bearing } from '../../lib/geo.js'
 import { useAppStore } from '../../store/useAppStore.js'
+import { logStep, failStep, hideLoadingScreen } from '../../lib/debugLogger.js'
 import ConnectivityIndicator from './ConnectivityIndicator.jsx'
 import MapContextMenu from './MapContextMenu.jsx'
 import MeteogramPopup from './MeteogramPopup.jsx'
@@ -184,27 +185,40 @@ export default function MapView({
 
   // === Init map (once) ===
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return
+    logStep('MapView useEffect starting')
+    if (!containerRef.current || mapRef.current) {
+      logStep('MapView skipped (no container or already inited)')
+      return
+    }
+
+    logStep('Container size', 'ok', `${containerRef.current.clientWidth}x${containerRef.current.clientHeight}`)
 
     // Detect iOS Safari per fix specifici
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
     const isSafari = /^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent)
+    logStep('Device detect', 'ok', `iOS=${isIOS} Safari=${isSafari} UA=${navigator.userAgent.substring(0, 50)}...`)
 
     // Check WebGL support
     function checkWebGL() {
       try {
         const canvas = document.createElement('canvas')
-        return !!(window.WebGLRenderingContext && (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')))
+        const gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+        if (!gl) return false
+        logStep('WebGL context', 'ok', gl.getParameter(gl.VERSION))
+        return true
       } catch (e) {
+        logStep('WebGL check', 'fail', e.message)
         return false
       }
     }
     if (!checkWebGL()) {
-      console.error('WebGL not supported')
+      failStep('WebGL not supported')
       return
     }
 
+    logStep('Loading MapLibre GL JS')
     try {
+    logStep('Creating Map instance')
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: marineStyle,
@@ -243,6 +257,7 @@ export default function MapView({
     )
 
     map.on('load', () => {
+      logStep('MapLibre loaded style')
       // Sources
       map.addSource('route-draft', {
         type: 'geojson',
@@ -369,17 +384,14 @@ export default function MapView({
       })
 
       setMapReady(true)
-      // Hide loading screen se ancora visibile
-      const loading = document.getElementById('app-loading')
-      if (loading) {
-        loading.style.opacity = '0'
-        setTimeout(() => loading.remove(), 300)
-      }
+      logStep('Map ready', 'ok')
+      hideLoadingScreen()
     })
 
     // Map error handler — mostra errore se stile fallisce
     map.on('error', (e) => {
       console.error('MapLibre style/error:', e.error || e)
+      failStep('MapLibre error', e.error || new Error('MapLibre error'))
     })
 
     // Style load error — fallback a stile minimale
@@ -455,6 +467,7 @@ export default function MapView({
     }
     } catch (err) {
       console.error('MapLibre init error:', err)
+      failStep('MapLibre init', err)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
