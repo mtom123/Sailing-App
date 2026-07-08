@@ -4,7 +4,8 @@ on:
   push:
     branches:
       - main
-      - claude/marine-pwa-ipad-app-p1cdy7
+      - feature/v2-marine-ops
+      - feature/v2.1-completeness
   workflow_dispatch:
 
 permissions:
