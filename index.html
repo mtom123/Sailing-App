@@ -21,6 +21,82 @@
     <link rel="icon" type="image/png" href="./icons/icon-192.png" />
     <link rel="apple-touch-icon" href="./icons/icon-180.png" />
 
+    <!-- CRITICAL POLYFILL: deve essere caricato PRIMA di qualsiasi JS -->
+    <!-- Safari 15 non ha Object.hasOwnProperty come metodo statico -->
+    <script>
+      // Polyfill Object.hasOwnProperty ( mancante in Safari 15.0 e sotto)
+      if (typeof Object.hasOwnProperty !== 'function') {
+        Object.hasOwnProperty = function(obj, prop) {
+          return Object.prototype.hasOwnProperty.call(obj, prop)
+        }
+      }
+      // Polyfill Object.hasOwn ( mancante in Safari < 15.4)
+      if (typeof Object.hasOwn !== 'function') {
+        Object.hasOwn = function(obj, prop) {
+          return Object.prototype.hasOwnProperty.call(obj, prop)
+        }
+      }
+      // Polyfill structuredClone (mancante in Safari < 15.4)
+      if (typeof structuredClone !== 'function') {
+        window.structuredClone = function(obj) {
+          return JSON.parse(JSON.stringify(obj))
+        }
+      }
+      // Polyfill Array.prototype.at (mancante in Safari < 15.4)
+      if (!Array.prototype.at) {
+        Array.prototype.at = function(n) {
+          n = Math.trunc(n) || 0
+          if (n < 0) n += this.length
+          if (n < 0 || n >= this.length) return undefined
+          return this[n]
+        }
+      }
+      // Polyfill String.prototype.replaceAll (mancante in Safari < 13.1)
+      if (!String.prototype.replaceAll) {
+        String.prototype.replaceAll = function(str, newStr) {
+          if (Object.prototype.toString.call(str).toLowerCase() === '[object regexp]') {
+            return this.replace(str, newStr)
+          }
+          return this.replace(new RegExp(str, 'g'), newStr)
+        }
+      }
+      // Polyfill Promise.any (mancante in Safari < 15)
+      if (typeof Promise.any !== 'function') {
+        Promise.any = function(promises) {
+          return new Promise((resolve, reject) => {
+            const errors = []
+            let remaining = promises.length
+            if (remaining === 0) {
+              reject(new AggregateError([], 'All promises were rejected'))
+              return
+            }
+            promises.forEach((p, i) => {
+              Promise.resolve(p).then(
+                (val) => resolve(val),
+                (err) => {
+                  errors[i] = err
+                  if (--remaining === 0) {
+                    reject(new AggregateError(errors, 'All promises were rejected'))
+                  }
+                }
+              )
+            })
+          })
+        }
+        if (typeof AggregateError === 'undefined') {
+          window.AggregateError = function(errors, message) {
+            const e = new Error(message)
+            e.errors = errors
+            return e
+          }
+        }
+      }
+      // Capture early errors before main JS loads
+      window.addEventListener('error', (e) => {
+        console.error('[EARLY ERROR]', e.message, e.filename, e.lineno)
+      })
+    </script>
+
     <style>
       /* Critical CSS inline per evitare FOUC e fix iOS Safari height issues */
       html, body {
