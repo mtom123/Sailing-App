@@ -4,6 +4,8 @@ import marineStyle from '../../map/marine-style.json'
 import { formatDeg, metersToNm } from '../../lib/geo.js'
 import { useAppStore } from '../../store/useAppStore.js'
 import ConnectivityIndicator from './ConnectivityIndicator.jsx'
+import MapContextMenu from './MapContextMenu.jsx'
+import MeteogramPopup from './MeteogramPopup.jsx'
 import {
   Anchor,
   Crosshair,
@@ -129,6 +131,7 @@ export default function MapView({
   })
 
   const [mapReady, setMapReady] = useState(false)
+  const [meteoPoint, setMeteoPoint] = useState(null) // { lat, lon } | null
 
   const {
     view,
@@ -863,6 +866,48 @@ export default function MapView({
             )
           })}
         </div>
+      )}
+
+      {/* Long-press context menu (touch UX) */}
+      <MapContextMenu
+        map={mapRef.current}
+        mapReady={mapReady}
+        enabled={!route.editing}
+        onAddWaypoint={(lat, lon) => {
+          useAppStore.setState((s) => ({
+            routeDraft: {
+              ...s.routeDraft,
+              waypoints: [
+                ...s.routeDraft.waypoints,
+                { id: `w${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`, lat, lon, name: `WP${s.routeDraft.waypoints.length + 1}` },
+              ],
+            },
+            activeDrawer: 'route',
+          }))
+        }}
+        onSetDestination={(lat, lon) => {
+          // Set come unico waypoint destinazione
+          useAppStore.setState((s) => ({
+            routeDraft: {
+              name: 'Destinazione',
+              waypoints: s.routeDraft.waypoints.length >= 1
+                ? [...s.routeDraft.waypoints, { id: `w${Date.now().toString(36)}`, lat, lon, name: `WP${s.routeDraft.waypoints.length + 1}` }]
+                : [{ id: `w${Date.now().toString(36)}`, lat: s.view.center.lat, lon: s.view.center.lon, name: 'WP1' }, { id: `w${Date.now().toString(36)}x`, lat, lon, name: 'WP2' }],
+            },
+            activeDrawer: 'route',
+          }))
+        }}
+        onShowMeteogram={(lat, lon) => setMeteoPoint({ lat, lon })}
+        boatPosition={geo.lat != null ? { lat: geo.lat, lon: geo.lon } : null}
+      />
+
+      {/* Meteogram popup */}
+      {meteoPoint && (
+        <MeteogramPopup
+          lat={meteoPoint.lat}
+          lon={meteoPoint.lon}
+          onClose={() => setMeteoPoint(null)}
+        />
       )}
     </div>
   )
