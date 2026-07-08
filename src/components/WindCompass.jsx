@@ -55,7 +55,7 @@ export default function WindCompass({ wind, wave }) {
   })
 
   return (
-    <svg viewBox={`0 0 ${size} ${size}`} className="w-full">
+    <svg viewBox={`0 0 ${size} ${size}`} className="w-full max-w-[180px] mx-auto block">
       <circle cx={c} cy={c} r={rOuter} fill="#121212" stroke="#2A2A2A" strokeWidth="2" />
       {ticks}
       {labels}

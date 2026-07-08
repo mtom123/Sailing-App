@@ -181,6 +181,25 @@ export default function MapView({
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
 
+    // Detect iOS Safari per fix specifici
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    const isSafari = /^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent)
+
+    // Check WebGL support
+    function checkWebGL() {
+      try {
+        const canvas = document.createElement('canvas')
+        return !!(window.WebGLRenderingContext && (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')))
+      } catch (e) {
+        return false
+      }
+    }
+    if (!checkWebGL()) {
+      console.error('WebGL not supported')
+      return
+    }
+
+    try {
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: marineStyle,
@@ -193,7 +212,21 @@ export default function MapView({
       attributionControl: { compact: true },
       touchZoomRotate: true,
       touchPitch: false,
+      // iOS Safari fix critici:
+      preserveDrawingBuffer: isIOS, // per canvas rendering su iOS
+      antialias: !isIOS, // disabilita antialias su iOS per performance
+      // Necessario per tap-and-hold waypoint su touch
+      cooperativeGestures: false,
+      // Performance iPad
+      fadeDuration: isIOS ? 0 : 300,
+      crossSourceCollisions: false,
     })
+
+    // iOS: forza resize dopo 100ms (altrimenti canvas 0x0)
+    if (isIOS) {
+      setTimeout(() => map.resize(), 100)
+      setTimeout(() => map.resize(), 500)
+    }
 
     map.addControl(
       new maplibregl.NavigationControl({ visualizePitch: false, showCompass: false }),
@@ -332,6 +365,13 @@ export default function MapView({
         addWaypoint(e.lngLat.lat, e.lngLat.lng)
       }
     })
+    map.on('error', (e) => {
+      console.warn('MapLibre error:', e)
+    })
+    map.on('webglcontextlost', (e) => {
+      console.error('WebGL context lost')
+      e.preventDefault()
+    })
 
     mapRef.current = map
 
@@ -342,6 +382,9 @@ export default function MapView({
       ro.disconnect()
       map.remove()
       mapRef.current = null
+    }
+    } catch (err) {
+      console.error('MapLibre init error:', err)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -684,10 +727,16 @@ export default function MapView({
   }
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full" style={{ minHeight: 0, minWidth: 0 }}>
       <div
         ref={containerRef}
-        className={`h-full w-full ${route.editing ? 'cursor-crosshair' : ''}`}
+        className={`absolute inset-0 h-full w-full ${route.editing ? 'cursor-crosshair' : ''}`}
+        style={{
+          touchAction: 'none', // fondamentale per pinch-zoom su iOS
+          // iOS Safari a volte non applica 100% height. Forza con vh fallback.
+          height: '100%',
+          width: '100%',
+        }}
       />
 
       {/* Wind canvas overlay */}

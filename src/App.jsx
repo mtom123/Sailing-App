@@ -265,17 +265,17 @@ export default function App() {
   const gpsOk = geo.lat != null
 
   return (
-    <div className="relative flex h-full w-full overflow-hidden bg-abyss text-paper">
+    <div className="relative flex h-full w-full overflow-hidden bg-abyss text-paper" style={{ minHeight: 0 }}>
       {/* LEFT panel (instruments) */}
       {leftPanelOpen && (
-        <div className="h-full w-[300px] min-w-[240px] max-w-[28%] flex-none">
+        <div className="h-full w-[280px] min-w-[200px] max-w-[35%] flex-none" style={{ minHeight: 0 }}>
           <InstrumentPanel geo={geo} weather={weather} sun={sun} moon={moon} />
         </div>
       )}
 
       {/* CENTER map */}
-      <div className="relative flex min-w-0 flex-1 flex-col">
-        <div className="relative flex-1">
+      <div className="relative flex min-w-0 min-h-0 flex-1 flex-col">
+        <div className="relative flex-1" style={{ minHeight: 0 }}>
           <MapView
             geo={geo}
             weather={weather}

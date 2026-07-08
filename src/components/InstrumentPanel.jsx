@@ -15,7 +15,7 @@ function BigValue({ label, value, unit }) {
     <div className="flex-1 border border-line bg-panel px-2 py-1.5">
       <div className="label">{label}</div>
       <div className="flex items-baseline gap-1">
-        <span className="text-[52px] font-bold leading-none tracking-tight text-phos tabular-nums">
+        <span className="text-[36px] sm:text-[44px] md:text-[52px] font-bold leading-none tracking-tight text-phos tabular-nums">
           {value}
         </span>
         <span className="text-xs text-fog">{unit}</span>
@@ -81,7 +81,7 @@ export default function InstrumentPanel({ geo, weather, sun, moon }) {
       </div>
 
       <div className="panel-scroll min-h-0 flex-1">
-        <div className="px-6 py-1">
+        <div className="px-3 py-2">
           <WindCompass wind={wind} wave={wave} />
         </div>
 
