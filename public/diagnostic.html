@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>TIMONE — Diagnostica</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    background: #0a1620;
+    color: #e8f0f5;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    min-height: 100vh;
+    min-height: 100dvh;
+    -webkit-text-size-adjust: 100%;
+    overflow-x: hidden;
+  }
+  .container { max-width: 720px; margin: 0 auto; padding: 20px; }
+  h1 { color: #5ee6c8; font-size: 22px; margin-bottom: 4px; letter-spacing: 0.5px; }
+  h2 { color: #5ee6c8; font-size: 14px; margin: 20px 0 8px; letter-spacing: 1px; text-transform: uppercase; }
+  .subtitle { color: #8fa0ae; font-size: 12px; margin-bottom: 24px; }
+  .section {
+    background: #122a3a;
+    border: 1px solid #1f3a4d;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+  .row { display: flex; justify-content: space-between; align-items: flex-start; padding: 6px 0; font-size: 13px; border-bottom: 1px solid rgba(31, 58, 77, 0.5); gap: 10px; }
+  .row:last-child { border-bottom: none; }
+  .label { color: #8fa0ae; flex-shrink: 0; }
+  .value { color: #e8f0f5; text-align: right; word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+  .ok { color: #5ee6c8; }
+  .fail { color: #ff5252; }
+  .warn { color: #f5a623; }
+  button {
+    background: #5ee6c8;
+    color: #0a1620;
+    border: none;
+    padding: 14px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 8px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button.danger { background: #ff5252; color: white; }
+  button.secondary { background: transparent; color: #5ee6c8; border: 1px solid #5ee6c8; }
+  button:active { transform: scale(0.98); }
+  .note { color: #8fa0ae; font-size: 11px; margin-top: 6px; line-height: 1.4; }
+  .canvas-test { width: 100%; height: 100px; border: 1px solid #1f3a4d; border-radius: 6px; margin-top: 8px; }
+  pre {
+    background: #0a1620;
+    border: 1px solid #1f3a4d;
+    border-radius: 6px;
+    padding: 8px;
+    font-size: 10px;
+    color: #5ee6c8;
+    overflow-x: auto;
+    margin-top: 6px;
+    max-height: 150px;
+    overflow-y: auto;
+  }
+  .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+  .badge.ok { background: rgba(94, 230, 200, 0.2); color: #5ee6c8; }
+  .badge.fail { background: rgba(255, 82, 82, 0.2); color: #ff5252; }
+  .badge.warn { background: rgba(245, 166, 35, 0.2); color: #f5a623; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>TIMONE — Diagnostica</h1>
+  <div class="subtitle">Strumento per identificare problemi di caricamento su iPad</div>
+
+  <h2>Browser &amp; Dispositivo</h2>
+  <div class="section" id="device"></div>
+
+  <h2>WebGL (necessario per mappa)</h2>
+  <div class="section" id="webgl"></div>
+  <canvas class="canvas-test" id="webgl-canvas"></canvas>
+
+  <h2>Service Worker</h2>
+  <div class="section" id="sw"></div>
+
+  <h2>Cache Storage</h2>
+  <div class="section" id="cache"></div>
+
+  <h2>IndexedDB</h2>
+  <div class="section" id="idb"></div>
+
+  <h2>LocalStorage</h2>
+  <div class="section" id="ls"></div>
+
+  <h2>Network Test</h2>
+  <div class="section" id="net"></div>
+
+  <h2>Actions</h2>
+  <button onclick="clearAllCaches()">PULISCI TUTTE LE CACHE</button>
+  <button class="danger" onclick="unregisterSW()">UNREGISTER SERVICE WORKER</button>
+  <button class="danger" onclick="nukeAll()">NUKE: SW + Cache + IndexedDB + LocalStorage</button>
+  <button class="secondary" onclick="location.href='./?nocache=' + Date.now()">APRI APP FRESH (bypass cache)</button>
+  <button class="secondary" onclick="location.href='./?nosw=1'">APRI APP SENZA SERVICE WORKER</button>
+
+  <h2>Note</h2>
+  <div class="note">
+    • Se WebGL fallisce: l'app userà fallback senza mappa<br>
+    • Se SW è bloccato: usa "UNREGISTER SERVICE WORKER" poi riapri l'app<br>
+    • Se tutto fallisce: usa "NUKE" poi riapri l'app<br>
+    • Dopo pulizia, apri l'app con "?nocache=TIMESTAMP" per forzare reload completo<br>
+    • Riporta screenshot di questa pagina se problemi persistono
+  </div>
+</div>
+
+<script>
+// ============================================================
+// Device info
+// ============================================================
+const deviceEl = document.getElementById('device')
+function addRow(parent, label, value, status) {
+  const row = document.createElement('div')
+  row.className = 'row'
+  const badge = status ? `<span class="badge ${status}">${status.toUpperCase()}</span>` : ''
+  row.innerHTML = `<span class="label">${label}</span><span class="value">${value} ${badge}</span>`
+  parent.appendChild(row)
+}
+
+addRow(deviceEl, 'User Agent', navigator.userAgent)
+addRow(deviceEl, 'Platform', navigator.platform)
+addRow(deviceEl, 'Touch Points', navigator.maxTouchPoints)
+addRow(deviceEl, 'Viewport', `${window.innerWidth}x${window.innerHeight}`)
+addRow(deviceEl, 'DPR', window.devicePixelRatio)
+addRow(deviceEl, 'Color Depth', screen.colorDepth + ' bit')
+addRow(deviceEl, 'Online', navigator.onLine ? 'YES' : 'NO', navigator.onLine ? 'ok' : 'fail')
+addRow(deviceEl, 'Cookie enabled', navigator.cookieEnabled ? 'YES' : 'NO', navigator.cookieEnabled ? 'ok' : 'fail')
+addRow(deviceEl, 'iOS detect', /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ? 'YES' : 'NO')
+addRow(deviceEl, 'Safari detect', /^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent) ? 'YES' : 'NO')
+addRow(deviceEl, 'PWA standalone', window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone ? 'YES' : 'NO')
+addRow(deviceEl, 'Dark mode', window.matchMedia('(prefers-color-scheme: dark)').matches ? 'YES' : 'NO')
+
+// ============================================================
+// WebGL test
+// ============================================================
+const webglEl = document.getElementById('webgl')
+function testWebGL() {
+  const canvas = document.getElementById('webgl-canvas')
+  try {
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+    if (!gl) {
+      addRow(webglEl, 'WebGL', 'NOT SUPPORTED', 'fail')
+      return
+    }
+    addRow(webglEl, 'WebGL', 'OK', 'ok')
+    addRow(webglEl, 'Versione', gl.getParameter(gl.VERSION))
+    addRow(webglEl, 'Renderer', gl.getParameter(gl.RENDERER))
+    addRow(webglEl, 'Vendor', gl.getParameter(gl.VENDOR))
+    addRow(webglEl, 'Max texture size', gl.getParameter(gl.MAX_TEXTURE_SIZE) + 'px')
+    addRow(webglEl, 'Max viewport', gl.getParameter(gl.MAX_VIEWPORT_DIMS).join('x'))
+
+    // Try to actually render (catch iOS WebGL context loss)
+    try {
+      gl.clearColor(0.04, 0.09, 0.13, 1)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+      addRow(webglEl, 'Render test', 'OK', 'ok')
+    } catch (e) {
+      addRow(webglEl, 'Render test', 'FAILED: ' + e.message, 'fail')
+    }
+
+    // Draw something visible
+    canvas.width = canvas.clientWidth * (window.devicePixelRatio || 1)
+    canvas.height = canvas.clientHeight * (window.devicePixelRatio || 1)
+    gl.viewport(0, 0, canvas.width, canvas.height)
+    gl.clearColor(0.37, 0.9, 0.78, 1)
+    gl.clear(gl.COLOR_BUFFER_BIT)
+  } catch (e) {
+    addRow(webglEl, 'WebGL', 'ERROR: ' + e.message, 'fail')
+  }
+}
+testWebGL()
+
+// ============================================================
+// Service Worker status
+// ============================================================
+const swEl = document.getElementById('sw')
+if ('serviceWorker' in navigator) {
+  addRow(swEl, 'SW support', 'YES', 'ok')
+  navigator.serviceWorker.getRegistrations().then((regs) => {
+    addRow(swEl, 'SW registrati', regs.length)
+    regs.forEach((r, i) => {
+      addRow(swEl, `SW ${i+1} scope`, r.scope)
+      addRow(swEl, `SW ${i+1} state`, r.active?.state || r.waiting?.state || r.installing?.state || 'unknown')
+      addRow(swEl, `SW ${i+1} script`, r.active?.scriptURL || 'unknown')
+    })
+  }).catch((e) => {
+    addRow(swEl, 'SW check', 'ERROR: ' + e.message, 'fail')
+  })
+} else {
+  addRow(swEl, 'SW support', 'NO', 'fail')
+}
+
+// ============================================================
+// Cache Storage
+// ============================================================
+const cacheEl = document.getElementById('cache')
+if ('caches' in window) {
+  addRow(cacheEl, 'Cache API', 'YES', 'ok')
+  caches.keys().then((keys) => {
+    addRow(cacheEl, 'Cache count', keys.length)
+    keys.forEach((k) => {
+      caches.open(k).then((c) => {
+        c.keys().then((reqs) => {
+          addRow(cacheEl, `Cache "${k}"`, reqs.length + ' entries')
+        })
+      })
+    })
+  }).catch((e) => {
+    addRow(cacheEl, 'Cache check', 'ERROR: ' + e.message, 'fail')
+  })
+} else {
+  addRow(cacheEl, 'Cache API', 'NO', 'fail')
+}
+
+// ============================================================
+// IndexedDB
+// ============================================================
+const idbEl = document.getElementById('idb')
+if ('indexedDB' in window) {
+  addRow(idbEl, 'IndexedDB', 'YES', 'ok')
+  // Try open existing
+  try {
+    const req = indexedDB.open('timone-cache')
+    req.onsuccess = () => {
+      const db = req.result
+      addRow(idbEl, 'DB name', db.name)
+      addRow(idbEl, 'DB version', db.version)
+      addRow(idbEl, 'Object stores', Array.from(db.objectStoreNames).join(', ') || 'none')
+      db.close()
+    }
+    req.onerror = () => {
+      addRow(idbEl, 'IndexedDB', 'ERROR: ' + req.error?.message, 'fail')
+    }
+  } catch (e) {
+    addRow(idbEl, 'IndexedDB', 'ERROR: ' + e.message, 'fail')
+  }
+} else {
+  addRow(idbEl, 'IndexedDB', 'NO', 'fail')
+}
+
+// ============================================================
+// LocalStorage
+// ============================================================
+const lsEl = document.getElementById('ls')
+try {
+  const test = '__test__' + Date.now()
+  localStorage.setItem(test, '1')
+  localStorage.removeItem(test)
+  addRow(lsEl, 'LocalStorage', 'YES', 'ok')
+  addRow(lsEl, 'Keys count', localStorage.length)
+  // Show timone keys
+  const timoneKeys = Object.keys(localStorage).filter((k) => k.startsWith('timone'))
+  addRow(lsEl, 'TIMONE keys', timoneKeys.join(', ') || 'none')
+  timoneKeys.forEach((k) => {
+    const v = localStorage.getItem(k)
+    addRow(lsEl, `  ${k}`, (v || '').substring(0, 80) + (v && v.length > 80 ? '...' : ''))
+  })
+} catch (e) {
+  addRow(lsEl, 'LocalStorage', 'ERROR: ' + e.message, 'fail')
+}
+
+// ============================================================
+// Network test
+// ============================================================
+const netEl = document.getElementById('net')
+addRow(netEl, 'Online', navigator.onLine ? 'YES' : 'NO', navigator.onLine ? 'ok' : 'fail')
+
+async function testFetch(url, label) {
+  try {
+    const t0 = Date.now()
+    const res = await fetch(url, { mode: 'no-cors' })
+    const dt = Date.now() - t0
+    addRow(netEl, label, `OK (${dt}ms)`, 'ok')
+  } catch (e) {
+    addRow(netEl, label, 'FAILED: ' + e.message, 'fail')
+  }
+}
+testFetch('https://mtom123.github.io/Sailing-App/', 'GitHub Pages')
+testFetch('https://api.open-meteo.com/v1/forecast?latitude=41.2&longitude=9.3&current=temperature_2m', 'Open-Meteo API')
+testFetch('https://tiles.emodnet-bathymetry.eu/2020/baselayer/web_mercator/8/215/148.png', 'EMODnet tiles')
+testFetch('https://a.basemaps.cartocdn.com/rastertiles/voyager/8/215/148@2x.png', 'CARTO tiles')
+
+// ============================================================
+// Actions
+// ============================================================
+window.clearAllCaches = async function() {
+  if (!confirm('Pulire tutte le cache? L\'app si ricaricherà.')) return
+  try {
+    const keys = await caches.keys()
+    for (const k of keys) await caches.delete(k)
+    alert('Cache pulite: ' + keys.length)
+    location.reload()
+  } catch (e) {
+    alert('Errore: ' + e.message)
+  }
+}
+
+window.unregisterSW = async function() {
+  if (!confirm('Unregistrare tutti i service worker?')) return
+  try {
+    const regs = await navigator.serviceWorker.getRegistrations()
+    for (const r of regs) await r.unregister()
+    alert('SW rimossi: ' + regs.length)
+    location.reload()
+  } catch (e) {
+    alert('Errore: ' + e.message)
+  }
+}
+
+window.nukeAll = async function() {
+  if (!confirm('Cancellare TUTTO: SW, Cache, IndexedDB, LocalStorage?')) return
+  if (!confirm('Sicuro? L\'app ripartirà da zero.')) return
+  try {
+    // SW
+    const regs = await navigator.serviceWorker.getRegistrations()
+    for (const r of regs) await r.unregister()
+    // Caches
+    const keys = await caches.keys()
+    for (const k of keys) await caches.delete(k)
+    // IndexedDB
+    await new Promise((resolve) => {
+      const req = indexedDB.deleteDatabase('timone-cache')
+      req.onsuccess = resolve
+      req.onerror = resolve
+      req.onblocked = resolve
+      setTimeout(resolve, 2000)
+    })
+    // LocalStorage
+    localStorage.clear()
+    alert('TUTTO pulito. Ora ricarico l\'app.')
+    location.href = './?nocache=' + Date.now()
+  } catch (e) {
+    alert('Errore: ' + e.message)
+  }
+}
+
+// Capture errors
+window.addEventListener('error', (e) => {
+  console.error('Global error:', e)
+  const errEl = document.createElement('div')
+  errEl.className = 'section'
+  errEl.style.borderColor = '#ff5252'
+  errEl.innerHTML = `<div class="row"><span class="label">ERROR</span><span class="value fail">${e.message} @ ${e.filename}:${e.lineno}</span></div>`
+  document.querySelector('.container').appendChild(errEl)
+})
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('Unhandled rejection:', e)
+  const errEl = document.createElement('div')
+  errEl.className = 'section'
+  errEl.style.borderColor = '#ff5252'
+  errEl.innerHTML = `<div class="row"><span class="label">REJECTION</span><span class="value fail">${e.reason}</span></div>`
+  document.querySelector('.container').appendChild(errEl)
+})
+</script>
+</body>
+</html>

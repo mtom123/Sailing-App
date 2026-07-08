@@ -369,7 +369,45 @@ export default function MapView({
       })
 
       setMapReady(true)
+      // Hide loading screen se ancora visibile
+      const loading = document.getElementById('app-loading')
+      if (loading) {
+        loading.style.opacity = '0'
+        setTimeout(() => loading.remove(), 300)
+      }
     })
+
+    // Map error handler — mostra errore se stile fallisce
+    map.on('error', (e) => {
+      console.error('MapLibre style/error:', e.error || e)
+    })
+
+    // Style load error — fallback a stile minimale
+    map.on('styleimagemissing', (e) => {
+      console.warn('Style image missing:', e.id)
+    })
+
+    // Timeout: se la mappa non è ready in 10s, mostra warning
+    setTimeout(() => {
+      if (!mapRef.current?._loaded) {
+        console.warn('MapLibre non ha caricato il stile entro 10s')
+        const loading = document.getElementById('app-loading')
+        if (loading) {
+          loading.innerHTML = `
+            <div style="color: #f5a623; font-size: 14px; margin-bottom: 12px; font-family: system-ui;">
+              ⚠️ La mappa sta impiegando troppo tempo
+            </div>
+            <div style="color: #8fa0ae; font-size: 11px; max-width: 320px; line-height: 1.4; font-family: system-ui;">
+              Possibile problema WebGL su questo dispositivo.
+              <br><br>
+              <a href="./diagnostic.html" style="color: #5ee6c8;">Apri diagnostica</a>
+              &nbsp;|&nbsp;
+              <a href="./?nosw=1" style="color: #5ee6c8;">Riprova senza SW</a>
+            </div>
+          `
+        }
+      }
+    }, 10000)
 
     // Emit view changes
     map.on('moveend', () => {
@@ -394,12 +432,15 @@ export default function MapView({
         addWaypoint(e.lngLat.lat, e.lngLat.lng)
       }
     })
-    map.on('error', (e) => {
-      console.warn('MapLibre error:', e)
-    })
     map.on('webglcontextlost', (e) => {
       console.error('WebGL context lost')
       e.preventDefault()
+      // Try to recover
+      setTimeout(() => {
+        if (mapRef.current) {
+          try { mapRef.current.resize() } catch (e) {}
+        }
+      }, 1000)
     })
 
     mapRef.current = map
