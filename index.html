@@ -95,6 +95,36 @@
       window.addEventListener('error', (e) => {
         console.error('[EARLY ERROR]', e.message, e.filename, e.lineno)
       })
+
+      // UNREGISTER ANY OLD SERVICE WORKERS BEFORE APP LOADS
+      // Questo fixa il problema del vecchio SW che serve cache obsoleta
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for (var i = 0; i < registrations.length; i++) {
+            var r = registrations[i]
+            // Unregister se è il vecchio service-worker.js (non il nuovo sw.js)
+            if (r.active && r.active.scriptURL.indexOf('service-worker.js') !== -1) {
+              console.log('[BOOT] Unregistering old SW:', r.active.scriptURL)
+              r.unregister()
+            }
+          }
+        }).catch(function(e) {
+          console.warn('[BOOT] SW unregister error:', e)
+        })
+        // Also clear ALL caches on first load dopo update
+        if (window.location.search.indexOf('v=') !== -1) {
+          if ('caches' in window) {
+            caches.keys().then(function(keys) {
+              keys.forEach(function(k) {
+                if (k.indexOf('v3.0') === -1) {
+                  console.log('[BOOT] Deleting old cache:', k)
+                  caches.delete(k)
+                }
+              })
+            })
+          }
+        }
+      }
     </script>
 
     <style>

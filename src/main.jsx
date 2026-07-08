@@ -121,7 +121,7 @@ const noSW = params.get('nosw') === '1'
 if ('serviceWorker' in navigator && !noSW) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
-      .register(`${import.meta.env.BASE_URL}service-worker.js`)
+      .register(`${import.meta.env.BASE_URL}sw.js`)
       .then((reg) => {
         reg.addEventListener('updatefound', () => {
           const newWorker = reg.installing

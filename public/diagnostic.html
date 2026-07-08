@@ -105,6 +105,7 @@
   <button class="danger" onclick="nukeAll()">NUKE: SW + Cache + IndexedDB + LocalStorage</button>
   <button class="secondary" onclick="location.href='./?nocache=' + Date.now()">APRI APP FRESH (bypass cache)</button>
   <button class="secondary" onclick="location.href='./?nosw=1'">APRI APP SENZA SERVICE WORKER</button>
+  <button class="secondary" style="background: #5ee6c8; color: #0a1620; border-color: #5ee6c8; font-weight: 700;" onclick="forceFixAndOpen()">⚡ FIX & APPI (pulisce tutto + apre app pulita)</button>
 
   <h2>Note</h2>
   <div class="note">
@@ -343,6 +344,44 @@ window.nukeAll = async function() {
     location.href = './?nocache=' + Date.now()
   } catch (e) {
     alert('Errore: ' + e.message)
+  }
+}
+
+// NUOVO: fix completo + open app pulita
+window.forceFixAndOpen = async function() {
+  if (!confirm('Questa operazione:\n\n1. Cancella TUTTI i service worker\n2. Cancella TUTTE le cache\n3. Apre l\'app con URL fresco\n\nProcedere?')) return
+  try {
+    // Show progress
+    const btn = event.target
+    const originalText = btn.textContent
+    btn.textContent = 'PULIZIA IN CORSO...'
+    btn.disabled = true
+
+    // 1. Unregister ALL service workers
+    const regs = await navigator.serviceWorker.getRegistrations()
+    for (const r of regs) {
+      console.log('Unregistering SW:', r.active?.scriptURL || r.scope)
+      await r.unregister()
+    }
+
+    // 2. Clear ALL caches
+    const keys = await caches.keys()
+    for (const k of keys) {
+      console.log('Deleting cache:', k)
+      await caches.delete(k)
+    }
+
+    // 3. Wait a bit for SW to fully unregister
+    await new Promise(r => setTimeout(r, 500))
+
+    // 4. Open app with cache-busting URL
+    btn.textContent = 'APERTURA APP...'
+    // Use _top to replace current page
+    window.location.replace('./?v=' + Date.now() + '&fresh=1')
+
+  } catch (e) {
+    alert('Errore: ' + e.message)
+    location.reload()
   }
 }
 
