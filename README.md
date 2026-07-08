@@ -1,6 +1,8 @@
-# TIMONE v2 — Marine Weather Routing
+# TIMONE v2.1 — Marine Weather Routing
 
-PWA di navigazione marina professionale per iPad. Weather routing con algoritmo isocrone, polari della barca, e 3 opzioni di rotta (veloce/comoda/sicura).
+PWA di navigazione marina professionale per iPad. Weather routing con algoritmo isocrone, polari della barca, 3 opzioni di rotta (veloce/comoda/sicura), land mask e correnti marine.
+
+**Live demo**: https://mtom123.github.io/Sailing-App/
 
 ## Stack
 
@@ -8,71 +10,102 @@ PWA di navigazione marina professionale per iPad. Weather routing con algoritmo 
 - **MapLibre GL JS** — mappa vettoriale con stile nautico custom
 - **Zustand** — state management
 - **Tailwind CSS 4** — design system "Marine Ops"
-- **Open-Meteo API** — vento, onde, pressione (gratuito, no API key)
+- **Open-Meteo API** — vento, onde, pressione, correnti (gratuito, no API key)
 - **EMODnet Bathymetry** + **OpenSeaMap** + **CARTO** — cartografia gratuita
+- **Natural Earth 50m** — land mask Mediterranean
 
-## Funzionalità v2
+## Cosa c'è in v2.1
 
-### Weather Routing (NEW)
-- Engine isocrone che calcola 3 rotte alternative: **veloce**, **comoda**, **sicura**
-- Polare della barca (Dufour 41 Classic predefinito, espandibile)
-- GRIB-like local wind grid 7×7 con dati orari 72h
-- Penalità comfort/sicura basate su vento, onda, TWA, ora del giorno
-- VMG ottimale lungo la rotta
-- Visualizzazione rotte alternative sulla mappa
-
-### Mappe (UPGRADED)
-- MapLibre GL JS con stile nautico custom (vs Leaflet raster)
+### Mappe
+- MapLibre GL JS con stile nautico custom
 - Batimetria EMODnet HR fino a z14
 - Seamarks OpenSeaMap con fari/boe
 - CARTO Voyager come base (z fino a 20)
 - Markers custom con rotazione, popup styled
-- Wind canvas overlay con frecce colorate per intensità
 
-### UI/UX (REDESIGNED)
-- Design system "Marine Ops": deep navy + phosphor teal
-- Glassmorphism pannelli galleggianti (vs sidebar rigide)
+### Weather Routing (engine isocrone)
+- Algoritmo isocrone: 24 direzioni × 30min steps × Pareto pruning
+- 3 rotte alternative: **veloce**, **comoda**, **sicura**
+- Polare Dufour 41 Classic interpolata bilinearmente
+- Penalità comfort/sicurezza su vento, onda, TWA, notte
+- VMG ottimale lungo la rotta
+- Land mask con grid spatial index (no attraversamento costa)
+- Correnti marine integrate (vector addizione a boat speed)
+- Cache IndexedDB per GRIB (TTL 6h)
+
+### Wind + Current visualization
+- Particle animation stile Windy per vento (180 particelle, fade trail)
+- Color coding per intensità: teal (light) → amber → red (strong)
+- Static arrows overlay per lettura direzione
+- Frecce blu per correnti marine (toggle layer)
+- Time-aware: campiona vento/corrente all'ora selezionata nella timeline
+
+### UI/UX "Marine Ops"
+- Palette deep navy + phosphor teal
+- Glassmorphism pannelli galleggianti
 - Touch targets ≥44px (Apple HIG)
 - Font: Inter (UI) + JetBrains Mono (dati)
 - Layout responsive iPad landscape/portrait
+- Connectivity indicator ONLINE/OFFLINE/PARTIAL
 
-### Weather Timeline (NEW)
+### Weather Timeline
 - Scrubber animato -12h/+72h (stile Windy)
 - Play con velocità 3×/6×/12×
-- Tick marks a ore/giorni chiave
-- Time display con data
+- Tick marks ore/giorni
 
-### Components
-- `MapView` — mappa MapLibre con tutti i layer
-- `RoutePanel` — editor rotte + 3 weather routing options
-- `WeatherTimeline` — scrubber animato
-- `InstrumentPanel` — SOG/COG/vento/onda/pressione
-- `AnchoragePanel` — ancoraggi con semaforo sicurezza
-- `TrackPanel` — log con export GPX
+### Boat Configuration
+- Selezione polar dalla library (Dufour 41 Classic predefinito)
+- Velocità motore configurabile
+- Angoli bolina/poppa configurabili
+- Espandibile con .pol upload (todo)
 
-## Routing Engine
+### Route Comparison
+- 3 opzioni visualizzate su mappa con colori diversi
+- Tabella comparativa: ETA, distanza, comfort score
+- Selezione rotta attiva con click
 
-L'algoritmo isocrone (`src/routing/isochroneEngine.js`):
+## Architettura
 
-1. Parte dal punto di start
-2. Per ogni step (30 min) esplora 24 direzioni (15° ciascuna)
-3. Per ogni direzione: legge vento dal GRIB, calcola TWA, risolve polar → boat speed
-4. Dead reckoning per nuova posizione
-5. Pruning Pareto: mantiene solo punti ottimali per cella 0.1°
-6. Quando raggiunge il goal (entro 2nm), backtrack per ricostruire rotta
-
-3 mode di routing:
-- **VELOCE** — min tempo, max 35kn vento, max 4m onda
-- **COMODA** — max 22kn vento, max 1.5m onda
-- **SICURA** — max 18kn vento, max 1.0m onda, penalty notte
-
-## Polar
-
-Polar del Dufour 41 Classic in `src/routing/polarSolver.js`:
-- TWS: 4-30 kn (10 righe)
-- TWA: 0-180° (8 colonne)
-- Interpolazione bilineare
-- Espandibile con altre barche (cruiser-41-monohull placeholder)
+```
+src/
+├── components/
+│   ├── v2/                    # Componenti nuovi
+│   │   ├── MapView.jsx        # MapLibre + layers + markers
+│   │   ├── RoutePanel.jsx     # Editor + routing options
+│   │   ├── WeatherTimeline.jsx # Scrubber -12h/+72h
+│   │   └── ConnectivityIndicator.jsx
+│   ├── InstrumentPanel.jsx    # SOG/COG/vento/onda
+│   ├── AnchoragePanel.jsx     # Ancoraggi con semaforo
+│   ├── SettingsSheet.jsx      # Config barca/AIS/allarmi
+│   └── TrackPanel.jsx         # Log con GPX export
+├── routing/
+│   ├── isochroneEngine.js     # Algoritmo isocrone
+│   └── polarSolver.js         # Polar Dufour 41
+├── store/
+│   └── useAppStore.js         # Zustand global state
+├── hooks/
+│   ├── useGrib.js             # 7×7 wind + current grid + cache
+│   ├── useWeatherRouting.js   # Async routing computation
+│   ├── useOpenMeteo.js        # Weather station data
+│   ├── useWindField.js        # Light wind field for display
+│   ├── useRoute.js            # Route draft + nav logic
+│   └── ...
+├── lib/
+│   ├── landMask.js            # Point-in-polygon + grid index
+│   ├── cache.js               # IndexedDB wrapper
+│   ├── geo.js                 # Haversine, bearing, etc.
+│   ├── route.js               # Route legs, ETA, GPX
+│   └── ...
+├── data/
+│   ├── geo/
+│   │   └── mediterranean-land.json  # 114KB land mask
+│   ├── anchorages.js
+│   └── marineParks.js
+├── map/
+│   └── marine-style.json      # MapLibre style nautico
+└── styles/
+    └── globals.css            # Tailwind 4 + design tokens
+```
 
 ## Avvio
 
@@ -85,10 +118,10 @@ npm run preview  # anteprima build
 
 ## Installazione su iPad
 
-1. Servire la build su HTTPS (GitHub Pages va bene)
-2. Safari → Apri URL → Condividi → Aggiungi a schermata Home
-3. Avviare dall'icona: schermo intero PWA
-4. Concedere geolocalizzazione al primo avvio
+1. Apri https://mtom123.github.io/Sailing-App/ in Safari
+2. Condividi → Aggiungi a schermata Home
+3. Avvia dall'icona: schermo intero PWA
+4. Concedi geolocalizzazione al primo avvio
 
 ## Sorgenti dati (tutte gratuite)
 
@@ -98,18 +131,27 @@ npm run preview  # anteprima build
 | Batimetria | EMODnet Bathymetry HR |
 | Seamarks (fari/boe) | OpenSeaMap |
 | Vento/onda/marea | Open-Meteo Marine + Forecast API |
+| Correnti marine | Open-Meteo Marine (ocean_current_*) |
+| Land mask | Natural Earth 50m (semplificato) |
 | AIS | AISHub (con username) o NMEA via bridge |
 | Pressione | Open-Meteo surface_pressure |
+| Pioggia | RainViewer |
 
 ## Roadmap
 
 - [x] M1: Mappe MapLibre + design system
 - [x] M2: Routing engine isocrone + polare
 - [x] M3: UX restyling Marine Ops
-- [ ] M4: Correnti marine + land mask
-- [ ] M5: GRIB offline + IndexedDB cache
+- [x] M4: Correnti marine + land mask
+- [x] M5a: IndexedDB cache GRIB + connectivity indicator
+- [x] Polish: wind particle animation, route comparison, boat config UI
+- [ ] M5b: UI download GRIB area (selezione bbox manuale)
 - [ ] M6: iPad native via Capacitor (opzionale)
+- [ ] Polar upload .pol file (custom)
+- [ ] Web Worker per routing lungo (>24h)
+- [ ] AIS collide alert
+- [ ] Meteogramma per punto (tap → 7gg grafico)
 
 ## License
 
-MIT — sorgenti dati mantengono proprie licenze (OSM, EMODnet, OpenSeaMap, CARTO).
+MIT — sorgenti dati mantengono proprie licenze (OSM, EMODnet, OpenSeaMap, CARTO, Natural Earth).

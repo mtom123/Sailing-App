@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import MapView from './components/v2/MapView.jsx'
 import RoutePanel from './components/v2/RoutePanel.jsx'
 import WeatherTimeline from './components/v2/WeatherTimeline.jsx'
+import ConnectivityIndicator from './components/v2/ConnectivityIndicator.jsx'
 import InstrumentPanel from './components/InstrumentPanel.jsx'
 import AnchoragePanel from './components/AnchoragePanel.jsx'
 import SettingsSheet from './components/SettingsSheet.jsx'
@@ -146,7 +147,9 @@ export default function App() {
   // Data hooks
   const weather = useOpenMeteo(view.center.lat, view.center.lon)
   const windField = useWindField(view.bounds, windLayerOn)
-  const grib = useGrib(view.bounds, true)
+  const gribData = useGrib(view.bounds, true)
+  const grib = gribData?.grib || null
+  const currentField = gribData?.currentField || null
   const rainTileUrl = useRainRadar(rainLayerOn)
   const { vessels, status: aisStatus } = useAIS({
     mode: aisMode,
@@ -174,6 +177,7 @@ export default function App() {
     start,
     goal,
     grib,
+    currentField,
     enabled: route.waypoints.length >= 2,
   })
 
@@ -276,6 +280,7 @@ export default function App() {
             geo={geo}
             weather={weather}
             windField={windField}
+            currentField={currentField}
             vessels={vessels}
             anchorages={anchorages}
             route={route}
@@ -460,6 +465,15 @@ export default function App() {
           setThreshold: (v) => useAppStore.getState().setWindAlarm({ threshold: v }),
         }}
         weatherError={weather.error}
+        gribStatus={{
+          wind: !!grib,
+          windPoints: grib?.grid?.length || 0,
+          windHours: grib?.grid?.[0]?.times?.length || 0,
+          current: !!(currentField && currentField.grid.some(p => p.currSpeed)),
+          currentPoints: currentField?.grid?.length || 0,
+          polygons: 1,
+          updatedAt: grib?.updatedAt,
+        }}
       />
 
       {nightMode && (

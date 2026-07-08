@@ -50,7 +50,7 @@ export default function InstrumentPanel({ geo, weather, sun, moon }) {
   const trend = pressureTrendGlyph(pressure?.trend3h)
 
   return (
-    <div className="flex h-full flex-col border-r border-line bg-ink">
+    <div className="flex h-full flex-col border-r border-line bg-abyss">
       <div className="flex items-center justify-between border-b border-line px-3 py-2">
         <span className="text-sm font-bold tracking-[0.3em] text-phos">TIMONE</span>
         <span className="flex items-center gap-1.5">
