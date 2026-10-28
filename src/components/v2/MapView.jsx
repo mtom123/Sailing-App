@@ -7,6 +7,8 @@ import { logStep, failStep, hideLoadingScreen } from '../../lib/debugLogger.js'
 import { EMODNET_WMS_URL, EMODNET_DEPTH_LAYER, isobathSld } from '../../lib/isobaths.js'
 import { SEAGRASS_WMS_URL, SEAGRASS_LAYER, seagrassSld } from '../../lib/seagrass.js'
 import { IsobathLayer } from '../../lib/isobathLayer.js'
+import { ShomReliefLayer } from '../../lib/shomRelief.js'
+import { LiguriaHabitatLayer } from '../../lib/liguriaHabitat.js'
 
 const ISOBATH_VECTOR_MIN_ZOOM = 12
 import ConnectivityIndicator from './ConnectivityIndicator.jsx'
@@ -268,8 +270,9 @@ export default function MapView({
         opacity: TILES.bathy.opacity,
         zIndex: 2,
       })
-      // Praterie di posidonia (EMODnet Seabed Habitats)
-      tileLayerRefs.current.posidonia = L.tileLayer.wms(SEAGRASS_WMS_URL, {
+      // Praterie di posidonia (EMODnet Seabed Habitats) + tipi di fondale
+      // dell'Atlante della Regione Liguria, più dettagliato
+      const seagrass = L.tileLayer.wms(SEAGRASS_WMS_URL, {
         layers: SEAGRASS_LAYER,
         format: 'image/png',
         transparent: true,
@@ -283,8 +286,9 @@ export default function MapView({
         attribution: '© EMODnet Seabed Habitats',
         zIndex: 3,
       })
-      // Isobate 2–1000 m + acque basse. Vista d'insieme (z9–10): immagini
-      // calcolate dal server EMODnet. Da z11: vettoriali, calcolate nell'app
+      tileLayerRefs.current.posidonia = L.layerGroup([seagrass, new LiguriaHabitatLayer()])
+      // Isobate 2–1000 m + acque basse. Vista d'insieme (z9–11): immagini
+      // calcolate dal server EMODnet. Da z12: vettoriali, calcolate nell'app
       // dalla griglia delle profondità, nitide a ogni zoom.
       tileLayerRefs.current.isobaths = L.tileLayer.wms(EMODNET_WMS_URL, {
         layers: EMODNET_DEPTH_LAYER,
@@ -307,6 +311,9 @@ export default function MapView({
         minZoom: ISOBATH_VECTOR_MIN_ZOOM,
         attribution: '© EMODnet Bathymetry',
       })
+      // Rilievo HD del Shom (Corsica, Costa Azzurra): sopra le carte, sotto le isobate
+      map.createPane('reliefPane').style.zIndex = 240
+      tileLayerRefs.current.shomRelief = new ShomReliefLayer({ pane: 'reliefPane' })
       // Fari e boe sopra le isobate vettoriali (pane 250)
       map.createPane('seamarkPane').style.zIndex = 260
       tileLayerRefs.current.seamarks = L.tileLayer(TILES.seamarks.url, {
@@ -322,6 +329,7 @@ export default function MapView({
       // Sul satellite il rilievo EMODnet coprirebbe il fondale visibile
       if (layers.bathy && !imagery) map.addLayer(tileLayerRefs.current.bathy)
       if (layers.posidonia) map.addLayer(tileLayerRefs.current.posidonia)
+      if (layers.shomRelief) map.addLayer(tileLayerRefs.current.shomRelief)
       if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobaths)
       if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobathVector)
       if (layers.seamarks) map.addLayer(tileLayerRefs.current.seamarks)
@@ -425,10 +433,11 @@ export default function MapView({
     }
     setVis(refs.bathy, layers.bathy && !imagery)
     setVis(refs.posidonia, layers.posidonia)
+    setVis(refs.shomRelief, layers.shomRelief)
     setVis(refs.isobaths, layers.isobaths)
     setVis(refs.isobathVector, layers.isobaths)
     setVis(refs.seamarks, layers.seamarks)
-  }, [baseStyle, layers.bathy, layers.posidonia, layers.isobaths, layers.seamarks, mapReady])
+  }, [baseStyle, layers.bathy, layers.posidonia, layers.shomRelief, layers.isobaths, layers.seamarks, mapReady])
 
   // === Follow boat ===
   useEffect(() => {
@@ -931,7 +940,8 @@ function LayerPopover({ onClose }) {
   const LAYER_DEFS = [
     { key: 'bathy', label: 'Batimetria' },
     { key: 'isobaths', label: 'Isobate / bassi fondali' },
-    { key: 'posidonia', label: 'Posidonia' },
+    { key: 'posidonia', label: 'Posidonia / fondali (Liguria)' },
+    { key: 'shomRelief', label: 'Fondale HD Francia (Shom)' },
     { key: 'seamarks', label: 'Fari / Boe' },
     { key: 'wind', label: 'Vettori vento' },
     { key: 'ais', label: 'Navi AIS' },

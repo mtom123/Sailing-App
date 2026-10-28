@@ -12,7 +12,7 @@ const MAX_TILE_ZOOM = 14 // massimo dettaglio dei tasselli OpenMapTiles
 const MAX_TILES = 24
 
 let templatePromise = null
-const tiles = new Map() // "z/x/y" -> Promise<rings [lat, lon][][]>
+const tiles = new Map() // "z/x/y" -> Promise<{ ocean, ring: [lat, lon][] }[]>
 
 // L'URL dei tasselli contiene la versione dei dati: si legge dal TileJSON
 function tileTemplate() {
@@ -39,9 +39,11 @@ function loadTile(z, x, y) {
         const rings = []
         if (!water) return rings
         for (let i = 0; i < water.length; i++) {
-          const g = water.feature(i).toGeoJSON(x, y, z).geometry
+          const f = water.feature(i)
+          const ocean = f.properties.class === 'ocean'
+          const g = f.toGeoJSON(x, y, z).geometry
           const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : []
-          for (const poly of polys) for (const ring of poly) rings.push(ring.map(([lon, lat]) => [lat, lon]))
+          for (const poly of polys) for (const ring of poly) rings.push({ ocean, ring: ring.map(([lon, lat]) => [lat, lon]) })
         }
         return rings
       })
@@ -61,9 +63,10 @@ const tileY = (lat, n) => {
  * Anelli dei poligoni d'acqua che coprono `bounds` (L.LatLngBounds), al
  * dettaglio adatto allo zoom della mappa. Gli anelli di tasselli vicini si
  * sovrappongono un po' (buffer): vanno riempiti con la regola nonzero.
+ * Con `oceanOnly` solo il mare (senza laghi, stagni e fiumi).
  * Risolve null se servirebbero troppi tasselli.
  */
-export async function waterRings(bounds, mapZoom) {
+export async function waterRings(bounds, mapZoom, { oceanOnly = false } = {}) {
   // Tasselli da 512 px: un livello sotto lo zoom della mappa
   const z = Math.max(0, Math.min(MAX_TILE_ZOOM, Math.round(mapZoom) - 1))
   const n = 2 ** z
@@ -74,5 +77,8 @@ export async function waterRings(bounds, mapZoom) {
   if ((x1 - x0 + 1) * (y1 - y0 + 1) > MAX_TILES) return null
   const jobs = []
   for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) jobs.push(loadTile(z, x, y))
-  return (await Promise.all(jobs)).flat()
+  return (await Promise.all(jobs))
+    .flat()
+    .filter((r) => !oceanOnly || r.ocean)
+    .map((r) => r.ring)
 }

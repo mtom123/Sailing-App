@@ -137,7 +137,10 @@ export const IsobathLayer = L.Layer.extend({
   _setMask() {
     if (this._mask) this._group.removeLayer(this._mask)
     this._mask = null
-    if (!this._waterRings || !this._waterRings.length) return
+    // Niente mare nella zona: una maschera vuota non cancellerebbe niente
+    const noWater = !!this._waterRings && this._waterRings.length === 0
+    if (this._renderer._container) this._renderer._container.style.visibility = noWater ? 'hidden' : ''
+    if (!this._waterRings || noWater) return
     this._mask = L.polygon(this._waterRings, {
       renderer: this._renderer,
       mask: true,
