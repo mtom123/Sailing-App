@@ -1,62 +1,9 @@
-@import 'tailwindcss';
 @import 'leaflet/dist/leaflet.css';
 
-/* ============================================================
-   TIMONE v2 — Marine Ops Design System
-   Palette: deep navy + phosphor teal (leggero, leggibile al sole)
-   Tipografia: Inter UI, JetBrains Mono dati
-   ============================================================ */
-
-@theme {
-  /* Surfaces — profondità del mare */
-  --color-abyss: #0a1620;
-  --color-deep: #0e1d2a;
-  --color-surface: #122a3a;
-  --color-raised: #16323f;
-  --color-line: #1f3a4d;
-  --color-line-bright: #2c4d63;
-
-  /* Alias per compatibilità con vecchi componenti v1 */
-  --color-ink: #0a1620;
-  --color-panel: #122a3a;
-
-  /* Foreground */
-  --color-paper: #e8f0f5;
-  --color-fog: #8fa0ae;
-  --color-fog-dim: #5d6e7a;
-
-  /* Azioni */
-  --color-phos: #5ee6c8;
-  --color-phos-dim: #2a8a76;
-  --color-warn: #f5a623;
-  --color-danger: #ff5252;
-  --color-info: #4a9eff;
-
-  /* Alias per compatibilità con vecchi componenti v1 */
-  --color-phosdim: #2a8a76;
-
-  /* Bathymetry */
-  --color-bathy-deep: #0d2438;
-  --color-bathy-mid: #1a4566;
-  --color-bathy-shallow: #2e7a9e;
-  --color-bathy-reef: #d97757;
-  --color-bathy-shoal: #ff8c42;
-
-  /* Font */
-  --font-ui: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-
-  /* Radius */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 18px;
-
-  /* Shadows — soft, per pannelli galleggianti */
-  --shadow-panel: 0 8px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(46, 122, 158, 0.08);
-  --shadow-hud: 0 4px 20px rgba(0, 0, 0, 0.4);
-  --shadow-glow: 0 0 20px rgba(94, 230, 200, 0.3);
-}
+/* Tema (palette, font, raggi, ombre): tailwind.config.js */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 /* Reset + base */
 *,
