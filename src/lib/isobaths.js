@@ -16,11 +16,11 @@ export const EMODNET_DEPTH_LAYER = 'emodnet:mean'
 // Livelli delle isobate (m)
 export const ISOBATH_LEVELS = [2, 5, 10, 20, 30, 50, 100, 200, 500, 1000]
 // Fino a questa profondità linea più marcata (acque da tenere d'occhio)
-const SHALLOW_LIMIT = 10
+export const SHALLOW_LIMIT = 10
 
 // Riempimento acque basse, come sulle carte nautiche: più basso = più scuro.
 // [profondità massima della fascia, colore, opacità]
-const SHALLOW_BANDS = [
+export const SHALLOW_BANDS = [
   [2, '#3f8fd0', 0.6],
   [5, '#6aa9db', 0.5],
   [10, '#97c4e7', 0.4],
@@ -46,8 +46,8 @@ function shallowFillStyle() {
 }
 
 // Colori [linea bassi fondali, linea profonda, alone etichette]
-const CHART_COLORS = ['#0b3d91', '#3a6ea5', '#ffffff']
-const IMAGERY_COLORS = ['#8fe3ff', '#d6f3ff', '#0a1620'] // chiari su satellite
+export const CHART_COLORS = ['#0b3d91', '#3a6ea5', '#ffffff']
+export const IMAGERY_COLORS = ['#8fe3ff', '#d6f3ff', '#0a1620'] // chiari su satellite
 
 function contourRule(filter, stroke, width, halo) {
   const label =

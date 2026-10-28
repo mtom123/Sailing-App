@@ -191,6 +191,18 @@ body,
   pointer-events: none;
 }
 
+/* Profondità lungo le isobate (colore e alone impostati dal livello) */
+.timone-isobath-label span {
+  position: absolute;
+  font: bold 10px ui-monospace, monospace;
+  white-space: nowrap;
+  pointer-events: none;
+  text-shadow:
+    0 0 2px var(--halo),
+    0 0 2px var(--halo),
+    0 0 3px var(--halo);
+}
+
 /* ============================================================
    Animations
    ============================================================ */

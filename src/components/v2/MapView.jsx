@@ -6,6 +6,9 @@ import { useAppStore } from '../../store/useAppStore.js'
 import { logStep, failStep, hideLoadingScreen } from '../../lib/debugLogger.js'
 import { EMODNET_WMS_URL, EMODNET_DEPTH_LAYER, isobathSld } from '../../lib/isobaths.js'
 import { SEAGRASS_WMS_URL, SEAGRASS_LAYER, seagrassSld } from '../../lib/seagrass.js'
+import { IsobathLayer } from '../../lib/isobathLayer.js'
+
+const ISOBATH_VECTOR_MIN_ZOOM = 12
 import ConnectivityIndicator from './ConnectivityIndicator.jsx'
 import MapContextMenu from './MapContextMenu.jsx'
 import MeteogramPopup from './MeteogramPopup.jsx'
@@ -280,7 +283,9 @@ export default function MapView({
         attribution: '© EMODnet Seabed Habitats',
         zIndex: 3,
       })
-      // Isobate 2–1000 m + acque basse, calcolate dal server EMODnet
+      // Isobate 2–1000 m + acque basse. Vista d'insieme (z9–10): immagini
+      // calcolate dal server EMODnet. Da z11: vettoriali, calcolate nell'app
+      // dalla griglia delle profondità, nitide a ogni zoom.
       tileLayerRefs.current.isobaths = L.tileLayer.wms(EMODNET_WMS_URL, {
         layers: EMODNET_DEPTH_LAYER,
         format: 'image/png',
@@ -290,22 +295,26 @@ export default function MapView({
         interpolations: 'bilinear', // isobate morbide invece che "a scalini" sulle celle da ~115 m
         tileSize: 512,
         minZoom: 9, // sotto: troppo fitte e pesanti da calcolare
-        maxZoom: 19,
-        // ~1 s per tassello lato server: si chiede solo lo zoom finale,
-        // e oltre z16 (dati a ~115 m) si riusano i tasselli di z16
-        maxNativeZoom: 16,
-        updateWhenZooming: false,
+        maxZoom: ISOBATH_VECTOR_MIN_ZOOM - 1,
+        updateWhenZooming: false, // ~1 s per tassello lato server: solo lo zoom finale
         updateWhenIdle: true,
         attribution: '© EMODnet Bathymetry',
         zIndex: 4,
       })
       tileLayerRefs.current.isobathsImagery = imagery
+      tileLayerRefs.current.isobathVector = new IsobathLayer({
+        imagery,
+        minZoom: ISOBATH_VECTOR_MIN_ZOOM,
+        attribution: '© EMODnet Bathymetry',
+      })
+      // Fari e boe sopra le isobate vettoriali (pane 250)
+      map.createPane('seamarkPane').style.zIndex = 260
       tileLayerRefs.current.seamarks = L.tileLayer(TILES.seamarks.url, {
         attribution: TILES.seamarks.attribution,
         maxZoom: 19,
         maxNativeZoom: 18,
         opacity: TILES.seamarks.opacity,
-        zIndex: 5,
+        pane: 'seamarkPane',
       })
 
       // Add base + overlays based on layer state
@@ -314,6 +323,7 @@ export default function MapView({
       if (layers.bathy && !imagery) map.addLayer(tileLayerRefs.current.bathy)
       if (layers.posidonia) map.addLayer(tileLayerRefs.current.posidonia)
       if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobaths)
+      if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobathVector)
       if (layers.seamarks) map.addLayer(tileLayerRefs.current.seamarks)
 
       // Layer groups for routes, tracks, parks
@@ -406,6 +416,7 @@ export default function MapView({
       refs.isobaths.setParams({ sld_body: isobathSld({ imagery }) })
       refs.isobathsImagery = imagery
     }
+    refs.isobathVector?.setImagery(imagery)
 
     const setVis = (layer, visible) => {
       if (!layer) return
@@ -415,6 +426,7 @@ export default function MapView({
     setVis(refs.bathy, layers.bathy && !imagery)
     setVis(refs.posidonia, layers.posidonia)
     setVis(refs.isobaths, layers.isobaths)
+    setVis(refs.isobathVector, layers.isobaths)
     setVis(refs.seamarks, layers.seamarks)
   }, [baseStyle, layers.bathy, layers.posidonia, layers.isobaths, layers.seamarks, mapReady])
 
