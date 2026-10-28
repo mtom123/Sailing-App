@@ -226,7 +226,9 @@ export default function MapView({
       // Tile layers
       tileLayerRefs.current.bathy = L.tileLayer(TILES.bathy.url, {
         attribution: TILES.bathy.attribution,
-        maxZoom: 19,
+        // Oltre z13 (nativo) il rilievo ingrandito impasta anche la terra:
+        // si nasconde e restano isobate e acque basse, ricalcolate a ogni zoom
+        maxZoom: 13,
         maxNativeZoom: 13,
         opacity: TILES.bathy.opacity,
       })
@@ -247,6 +249,11 @@ export default function MapView({
         tileSize: 512,
         minZoom: 9, // sotto: troppo fitte e pesanti da calcolare
         maxZoom: 19,
+        // ~1 s per tassello lato server: si chiede solo lo zoom finale,
+        // e oltre z16 (dati a ~115 m) si riusano i tasselli di z16
+        maxNativeZoom: 16,
+        updateWhenZooming: false,
+        updateWhenIdle: true,
         attribution: '© EMODnet Bathymetry',
       })
       tileLayerRefs.current.seamarks = L.tileLayer(TILES.seamarks.url, {
