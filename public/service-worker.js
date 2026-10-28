@@ -1,7 +1,7 @@
 /*
  * TIMONE Service Worker
  * Strategia: Network-First con fallback su cache.
- * - Tasselli mappa (OpenSeaMap, CARTO, EMODnet, OSM): cache dedicata con limite
+ * - Tasselli mappa (OpenSeaMap, Esri, EMODnet, OSM): cache dedicata con limite
  *   di voci, così le zone già navigate restano consultabili offline.
  * - API Open-Meteo: cache dati, l'ultima previsione scaricata resta disponibile.
  * - Shell applicativa (HTML/JS/CSS): cache per avvio offline completo.
@@ -19,7 +19,7 @@ const SHELL_URLS = [BASE, `${BASE}index.html`, `${BASE}manifest.webmanifest`];
 
 const TILE_HOSTS = [
   'tiles.openseamap.org',
-  'basemaps.cartocdn.com',
+  'server.arcgisonline.com',
   'tiles.emodnet-bathymetry.eu',
   'tile.openstreetmap.org',
 ];

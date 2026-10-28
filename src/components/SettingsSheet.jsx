@@ -366,7 +366,7 @@ export default function SettingsSheet({
           <Section title="Informazioni">
             <div className="text-[10px] leading-relaxed text-fog">
               <b className="text-paper">TIMONE v2.1</b> — PWA di navigazione con weather routing
-              isocrone. Dati: Open-Meteo, OpenSeaMap, EMODnet, CARTO, RainViewer, Natural Earth.
+              isocrone. Dati: Open-Meteo, OpenSeaMap, EMODnet, Esri, RainViewer, Natural Earth.
               Ausilio alla navigazione: non sostituisce le carte ufficiali né le ordinanze delle
               Capitanerie. Perimetri delle aree protette indicativi.
             </div>

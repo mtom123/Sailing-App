@@ -99,10 +99,10 @@ const TILES = {
     maxZoom: 13,
     opacity: 0.65,
   },
-  carto: {
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
-    subdomains: 'abc',
-    attribution: '© OpenStreetMap, © CARTO',
+  // Esri World Topo: senza chiave (CARTO ora richiede una API key)
+  base: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+    attribution: '© Esri, HERE, Garmin, © OpenStreetMap contributors',
     maxZoom: 20,
     opacity: 0.92,
   },
@@ -229,12 +229,11 @@ export default function MapView({
         maxNativeZoom: 13,
         opacity: TILES.bathy.opacity,
       })
-      tileLayerRefs.current.carto = L.tileLayer(TILES.carto.url, {
-        subdomains: TILES.carto.subdomains,
-        attribution: TILES.carto.attribution,
+      tileLayerRefs.current.base = L.tileLayer(TILES.base.url, {
+        attribution: TILES.base.attribution,
         maxZoom: 20,
         maxNativeZoom: 19,
-        opacity: TILES.carto.opacity,
+        opacity: TILES.base.opacity,
       })
       tileLayerRefs.current.seamarks = L.tileLayer(TILES.seamarks.url, {
         attribution: TILES.seamarks.attribution,
@@ -244,7 +243,7 @@ export default function MapView({
       })
 
       // Add base + overlays based on layer state
-      map.addLayer(tileLayerRefs.current.carto)
+      map.addLayer(tileLayerRefs.current.base)
       if (layers.bathy) map.addLayer(tileLayerRefs.current.bathy)
       if (layers.seamarks) map.addLayer(tileLayerRefs.current.seamarks)
 
