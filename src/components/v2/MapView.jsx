@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css'
 import { formatDeg, metersToNm, haversine, bearing, cardinal } from '../../lib/geo.js'
 import { useAppStore } from '../../store/useAppStore.js'
 import { logStep, failStep, hideLoadingScreen } from '../../lib/debugLogger.js'
+import { EMODNET_WMS_URL, EMODNET_DEPTH_LAYER, isobathSld } from '../../lib/isobaths.js'
 import ConnectivityIndicator from './ConnectivityIndicator.jsx'
 import MapContextMenu from './MapContextMenu.jsx'
 import MeteogramPopup from './MeteogramPopup.jsx'
@@ -235,6 +236,19 @@ export default function MapView({
         maxNativeZoom: 19,
         opacity: TILES.base.opacity,
       })
+      // Isobate 2–1000 m + acque basse, calcolate dal server EMODnet
+      tileLayerRefs.current.isobaths = L.tileLayer.wms(EMODNET_WMS_URL, {
+        layers: EMODNET_DEPTH_LAYER,
+        format: 'image/png',
+        transparent: true,
+        version: '1.1.1',
+        sld_body: isobathSld(),
+        interpolations: 'bilinear', // isobate morbide invece che "a scalini" sulle celle da ~115 m
+        tileSize: 512,
+        minZoom: 9, // sotto: troppo fitte e pesanti da calcolare
+        maxZoom: 19,
+        attribution: '© EMODnet Bathymetry',
+      })
       tileLayerRefs.current.seamarks = L.tileLayer(TILES.seamarks.url, {
         attribution: TILES.seamarks.attribution,
         maxZoom: 19,
@@ -245,6 +259,7 @@ export default function MapView({
       // Add base + overlays based on layer state
       map.addLayer(tileLayerRefs.current.base)
       if (layers.bathy) map.addLayer(tileLayerRefs.current.bathy)
+      if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobaths)
       if (layers.seamarks) map.addLayer(tileLayerRefs.current.seamarks)
 
       // Layer groups for routes, tracks, parks
@@ -328,8 +343,9 @@ export default function MapView({
       if (!layers[key] && map.hasLayer(layer)) map.removeLayer(layer)
     }
     setVis(tileLayerRefs.current.bathy, 'bathy')
+    setVis(tileLayerRefs.current.isobaths, 'isobaths')
     setVis(tileLayerRefs.current.seamarks, 'seamarks')
-  }, [layers.bathy, layers.seamarks, mapReady])
+  }, [layers.bathy, layers.isobaths, layers.seamarks, mapReady])
 
   // === Follow boat ===
   useEffect(() => {
@@ -831,6 +847,7 @@ function LayerPopover({ onClose }) {
   const { layers, toggleLayer, baseStyle, setBaseStyle } = useAppStore()
   const LAYER_DEFS = [
     { key: 'bathy', label: 'Batimetria' },
+    { key: 'isobaths', label: 'Isobate / bassi fondali' },
     { key: 'seamarks', label: 'Fari / Boe' },
     { key: 'wind', label: 'Vettori vento' },
     { key: 'ais', label: 'Navi AIS' },

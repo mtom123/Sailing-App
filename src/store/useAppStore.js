@@ -22,6 +22,7 @@ export const useAppStore = create(
       // === Layers visibility ===
       layers: {
         bathy: true,
+        isobaths: true,
         seamarks: true,
         wind: true,
         ais: false,
@@ -137,6 +138,12 @@ export const useAppStore = create(
     }),
     {
       name: 'timone.v2',
+      // I livelli nuovi (es. isobate) prendono il default anche se c'è uno stato salvato
+      merge: (persisted, current) => ({
+        ...current,
+        ...persisted,
+        layers: { ...current.layers, ...persisted?.layers },
+      }),
       partialize: (s) => ({
         baseStyle: s.baseStyle,
         layers: s.layers,
