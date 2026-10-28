@@ -5,6 +5,7 @@ import { formatDeg, metersToNm, haversine, bearing, cardinal } from '../../lib/g
 import { useAppStore } from '../../store/useAppStore.js'
 import { logStep, failStep, hideLoadingScreen } from '../../lib/debugLogger.js'
 import { EMODNET_WMS_URL, EMODNET_DEPTH_LAYER, isobathSld } from '../../lib/isobaths.js'
+import { SEAGRASS_WMS_URL, SEAGRASS_LAYER, seagrassSld } from '../../lib/seagrass.js'
 import ConnectivityIndicator from './ConnectivityIndicator.jsx'
 import MapContextMenu from './MapContextMenu.jsx'
 import MeteogramPopup from './MeteogramPopup.jsx'
@@ -100,12 +101,27 @@ const TILES = {
     maxZoom: 13,
     opacity: 0.65,
   },
-  // Esri World Topo: senza chiave (CARTO ora richiede una API key)
-  base: {
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
-    attribution: '© Esri, HERE, Garmin, © OpenStreetMap contributors',
-    maxZoom: 20,
-    opacity: 0.92,
+  // Carte di base Esri, senza chiave (CARTO ora richiede una API key)
+  bases: {
+    chart: {
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+      attribution: '© Esri, HERE, Garmin, © OpenStreetMap contributors',
+      maxNativeZoom: 19,
+      opacity: 0.92,
+    },
+    dark: {
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+      attribution: '© Esri, HERE, Garmin, © OpenStreetMap contributors',
+      maxNativeZoom: 16,
+      opacity: 1,
+    },
+    // Satellite: costa reale e fondale visibile (sabbia / posidonia / scogli) per ancorare
+    satellite: {
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      attribution: '© Esri, Maxar, Earthstar Geographics',
+      maxNativeZoom: 19,
+      opacity: 1,
+    },
   },
   seamarks: {
     url: 'https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',
@@ -113,6 +129,17 @@ const TILES = {
     maxZoom: 18,
     opacity: 0.95,
   },
+}
+
+function makeBaseLayer(style) {
+  const b = TILES.bases[style] || TILES.bases.chart
+  return L.tileLayer(b.url, {
+    attribution: b.attribution,
+    maxZoom: 20,
+    maxNativeZoom: b.maxNativeZoom,
+    opacity: b.opacity,
+    zIndex: 1,
+  })
 }
 
 // ============================================================
@@ -161,6 +188,7 @@ export default function MapView({
     setFollow,
     layers,
     toggleLayer,
+    baseStyle,
     leftPanelOpen,
     setLeftPanelOpen,
     activeDrawer,
@@ -223,7 +251,11 @@ export default function MapView({
       L.control.zoom({ position: 'bottomright' }).addTo(map)
       L.control.scale({ metric: true, imperial: false, position: 'bottomleft', maxWidth: 200 }).addTo(map)
 
-      // Tile layers
+      // Tile layers — zIndex fisso: l'ordine resta giusto anche
+      // quando un livello viene spento e riacceso
+      const imagery = baseStyle === 'satellite'
+      tileLayerRefs.current.base = makeBaseLayer(baseStyle)
+      tileLayerRefs.current.baseStyle = baseStyle
       tileLayerRefs.current.bathy = L.tileLayer(TILES.bathy.url, {
         attribution: TILES.bathy.attribution,
         // Oltre z13 (nativo) il rilievo ingrandito impasta anche la terra:
@@ -231,12 +263,22 @@ export default function MapView({
         maxZoom: 13,
         maxNativeZoom: 13,
         opacity: TILES.bathy.opacity,
+        zIndex: 2,
       })
-      tileLayerRefs.current.base = L.tileLayer(TILES.base.url, {
-        attribution: TILES.base.attribution,
-        maxZoom: 20,
-        maxNativeZoom: 19,
-        opacity: TILES.base.opacity,
+      // Praterie di posidonia (EMODnet Seabed Habitats)
+      tileLayerRefs.current.posidonia = L.tileLayer.wms(SEAGRASS_WMS_URL, {
+        layers: SEAGRASS_LAYER,
+        format: 'image/png',
+        transparent: true,
+        version: '1.1.1',
+        sld_body: seagrassSld(),
+        tileSize: 512,
+        minZoom: 10,
+        maxZoom: 19,
+        updateWhenZooming: false,
+        updateWhenIdle: true,
+        attribution: '© EMODnet Seabed Habitats',
+        zIndex: 3,
       })
       // Isobate 2–1000 m + acque basse, calcolate dal server EMODnet
       tileLayerRefs.current.isobaths = L.tileLayer.wms(EMODNET_WMS_URL, {
@@ -244,7 +286,7 @@ export default function MapView({
         format: 'image/png',
         transparent: true,
         version: '1.1.1',
-        sld_body: isobathSld(),
+        sld_body: isobathSld({ imagery }),
         interpolations: 'bilinear', // isobate morbide invece che "a scalini" sulle celle da ~115 m
         tileSize: 512,
         minZoom: 9, // sotto: troppo fitte e pesanti da calcolare
@@ -255,17 +297,22 @@ export default function MapView({
         updateWhenZooming: false,
         updateWhenIdle: true,
         attribution: '© EMODnet Bathymetry',
+        zIndex: 4,
       })
+      tileLayerRefs.current.isobathsImagery = imagery
       tileLayerRefs.current.seamarks = L.tileLayer(TILES.seamarks.url, {
         attribution: TILES.seamarks.attribution,
         maxZoom: 19,
         maxNativeZoom: 18,
         opacity: TILES.seamarks.opacity,
+        zIndex: 5,
       })
 
       // Add base + overlays based on layer state
       map.addLayer(tileLayerRefs.current.base)
-      if (layers.bathy) map.addLayer(tileLayerRefs.current.bathy)
+      // Sul satellite il rilievo EMODnet coprirebbe il fondale visibile
+      if (layers.bathy && !imagery) map.addLayer(tileLayerRefs.current.bathy)
+      if (layers.posidonia) map.addLayer(tileLayerRefs.current.posidonia)
       if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobaths)
       if (layers.seamarks) map.addLayer(tileLayerRefs.current.seamarks)
 
@@ -344,15 +391,32 @@ export default function MapView({
     if (!mapReady) return
     const map = mapRef.current
     if (!map) return
-    const setVis = (layer, key) => {
-      if (!layer) return
-      if (layers[key] && !map.hasLayer(layer)) map.addLayer(layer)
-      if (!layers[key] && map.hasLayer(layer)) map.removeLayer(layer)
+    const refs = tileLayerRefs.current
+    const imagery = baseStyle === 'satellite'
+
+    // Carta di base
+    if (refs.baseStyle !== baseStyle) {
+      map.removeLayer(refs.base)
+      refs.base = makeBaseLayer(baseStyle)
+      refs.baseStyle = baseStyle
+      map.addLayer(refs.base)
     }
-    setVis(tileLayerRefs.current.bathy, 'bathy')
-    setVis(tileLayerRefs.current.isobaths, 'isobaths')
-    setVis(tileLayerRefs.current.seamarks, 'seamarks')
-  }, [layers.bathy, layers.isobaths, layers.seamarks, mapReady])
+    // Isobate: senza riempimento e chiare sul satellite
+    if (refs.isobaths && refs.isobathsImagery !== imagery) {
+      refs.isobaths.setParams({ sld_body: isobathSld({ imagery }) })
+      refs.isobathsImagery = imagery
+    }
+
+    const setVis = (layer, visible) => {
+      if (!layer) return
+      if (visible && !map.hasLayer(layer)) map.addLayer(layer)
+      if (!visible && map.hasLayer(layer)) map.removeLayer(layer)
+    }
+    setVis(refs.bathy, layers.bathy && !imagery)
+    setVis(refs.posidonia, layers.posidonia)
+    setVis(refs.isobaths, layers.isobaths)
+    setVis(refs.seamarks, layers.seamarks)
+  }, [baseStyle, layers.bathy, layers.posidonia, layers.isobaths, layers.seamarks, mapReady])
 
   // === Follow boat ===
   useEffect(() => {
@@ -855,6 +919,7 @@ function LayerPopover({ onClose }) {
   const LAYER_DEFS = [
     { key: 'bathy', label: 'Batimetria' },
     { key: 'isobaths', label: 'Isobate / bassi fondali' },
+    { key: 'posidonia', label: 'Posidonia' },
     { key: 'seamarks', label: 'Fari / Boe' },
     { key: 'wind', label: 'Vettori vento' },
     { key: 'ais', label: 'Navi AIS' },
@@ -876,6 +941,7 @@ function LayerPopover({ onClose }) {
           {[
             ['chart', 'CHIARA'],
             ['dark', 'SCURA'],
+            ['satellite', 'SATELLITE'],
           ].map(([id, label]) => (
             <button
               key={id}

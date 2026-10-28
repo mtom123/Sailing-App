@@ -16,13 +16,14 @@ export const useAppStore = create(
       setFollow: (follow) => set({ follow }),
 
       // === Map style ===
-      baseStyle: 'chart', // 'chart' | 'dark' | 'satellite' (future)
+      baseStyle: 'chart', // 'chart' | 'dark' | 'satellite'
       setBaseStyle: (baseStyle) => set({ baseStyle }),
 
       // === Layers visibility ===
       layers: {
         bathy: true,
         isobaths: true,
+        posidonia: true,
         seamarks: true,
         wind: true,
         ais: false,

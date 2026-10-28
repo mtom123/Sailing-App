@@ -45,7 +45,11 @@ function shallowFillStyle() {
   return `<FeatureTypeStyle><Rule><RasterSymbolizer><ColorMap type="intervals">${entries.join('')}</ColorMap></RasterSymbolizer></Rule></FeatureTypeStyle>`
 }
 
-function contourRule(filter, stroke, width) {
+// Colori [linea bassi fondali, linea profonda, alone etichette]
+const CHART_COLORS = ['#0b3d91', '#3a6ea5', '#ffffff']
+const IMAGERY_COLORS = ['#8fe3ff', '#d6f3ff', '#0a1620'] // chiari su satellite
+
+function contourRule(filter, stroke, width, halo) {
   const label =
     '<ogc:Function name="numberFormat">' +
     lit('0') +
@@ -57,7 +61,7 @@ function contourRule(filter, stroke, width) {
     `<TextSymbolizer><Label>${label}</Label>` +
     `<Font>${css('font-family', 'SansSerif')}${css('font-size', 10)}${css('font-weight', 'bold')}</Font>` +
     '<LabelPlacement><LinePlacement/></LabelPlacement>' +
-    `<Halo><Radius>1.5</Radius><Fill>${css('fill', '#ffffff')}</Fill></Halo>` +
+    `<Halo><Radius>1.5</Radius><Fill>${css('fill', halo)}</Fill></Halo>` +
     `<Fill>${css('fill', stroke)}</Fill>` +
     vendor('followLine', 'true') +
     vendor('repeat', 250) +
@@ -66,7 +70,7 @@ function contourRule(filter, stroke, width) {
   )
 }
 
-function contourStyle() {
+function contourStyle([shallowColor, deepColor, halo]) {
   const levels = ISOBATH_LEVELS.map((d) => lit(-d)).join('')
   const value = '<ogc:PropertyName>value</ogc:PropertyName>'
   const shallow = `<ogc:PropertyIsGreaterThanOrEqualTo>${value}${lit(-SHALLOW_LIMIT)}</ogc:PropertyIsGreaterThanOrEqualTo>`
@@ -76,19 +80,23 @@ function contourStyle() {
     `<ogc:Function name="parameter">${lit('data')}</ogc:Function>` +
     `<ogc:Function name="parameter">${lit('levels')}${levels}</ogc:Function>` +
     '</ogc:Function></Transformation>' +
-    contourRule(shallow, '#0b3d91', 1.4) +
-    contourRule(deep, '#3a6ea5', 0.8) +
+    contourRule(shallow, shallowColor, 1.4, halo) +
+    contourRule(deep, deepColor, 0.8, halo) +
     '</FeatureTypeStyle>'
   )
 }
 
-/** Stile SLD completo: riempimento acque basse + isobate con etichette in metri. */
-export function isobathSld() {
+/**
+ * Stile SLD: isobate con etichette in metri e riempimento delle acque basse.
+ * Con `imagery` (carta satellite) niente riempimento, per lasciar vedere il
+ * fondale, e linee chiare.
+ */
+export function isobathSld({ imagery = false } = {}) {
   return (
     '<StyledLayerDescriptor version="1.0.0" xmlns="http://www.opengis.net/sld" xmlns:ogc="http://www.opengis.net/ogc">' +
     `<NamedLayer><Name>${EMODNET_DEPTH_LAYER}</Name><UserStyle>` +
-    shallowFillStyle() +
-    contourStyle() +
+    (imagery ? '' : shallowFillStyle()) +
+    contourStyle(imagery ? IMAGERY_COLORS : CHART_COLORS) +
     '</UserStyle></NamedLayer></StyledLayerDescriptor>'
   )
 }
