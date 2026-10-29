@@ -35,17 +35,31 @@ function loadTile(z, x, y) {
         return r.arrayBuffer()
       })
       .then((buf) => {
-        const water = new VectorTile(new Pbf(new Uint8Array(buf))).layers.water
-        const rings = []
-        if (!water) return rings
-        for (let i = 0; i < water.length; i++) {
-          const f = water.feature(i)
-          const ocean = f.properties.class === 'ocean'
+        const layers = new VectorTile(new Pbf(new Uint8Array(buf))).layers
+        const rings = (f) => {
           const g = f.toGeoJSON(x, y, z).geometry
           const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : []
-          for (const poly of polys) for (const ring of poly) rings.push({ ocean, ring: ring.map(([lon, lat]) => [lat, lon]) })
+          return polys.flat().map((ring) => ring.map(([lon, lat]) => [lat, lon]))
         }
-        return rings
+        // Acqua; spiagge e porti (solo nei tasselli z14) per la fascia costiera
+        const tile = { water: [], beaches: [], harbors: [] }
+        const each = (name, fn) => {
+          const l = layers[name]
+          if (l) for (let i = 0; i < l.length; i++) fn(l.feature(i))
+        }
+        each('water', (f) => {
+          const ocean = f.properties.class === 'ocean'
+          for (const ring of rings(f)) tile.water.push({ ocean, ring })
+        })
+        each('landcover', (f) => {
+          if (f.properties.subclass === 'beach') tile.beaches.push(...rings(f))
+        })
+        each('poi', (f) => {
+          if (f.properties.class !== 'harbor') return
+          const [lon, lat] = f.toGeoJSON(x, y, z).geometry.coordinates
+          tile.harbors.push([lat, lon])
+        })
+        return tile
       })
     p.catch(() => tiles.delete(key))
     tiles.set(key, p)
@@ -78,7 +92,30 @@ export async function waterRings(bounds, mapZoom, { oceanOnly = false } = {}) {
   const jobs = []
   for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) jobs.push(loadTile(z, x, y))
   return (await Promise.all(jobs))
-    .flat()
+    .flatMap((t) => t.water)
     .filter((r) => !oceanOnly || r.ocean)
     .map((r) => r.ring)
+}
+
+/**
+ * Mare, spiagge (anelli) e porti/marine (punti) che coprono `bounds`, dai
+ * tasselli z14: gli unici con spiagge e porti. Null se servono più di
+ * maxTiles tasselli.
+ */
+export async function coastFeatures(bounds, maxTiles = 36) {
+  const z = MAX_TILE_ZOOM
+  const n = 2 ** z
+  const x0 = tileX(bounds.getWest(), n)
+  const x1 = tileX(bounds.getEast(), n)
+  const y0 = tileY(bounds.getNorth(), n)
+  const y1 = tileY(bounds.getSouth(), n)
+  if ((x1 - x0 + 1) * (y1 - y0 + 1) > maxTiles) return null
+  const jobs = []
+  for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) jobs.push(loadTile(z, x, y))
+  const loaded = await Promise.all(jobs)
+  return {
+    sea: loaded.flatMap((t) => t.water.filter((r) => r.ocean).map((r) => r.ring)),
+    beaches: loaded.flatMap((t) => t.beaches),
+    harbors: loaded.flatMap((t) => t.harbors),
+  }
 }

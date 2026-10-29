@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { BAND_DEFAULTS } from '../lib/coastBand.js'
 
 /**
  * App store — single source of truth per stato globale
@@ -29,6 +30,8 @@ export const useAppStore = create(
         wind: true,
         ais: false,
         parks: true,
+        coastBand: true,
+        ordinances: true,
         rain: false,
         current: false,
       },
@@ -77,6 +80,10 @@ export const useAppStore = create(
         safetyMarginM: 1,
       },
       setBoat: (boat) => set((s) => ({ boat: { ...s.boat, ...boat } })),
+
+      // === Fascia costiera (ordinanze balneari): distanze in metri ===
+      coastBand: { ...BAND_DEFAULTS },
+      setCoastBand: (coastBand) => set((s) => ({ coastBand: { ...s.coastBand, ...coastBand } })),
 
       // === Route draft ===
       routeDraft: { name: '', waypoints: [] },
@@ -152,11 +159,13 @@ export const useAppStore = create(
         ...persisted,
         layers: { ...current.layers, ...persisted?.layers },
         boat: { ...current.boat, ...persisted?.boat },
+        coastBand: { ...current.coastBand, ...persisted?.coastBand },
       }),
       partialize: (s) => ({
         baseStyle: s.baseStyle,
         layers: s.layers,
         boat: s.boat,
+        coastBand: s.coastBand,
         savedRoutes: s.savedRoutes,
         planSpeed: s.planSpeed,
         aisMode: s.aisMode,

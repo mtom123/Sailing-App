@@ -191,6 +191,18 @@ body,
   pointer-events: none;
 }
 
+/* Distanza lungo la fascia costiera (colore dal livello) */
+.timone-band-label span {
+  display: inline-block;
+  transform: translate(-50%, -50%);
+  background: rgba(10, 22, 32, 0.8);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font: bold 9px ui-monospace, monospace;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 /* Profondità lungo le isobate (colore e alone impostati dal livello) */
 .timone-isobath-label span {
   position: absolute;

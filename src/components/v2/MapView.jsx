@@ -9,6 +9,11 @@ import { SEAGRASS_WMS_URL, SEAGRASS_LAYER, seagrassSld } from '../../lib/seagras
 import { IsobathLayer } from '../../lib/isobathLayer.js'
 import { ShomReliefLayer } from '../../lib/shomRelief.js'
 import { HdIsobathLayer } from '../../lib/hdIsobathLayer.js'
+import { CoastBandLayer } from '../../lib/coastBandLayer.js'
+import { ProtectedAreasLayer } from '../../lib/protectedAreasLayer.js'
+import { OrdinancesLayer } from '../../lib/ordinancesLayer.js'
+import { MARINE_PARKS } from '../../data/marineParks.js'
+import { fenceStatus } from '../../lib/geoFence.js'
 import { LiguriaHabitatLayer } from '../../lib/liguriaHabitat.js'
 
 const ISOBATH_VECTOR_MIN_ZOOM = 12
@@ -205,6 +210,7 @@ export default function MapView({
     setNightMode,
     setRouteEditing,
     activeRouteOption,
+    coastBand,
   } = useAppStore()
 
   // Actions via store (per click handler)
@@ -332,6 +338,9 @@ export default function MapView({
         pane: 'seamarkPane',
       })
 
+      // Fascia dalla costa delle ordinanze balneari (da zoom 14)
+      tileLayerRefs.current.coastBand = new CoastBandLayer()
+
       // Add base + overlays based on layer state
       map.addLayer(tileLayerRefs.current.base)
       // Sul satellite il rilievo EMODnet coprirebbe il fondale visibile
@@ -342,6 +351,7 @@ export default function MapView({
       if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobathVector)
       if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobathHd)
       if (layers.seamarks) map.addLayer(tileLayerRefs.current.seamarks)
+      if (layers.coastBand) map.addLayer(tileLayerRefs.current.coastBand)
 
       // Layer groups for routes, tracks, parks
       layerGroupRefs.current.route = L.layerGroup().addTo(map)
@@ -448,7 +458,13 @@ export default function MapView({
     setVis(refs.isobathVector, layers.isobaths)
     setVis(refs.isobathHd, layers.isobaths)
     setVis(refs.seamarks, layers.seamarks)
-  }, [baseStyle, layers.bathy, layers.posidonia, layers.shomRelief, layers.isobaths, layers.seamarks, mapReady])
+    setVis(refs.coastBand, layers.coastBand)
+  }, [baseStyle, layers.bathy, layers.posidonia, layers.shomRelief, layers.isobaths, layers.seamarks, layers.coastBand, mapReady])
+
+  // === Distanze della fascia costiera dalle impostazioni ===
+  useEffect(() => {
+    tileLayerRefs.current.coastBand?.setConfig(coastBand)
+  }, [coastBand, mapReady])
 
   // === Cursore a croce mentre si traccia la rotta ===
   // (classList, non className di React: non tocca le classi di Leaflet)
@@ -618,11 +634,13 @@ export default function MapView({
           keyboard: false,
         }).addTo(group)
       }
-      // Pericoli sulle tratte: rosso terra, arancione fondale sotto pescaggio + margine
+      // Pericoli sulle tratte: rosso terra, magenta zona vietata (come sulle
+      // carte nautiche), arancione fondale sotto pescaggio + margine
+      const HAZARD_COLORS = { land: '#FF5252', nogo: '#E040FB', shallow: '#F5A623' }
       for (const leg of route.hazards || []) {
         for (const hz of leg?.hazards || []) {
           L.polyline(hz.path, {
-            color: hz.kind === 'land' ? '#FF5252' : '#F5A623',
+            color: HAZARD_COLORS[hz.kind],
             weight: 6,
             opacity: 0.95,
             interactive: false,
@@ -695,33 +713,45 @@ export default function MapView({
     markersRef.current.trackLine.setLatLngs(trackPoints.map((p) => [p.lat, p.lon]))
   }, [trackPoints, mapReady])
 
-  // === Parks polygons ===
+  // === Aree protette e zone militari (contorni OpenStreetMap) ===
   useEffect(() => {
     if (!mapReady) return
-    const group = layerGroupRefs.current.parks
-    if (!group) return
-    group.clearLayers()
-    if (!layers.parks) return
-    for (const p of parks) {
-      const color = p.status === 'inside' ? '#FF5252' : p.status === 'near' ? '#F5A623' : '#D97757'
-      L.polygon(p.polygon.map(([lat, lon]) => [lat, lon]), {
-        color,
-        weight: p.status ? 2.5 : 1.5,
-        dashArray: '6 4',
-        fillColor: color,
-        fillOpacity: p.status === 'inside' ? 0.18 : 0.07,
-        // Tracciando la rotta il tocco deve aggiungere il waypoint, non aprire
-        // la scheda del parco (che ferma il click: dentro il parco niente WP)
-        interactive: !route.editing,
+    const map = mapRef.current
+    if (!tileLayerRefs.current.protectedAreas) {
+      tileLayerRefs.current.protectedAreas = new ProtectedAreasLayer({
+        interactive: true,
+        popup: (area, description) => {
+          // Regole sintetiche dalla scheda del parco che la contiene, se c'è
+          const [s, w, n, e] = area.bbox
+          const lat = (s + n) / 2
+          const lon = (w + e) / 2
+          const park = MARINE_PARKS.find((p) => fenceStatus(lat, lon, p.polygon) === 'inside')
+          const lines = [{ label: 'Tipo', value: description, color: '#8FA0AE' }]
+          if (park && area.kind !== 'military') {
+            lines.push({ label: 'Autorità', value: park.authority, color: '#8FA0AE' })
+            lines.push({ label: 'Regole', value: park.rules, color: '#8FA0AE' })
+          }
+          lines.push({ label: 'Fonte', value: 'OpenStreetMap, indicativa: fanno fede decreti e ordinanze', color: '#5C6B78' })
+          return popupHTML(area.name, lines)
+        },
       })
-        .bindPopup(popupHTML(p.name, [
-          { label: 'Authority', value: p.authority, color: '#8FA0AE' },
-          { label: 'Status', value: p.status || 'unknown', color },
-          { label: 'Rules', value: (p.rules || '').substring(0, 80) + '...', color: '#8FA0AE' },
-        ]))
-        .addTo(group)
     }
-  }, [parks, layers.parks, mapReady, route.editing])
+    const layer = tileLayerRefs.current.protectedAreas
+    layer.setInteractive(!route.editing)
+    if (layers.parks && !map.hasLayer(layer)) map.addLayer(layer)
+    if (!layers.parks && map.hasLayer(layer)) map.removeLayer(layer)
+  }, [layers.parks, mapReady, route.editing])
+
+  // === Ordinanze recenti delle Capitanerie (interdizioni, esercitazioni) ===
+  useEffect(() => {
+    if (!mapReady) return
+    const map = mapRef.current
+    if (!tileLayerRefs.current.ordinances) tileLayerRefs.current.ordinances = new OrdinancesLayer({ interactive: true })
+    const layer = tileLayerRefs.current.ordinances
+    layer.setInteractive(!route.editing)
+    if (layers.ordinances && !map.hasLayer(layer)) map.addLayer(layer)
+    if (!layers.ordinances && map.hasLayer(layer)) map.removeLayer(layer)
+  }, [layers.ordinances, mapReady, route.editing])
 
   const toggleRouteEditing = () => {
     const st = useAppStore.getState()
@@ -976,7 +1006,9 @@ function LayerPopover({ onClose }) {
     { key: 'seamarks', label: 'Fari / Boe' },
     { key: 'wind', label: 'Vettori vento' },
     { key: 'ais', label: 'Navi AIS' },
-    { key: 'parks', label: 'Aree protette' },
+    { key: 'parks', label: 'Aree protette e zone militari' },
+    { key: 'coastBand', label: 'Fascia dalla costa (balneazione)' },
+    { key: 'ordinances', label: 'Ordinanze Capitanerie (90 giorni)' },
     { key: 'rain', label: 'Radar pioggia' },
     { key: 'current', label: 'Correnti' },
   ]

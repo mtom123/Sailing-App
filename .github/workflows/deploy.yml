@@ -7,6 +7,9 @@ on:
       - feature/v2-marine-ops
       - feature/v2.1-completeness
   workflow_dispatch:
+  # Ordinanze delle Capitanerie aggiornate anche senza modifiche all'app
+  schedule:
+    - cron: '17 */6 * * *'
 
 permissions:
   contents: read
@@ -27,6 +30,9 @@ jobs:
           node-version: 22
       - name: Installa dipendenze
         run: npm install --no-audit --no-fund
+      - name: Aggiorna ordinanze delle Capitanerie
+        # Se il portale non risponde resta il file del repository
+        run: npm run ordinances || echo "Ordinanze non aggiornate"
       - name: Build di produzione
         run: npm run build
       - name: Configura GitHub Pages

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { checkLeg } from '../lib/routeHazards.js'
 
 /*
- * Controllo della rotta: per ogni tratta, terra e fondali sotto minDepth
+ * Controllo della rotta: per ogni tratta, terra, zone vietate, fondali sotto minDepth
  * (pescaggio + margine). Ricalcola mezzo secondo dopo l'ultima modifica e
  * solo le tratte cambiate.
  *

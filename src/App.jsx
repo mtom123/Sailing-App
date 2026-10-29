@@ -23,6 +23,8 @@ import useRainRadar from './hooks/useRainRadar.js'
 import useGrib from './hooks/useGrib.js'
 import useWeatherRouting from './hooks/useWeatherRouting.js'
 import useRouteHazards from './hooks/useRouteHazards.js'
+import useCoastBandAt, { useWaypointBands } from './hooks/useCoastBandAt.js'
+import useGpsAlerts from './hooks/useGpsAlerts.js'
 
 // Libs
 import { ANCHORAGES } from './data/anchorages.js'
@@ -34,6 +36,7 @@ import { armAudio, startAlarm, stopAlarm, warnBeep } from './lib/alarm.js'
 import { sunTimes, moonPhase } from './lib/sun.js'
 import { routeLegs, routeTotalNm, crossTrackError } from './lib/route.js'
 import { detourLegRefined } from './lib/routeHazards.js'
+import { bandText } from './lib/coastBand.js'
 
 // Adaptive hooks: gli hook leggono dallo store
 function useRouteAdapter(geo) {
@@ -43,6 +46,8 @@ function useRouteAdapter(geo) {
   // Terra e bassi fondali lungo le tratte (pescaggio + margine)
   const minDepth = (boat.draftM ?? 1.9) + (boat.safetyMarginM ?? 1)
   const hazards = useRouteHazards(waypoints, minDepth)
+  // Waypoint dentro la fascia dalla costa delle ordinanze balneari
+  const bandWaypoints = useWaypointBands(waypoints)
 
   // Aggira la tratta i → i+1: inserisce i waypoint intermedi trovati.
   // 'ok' già sicura, 'fixed' aggirata, 'none' nessun passaggio, 'error' dati
@@ -135,6 +140,7 @@ function useRouteAdapter(geo) {
     hazards: hazards.legs,
     checkingHazards: hazards.checking,
     fixLeg,
+    bandWaypoints,
   }
 }
 
@@ -267,7 +273,6 @@ export default function App() {
       status: geo.lat != null ? fenceStatus(geo.lat, geo.lon, p.polygon) : null,
     }))
   }, [geo.lat != null ? geo.lat.toFixed(3) : null, geo.lon != null ? geo.lon.toFixed(3) : null])
-  const parkAlert = parks.find((p) => p.status === 'inside') || parks.find((p) => p.status === 'near')
 
   // MOB
   const [mob, setMob] = useState(null)
@@ -318,6 +323,18 @@ export default function App() {
 
   const gpsOk = geo.lat != null
 
+  // Dove si è ora (GPS): zone vietate/militari/AMP e fascia dalla costa
+  const gpsAlerts = useGpsAlerts(geo)
+  // Fascia dalla costa dove si è ancorati (o dove si è ora)
+  const anchorBand = useCoastBandAt(anchorWatch?.lat, anchorWatch?.lon)
+  const anchorBandText = anchorWatch ? bandText(anchorBand) : gpsAlerts.band
+  // Bip all'ingresso in zona vietata, nella fascia o quando ci si ferma dentro
+  const gpsAlarmKey = [gpsAlerts.zone?.kind === 'nogo' && gpsAlerts.zone.id, gpsAlerts.band?.warn, gpsAlerts.stoppedInBand].join('|')
+  useEffect(() => {
+    if (gpsAlerts.zone?.kind === 'nogo' || gpsAlerts.band?.warn || gpsAlerts.stoppedInBand) warnBeep()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo ai cambi di stato
+  }, [gpsAlarmKey])
+
   return (
     <div className="relative flex h-full w-full overflow-hidden bg-abyss text-paper" style={{ minHeight: 0 }}>
       {/* LEFT panel (instruments) */}
@@ -345,20 +362,44 @@ export default function App() {
             onDropMob={dropMob}
           />
 
-          {/* Park alert banner */}
-          {parkAlert && !mob && (
-            <div
-              className={`glass absolute bottom-8 left-1/2 z-[900] flex -translate-x-1/2 items-center gap-2 rounded-lg px-3 py-1.5 text-xs slide-up ${
-                parkAlert.status === 'inside'
-                  ? 'border-danger/50 text-danger'
-                  : 'border-warn/50 text-warn'
-              }`}
-            >
-              <b>
-                {parkAlert.status === 'inside' ? '⚠ DENTRO ' : '⚠ VICINO A '}
-                {parkAlert.name}
-              </b>
-              <span className="text-[10px] opacity-70">Tocca l'area per le regole</span>
+          {/* Avvisi sulla posizione GPS: zone vietate, militari, AMP, fascia dalla costa */}
+          {!mob && (gpsAlerts.zone || (gpsAlerts.band?.inside && (gpsAlerts.band.warn || gpsAlerts.band.france))) && (
+            <div className="absolute bottom-8 left-1/2 z-[900] flex -translate-x-1/2 flex-col items-center gap-1">
+              {gpsAlerts.zone && (
+                <div
+                  className={`glass flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs slide-up ${
+                    gpsAlerts.zone.kind === 'nogo' ? 'border-danger/50 text-danger' : 'border-warn/50 text-warn'
+                  }`}
+                >
+                  <b>
+                    {{ nogo: '⚠ ZONA VIETATA: ', military: '⚠ ZONA MILITARE: ', protected: 'AREA MARINA PROTETTA: ' }[gpsAlerts.zone.kind]}
+                    {gpsAlerts.zone.name}
+                  </b>
+                  <span className="text-[10px] opacity-70">
+                    {gpsAlerts.zone.kind === 'military' ? 'Verifica gli avvisi ai naviganti' : "Tocca l'area per le regole"}
+                  </span>
+                </div>
+              )}
+              {gpsAlerts.band?.inside && (gpsAlerts.band.warn || gpsAlerts.band.france) && (
+                <div
+                  className={`glass rounded-lg px-3 py-1.5 text-xs ${
+                    gpsAlerts.band.france
+                      ? 'border-warn/50 text-warn'
+                      : gpsAlerts.stoppedInBand
+                        ? 'alarm-flash border-danger text-danger'
+                        : 'border-danger/50 text-danger'
+                  }`}
+                >
+                  <b>
+                    {gpsAlerts.band.france
+                      ? 'Bande des 300 m: max 5 nodi'
+                      : gpsAlerts.stoppedInBand
+                        ? '⚠ FERMO NELLA FASCIA COSTIERA: ancoraggio vietato'
+                        : '⚠ NELLA FASCIA COSTIERA'}
+                  </b>
+                  <div className="text-[10px] opacity-80">{gpsAlerts.band.text}</div>
+                </div>
+              )}
             </div>
           )}
 
@@ -492,6 +533,7 @@ export default function App() {
                   watchDistance={watchDistance}
                   alarmActive={anchorAlarmActive}
                   onMuteAlarm={() => setAlarmMuted(true)}
+                  band={anchorBandText}
                 />
               )}
               {activeDrawer === 'weather' && (

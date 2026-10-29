@@ -8,7 +8,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "bridge": "node tools/nmea-bridge.mjs",
-    "litto3d": "node tools/litto3d-isobaths.mjs"
+    "litto3d": "node tools/litto3d-isobaths.mjs",
+    "protected-areas": "node tools/protected-areas.mjs",
+    "ordinances": "node tools/ordinances.mjs"
   },
   "dependencies": {
     "@mapbox/vector-tile": "^2.0.5",

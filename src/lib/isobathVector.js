@@ -16,7 +16,7 @@ function projector(grid) {
 }
 
 // Chaikin: arrotonda gli spigoli della griglia da ~115 m
-function chaikin(points, closed, iterations = 2) {
+export function chaikin(points, closed, iterations = 2) {
   let pts = points
   for (let it = 0; it < iterations; it++) {
     const out = closed ? [] : [pts[0]]
@@ -38,7 +38,7 @@ function chaikin(points, closed, iterations = 2) {
  * Divide un anello chiuso in tratti aperti togliendo i segmenti sul bordo
  * della griglia: lì d3-contour chiude il poligono, ma non è un'isobata.
  */
-function splitOnFrame(ring, width, height) {
+export function splitOnFrame(ring, width, height) {
   const onFrame = ([x, y]) => x <= EPS || y <= EPS || x >= width - EPS || y >= height - EPS
   const n = ring.length - 1 // l'ultimo punto ripete il primo
   const frameSeg = (i) => onFrame(ring[i]) && onFrame(ring[(i + 1) % n])

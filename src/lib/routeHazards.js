@@ -5,6 +5,8 @@
  * - Terra: costa OpenStreetMap (waterMask.js) disegnata su un canvas in
  *   coordinate Web Mercator → test "in acqua?" immediato per ogni punto.
  * - Profondità: Shom dove c'è, altrimenti EMODnet (depthAt.js → prepareDepth).
+ * - Aree marine protette (protectedAreas.js): le zone vietate (zone A) sono
+ *   pericoli e l'aggiramento le evita; AMP e zone B/C solo avviso.
  * - Aggiramento: A* su una griglia attorno alla tratta, con un margine dalla
  *   costa e dai bassi fondali, poi semplificato in pochi waypoint.
  *
@@ -13,6 +15,8 @@
 import L from 'leaflet'
 import { waterRings } from './waterMask.js'
 import { prepareDepth } from './depthAt.js'
+import { protectedAreas, areaLookup, inArea } from './protectedAreas.js'
+import { isMilitary, ordinancesAlongLeg } from './ordinances.js'
 
 const MAX_RASTER = 1500 // px per lato del canvas dell'acqua (iPad: memoria)
 const MAX_SAMPLES = 2500 // punti controllati per tratta
@@ -76,10 +80,22 @@ const legBox = (a, b, padM) => {
   return [Math.min(pa.x, pb.x) - padM, Math.min(pa.y, pb.y) - padM, Math.max(pa.x, pb.x) + padM, Math.max(pa.y, pb.y) + padM]
 }
 
+// Riquadro [s, w, n, e] in gradi di un riquadro Web Mercator
+const boxDeg = ([minX, minY, maxX, maxY]) => {
+  const sw = unproject(minX, minY)
+  const ne = unproject(maxX, maxY)
+  return [sw.lat, sw.lng, ne.lat, ne.lng]
+}
+
 /**
  * Controlla la tratta a → b ({lat, lon}). minDepth in metri.
- * { ok, hazards: [{ kind: 'land' | 'shallow', path: [lat, lon][], depth? }],
- *   minDepth: { depth, source } | null }
+ * { ok, hazards: [{ kind: 'land' | 'nogo' | 'shallow', path: [lat, lon][],
+ *   depth?, name?, endpoint? }], minDepth: { depth, source } | null,
+ *   (endpoint: un waypoint è dentro la zona vietata, va spostato)
+ *   protected: [{ name, zones: [] }], military: [nome], ordinances: [...] }
+ *   — protected: aree marine protette attraversate dove si naviga con regole;
+ *   ordinances: ordinanze recenti delle Capitanerie vicino alla tratta
+ *   (solo avvisi, non rendono ok false)
  */
 export async function checkLeg(a, b, minDepth) {
   const pa = project(a.lat, a.lon)
@@ -95,12 +111,19 @@ export async function checkLeg(a, b, minDepth) {
   const lls = pts.map(([x, y]) => unproject(x, y))
 
   const res = Math.max(5, len / MAX_RASTER)
-  const [isWater, sample] = await Promise.all([
-    waterRaster(legBox(a, b, 3 * res), res),
+  const box = legBox(a, b, 3 * res)
+  const [isWater, sample, areas, ordinances] = await Promise.all([
+    waterRaster(box, res),
     prepareDepth(lls.filter((_, i) => i % 20 === 0 || i === lls.length - 1).map((ll) => [ll.lat, ll.lng])),
+    protectedAreas(boxDeg(box)),
+    ordinancesAlongLeg(a, b).catch(() => []),
   ])
+  const zoneAt = areaLookup(areas.filter((z) => z.kind !== 'military'))
+  const militaryAt = areaLookup(areas.filter((z) => z.kind === 'military'))
 
   const hazards = []
+  const parks = new Map() // AMP attraversate → zone
+  const military = new Set() // zone militari attraversate
   let current = null
   let shallowest = null
   pts.forEach(([x, y], i) => {
@@ -110,25 +133,44 @@ export async function checkLeg(a, b, minDepth) {
     const nearEnd = Math.min(i, pts.length - 1 - i) * (len / (pts.length - 1)) < ENDPOINT_SHALLOW_OK_M * mercPerM(a.lat)
     const d = sample(ll.lat, ll.lng)
     if (d && (!shallowest || d.depth < shallowest.depth)) shallowest = d
+    const zone = zoneAt(ll.lat, ll.lng)
+    const mil = militaryAt(ll.lat, ll.lng)
+    if (mil) military.add(mil.name)
+    if (zone && zone.kind === 'protected') {
+      const [park, sub] = zone.name.split(' · ')
+      if (!parks.has(park)) parks.set(park, [])
+      if (sub && !parks.get(park).includes(sub)) parks.get(park).push(sub)
+    }
+    // Zona vietata anche sui waypoint: lì nessun aggiramento può rimediare
     let kind = null
     if (!ends && isWater && !isWater(x, y)) kind = 'land'
+    else if (zone && zone.kind === 'nogo') kind = 'nogo'
     else if (!ends && !nearEnd && d && d.depth < minDepth) kind = 'shallow'
-    if (kind && current && current.kind === kind) {
+    const name = kind === 'nogo' ? zone.name : undefined
+    if (kind && current && current.kind === kind && current.name === name) {
       current.path.push([ll.lat, ll.lng])
       if (d && d.depth < (current.depth ?? Infinity)) {
         current.depth = d.depth
         current.source = d.source
       }
     } else if (kind) {
-      current = { kind, path: [[ll.lat, ll.lng]], depth: d ? d.depth : undefined, source: d ? d.source : undefined }
+      current = { kind, name, path: [[ll.lat, ll.lng]], depth: d ? d.depth : undefined, source: d ? d.source : undefined }
       hazards.push(current)
     } else {
       current = null
     }
+    if (current && ends) current.endpoint = true // waypoint dentro la zona
   })
   // Un punto solo diventa un segmentino visibile
   for (const h of hazards) if (h.path.length === 1) h.path.push(h.path[0])
-  return { ok: hazards.length === 0, hazards, minDepth: shallowest }
+  return {
+    ok: hazards.length === 0,
+    hazards,
+    minDepth: shallowest,
+    protected: [...parks].map(([name, zones]) => ({ name, zones })),
+    military: [...military],
+    ordinances: ordinances.map((o) => ({ id: o.id, n: o.n, office: o.office, title: o.title, url: o.url, military: isMilitary(o) })),
+  }
 }
 
 // ---------------------------------------------------------------- A*
@@ -202,27 +244,35 @@ export async function detourLeg(a, b, minDepth, debug = null) {
       probe.push([ll.lat, ll.lng])
     }
   }
-  const [isWater, sample] = await Promise.all([waterRaster(box, res), prepareDepth(probe)])
+  const [isWater, sample, areas] = await Promise.all([waterRaster(box, res), prepareDepth(probe), protectedAreas(boxDeg(box))])
+  const nogoAreas = areas.filter((z) => z.kind === 'nogo')
 
   // Vicino ai due waypoint (porti, baie) niente margine né limite di profondità:
   // con le celle di una tratta lunga l'imboccatura di un porto risulterebbe chiusa
   const freeR = Math.max(ENDPOINT_FREE_M * m, 4 * res)
   const nearEnd = (x, y) => Math.hypot(x - pa.x, y - pa.y) < freeR || Math.hypot(x - pb.x, y - pb.y) < freeR
 
-  // Celle bloccate: terra o fondale troppo basso (profondità sconosciuta in acqua: passa)
+  // Celle bloccate: terra o fondale troppo basso (profondità sconosciuta in acqua: passa).
+  // Zone vietate (zone A): bloccate ovunque, anche vicino ai waypoint
   const land = new Uint8Array(w * h)
+  const nogo = new Uint8Array(w * h)
   const blocked = new Uint8Array(w * h)
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
       const x = cx(c)
       const y = cy(r)
+      const ll = nogoAreas.length || !nearEnd(x, y) ? unproject(x, y) : null
+      if (nogoAreas.length && nogoAreas.some((z) => inArea(z, ll.lat, ll.lng))) {
+        nogo[r * w + c] = 1
+        blocked[r * w + c] = 1
+        continue
+      }
       if (isWater && !isWater(x, y)) {
         land[r * w + c] = 1
         if (!nearEnd(x, y)) blocked[r * w + c] = 1
         continue
       }
       if (nearEnd(x, y)) continue
-      const ll = unproject(x, y)
       const d = sample(ll.lat, ll.lng)
       if (d && d.depth < minDepth) blocked[r * w + c] = 1
     }
@@ -259,7 +309,7 @@ export async function detourLeg(a, b, minDepth, debug = null) {
     }
     for (let r = 0; r < h; r++) {
       for (let c = 0; c < w; c++) {
-        if (nearEnd(cx(c), cy(r))) unsafe[r * w + c] = landNear(c, r)
+        if (nearEnd(cx(c), cy(r))) unsafe[r * w + c] = landNear(c, r) || nogo[r * w + c]
       }
     }
     return unsafe

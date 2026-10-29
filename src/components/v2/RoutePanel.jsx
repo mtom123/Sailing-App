@@ -14,6 +14,7 @@ import {
   Shield,
   Sparkles,
   AlertTriangle,
+  Anchor,
   Route,
 } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore.js'
@@ -34,7 +35,11 @@ const fmtDuration = (ms) => {
 // Descrizione del pericolo peggiore di una tratta (checkLeg)
 function hazardText(result, minDepth) {
   if (result.hazards.some((h) => h.kind === 'land')) return 'Passa sulla terra'
-  const shallow = result.hazards.filter((h) => h.depth != null)
+  const stuck = result.hazards.find((h) => h.endpoint)
+  if (stuck) return `Waypoint in zona vietata (${stuck.name}): spostalo fuori`
+  const nogo = result.hazards.find((h) => h.kind === 'nogo')
+  if (nogo) return `Entra in zona vietata: ${nogo.name}`
+  const shallow = result.hazards.filter((h) => h.kind === 'shallow' && h.depth != null)
   if (!shallow.length) return 'Bassi fondali'
   const worst = shallow.reduce((m, h) => (h.depth < m.depth ? h : m))
   // EMODnet (celle da ~115 m) sotto costa mescola scogli e mare: va verificato
@@ -47,36 +52,122 @@ const FIX_MESSAGES = {
   error: 'Costa o fondali non disponibili ora: riprova',
 }
 
-// Avviso sotto una tratta con terra o bassi fondali, e pulsante per aggirarli
+// Aree marine protette attraversate: "Portofino (Zona C, Zona B) · …"
+const parksText = (parks) => parks.map((p) => (p.zones.length ? `${p.name} (${p.zones.join(', ')})` : p.name)).join(' · ')
+
+// Si naviga con regole (velocità, ancoraggio, pesca): solo avviso
+function ParksNotice({ parks, className = '' }) {
+  if (!parks?.length) return null
+  return (
+    <div className={`flex items-center gap-2 px-3 text-[10px] text-info ${className}`}>
+      <Shield size={12} className="flex-none" />
+      <span className="min-w-0 flex-1">Area marina protetta: {parksText(parks)}. Verifica le regole</span>
+    </div>
+  )
+}
+
+// Waypoint dentro la fascia dalla costa: in stagione balneare non si ancora
+function BandNotice({ waypoints }) {
+  if (!waypoints?.length) return null
+  return (
+    <div className="flex items-start gap-2 border-b border-line px-3 py-1.5 text-[10px]">
+      <Anchor size={12} className="mt-px flex-none text-danger" />
+      <span className="min-w-0 flex-1">
+        {waypoints.map((w) => (
+          <span key={w.id} className={`block ${w.warn ? 'text-danger' : 'text-fog'}`}>
+            {w.name}: {w.text}
+            <span className="block text-[9px] text-fog-dim">{w.detail}</span>
+          </span>
+        ))}
+      </span>
+    </div>
+  )
+}
+
+// Poligoni di tiro ed esercitazioni: attivi solo alle date degli avvisi
+function MilitaryNotice({ names, className = '' }) {
+  if (!names?.length) return null
+  return (
+    <div className={`flex items-center gap-2 px-3 text-[10px] text-warn ${className}`}>
+      <AlertTriangle size={12} className="flex-none" />
+      <span className="min-w-0 flex-1">
+        Zona militare: {names.join(' · ')}. Vietata durante le esercitazioni: verifica gli avvisi ai naviganti
+      </span>
+    </div>
+  )
+}
+
+// Ordinanze recenti delle Capitanerie vicino al percorso
+function OrdinanceNotice({ ordinances, className = '' }) {
+  if (!ordinances?.length) return null
+  return (
+    <div className={`flex items-start gap-2 px-3 text-[10px] ${className}`}>
+      <AlertTriangle size={12} className="mt-px flex-none text-warn" />
+      <span className="min-w-0 flex-1">
+        {ordinances.map((o) => (
+          <a
+            key={o.id}
+            href={o.url || undefined}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`block leading-tight ${o.military ? 'text-danger' : 'text-warn'}`}
+          >
+            Ord. {o.n}: {o.title.length > 80 ? `${o.title.slice(0, 80)}…` : o.title}
+            <span className="block text-[9px] text-fog-dim">{o.office}</span>
+          </a>
+        ))}
+      </span>
+    </div>
+  )
+}
+
+const isSevere = (h) => h.kind === 'land' || h.kind === 'nogo'
+// Waypoint dentro una zona vietata: l'aggiramento non può rimediare
+const isStuck = (result) => result.hazards.some((h) => h.endpoint)
+
+// Avviso sotto una tratta con terra, zone vietate o bassi fondali, e pulsante
+// per aggirarli; sotto, le aree protette attraversate
 function LegHazard({ result, minDepth, onFix }) {
   const [busy, setBusy] = useState(null) // testo dell'avanzamento mentre calcola
   const [outcome, setOutcome] = useState(null) // 'none' | 'error'
-  if (!result || result.ok) return null
-  const land = result.hazards.some((h) => h.kind === 'land')
+  if (!result) return null
+  const parks = (
+    <>
+      <ParksNotice parks={result.protected} className="pb-1.5" />
+      <MilitaryNotice names={result.military} className="pb-1.5" />
+    </>
+  )
+  if (result.ok) return parks
+  const land = result.hazards.some(isSevere)
   return (
-    <div className={`flex items-center gap-2 px-3 pb-1.5 text-[10px] ${land ? 'text-danger' : 'text-warn'}`}>
-      <AlertTriangle size={12} className="flex-none" />
-      <span className="min-w-0 flex-1">
-        {busy ? `Calcolo aggiramento… ${busy}` : FIX_MESSAGES[outcome] || hazardText(result, minDepth)}
-      </span>
-      <button
-        type="button"
-        disabled={!!busy}
-        onClick={async () => {
-          setBusy('…')
-          setOutcome(null)
-          try {
-            const r = await onFix((text) => setBusy(text))
-            setOutcome(FIX_MESSAGES[r] ? r : null)
-          } finally {
-            setBusy(null)
-          }
-        }}
-        className="flex-none rounded border border-line bg-surface px-2 py-1 font-semibold tracking-widest text-paper hover:bg-raised disabled:opacity-50"
-      >
-        {busy ? '…' : 'AGGIRA'}
-      </button>
-    </div>
+    <>
+      <div className={`flex items-center gap-2 px-3 pb-1.5 text-[10px] ${land ? 'text-danger' : 'text-warn'}`}>
+        <AlertTriangle size={12} className="flex-none" />
+        <span className="min-w-0 flex-1">
+          {busy ? `Calcolo aggiramento… ${busy}` : FIX_MESSAGES[outcome] || hazardText(result, minDepth)}
+        </span>
+        {!isStuck(result) && (
+          <button
+            type="button"
+            disabled={!!busy}
+            onClick={async () => {
+              setBusy('…')
+              setOutcome(null)
+              try {
+                const r = await onFix((text) => setBusy(text))
+                setOutcome(FIX_MESSAGES[r] ? r : null)
+              } finally {
+                setBusy(null)
+              }
+            }}
+            className="flex-none rounded border border-line bg-surface px-2 py-1 font-semibold tracking-widest text-paper hover:bg-raised disabled:opacity-50"
+          >
+            {busy ? '…' : 'AGGIRA'}
+          </button>
+        )}
+      </div>
+      {parks}
+    </>
   )
 }
 
@@ -85,44 +176,68 @@ function RouteHazards({ route }) {
   const [busy, setBusy] = useState(null) // testo dell'avanzamento mentre calcola
   const [failed, setFailed] = useState(0) // tratte senza passaggio all'ultimo tentativo
   const bad = (route.hazards || []).map((r, i) => (r && !r.ok ? i : -1)).filter((i) => i >= 0)
+  // Aree protette di tutta la rotta, zone unite
+  const parks = new Map()
+  for (const r of route.hazards || []) {
+    for (const p of r?.protected || []) parks.set(p.name, [...new Set([...(parks.get(p.name) || []), ...p.zones])])
+  }
+  const military = new Set((route.hazards || []).flatMap((r) => r?.military || []))
+  const ordinances = new Map((route.hazards || []).flatMap((r) => r?.ordinances || []).map((o) => [o.id, o]))
+  const parksRow = (
+    <>
+      <ParksNotice parks={[...parks].map(([name, zones]) => ({ name, zones }))} className="border-b border-line py-1.5" />
+      <MilitaryNotice names={[...military]} className="border-b border-line py-1.5" />
+      <OrdinanceNotice ordinances={[...ordinances.values()]} className="border-b border-line py-1.5" />
+      <BandNotice waypoints={route.bandWaypoints} />
+    </>
+  )
   if (busy) {
     return <div className="border-b border-line px-3 py-1.5 text-[10px] text-fog">Calcolo aggiramento… {busy}</div>
   }
   if (route.checkingHazards && !bad.length) {
-    return <div className="border-b border-line px-3 py-1.5 text-[10px] text-fog">Controllo fondali e costa…</div>
+    return <div className="border-b border-line px-3 py-1.5 text-[10px] text-fog">Controllo fondali, costa e aree protette…</div>
   }
-  if (!bad.length) return null
-  const land = bad.some((i) => route.hazards[i].hazards.some((h) => h.kind === 'land'))
+  if (!bad.length) return parksRow
+  const kinds = new Set(bad.flatMap((i) => route.hazards[i].hazards.map((h) => h.kind)))
+  const land = kinds.has('land') || kinds.has('nogo')
+  const what = [
+    kinds.has('land') && 'terra',
+    kinds.has('nogo') && 'zone vietate',
+    kinds.has('shallow') && `fondali sotto ${formatDepth(route.minDepth)} m`,
+  ].filter(Boolean)
   return (
-    <div className={`flex items-center gap-2 border-b border-line px-3 py-2 ${land ? 'bg-danger/10' : 'bg-warn/10'}`}>
-      <AlertTriangle size={14} className={land ? 'text-danger' : 'text-warn'} />
-      <span className={`min-w-0 flex-1 text-[10px] ${land ? 'text-danger' : 'text-warn'}`}>
-        {bad.length === 1 ? '1 tratta' : `${bad.length} tratte`} su {land ? 'terra o ' : ''}fondali sotto {formatDepth(route.minDepth)} m
-        {failed > 0 && ` · ${failed} senza passaggio: sposta i waypoint`}
-      </span>
-      <button
-        type="button"
-        onClick={async () => {
-          let none = 0
-          try {
-            // Dall'ultima alla prima: i waypoint inseriti non spostano le tratte precedenti
-            const todo = [...bad].reverse()
-            for (const [n, i] of todo.entries()) {
-              setBusy(`tratta ${n + 1}/${todo.length}`)
-              const r = await route.fixLeg(i, (text) => setBusy(`tratta ${n + 1}/${todo.length}: ${text}`))
-              if (r === 'none' || r === 'error') none++
+    <>
+      <div className={`flex items-center gap-2 border-b border-line px-3 py-2 ${land ? 'bg-danger/10' : 'bg-warn/10'}`}>
+        <AlertTriangle size={14} className={land ? 'text-danger' : 'text-warn'} />
+        <span className={`min-w-0 flex-1 text-[10px] ${land ? 'text-danger' : 'text-warn'}`}>
+          {bad.length === 1 ? '1 tratta' : `${bad.length} tratte`} su {what.join(', ').replace(/, ([^,]*)$/, ' o $1')}
+          {failed > 0 && ` · ${failed} senza passaggio: sposta i waypoint`}
+        </span>
+        <button
+          type="button"
+          onClick={async () => {
+            let none = bad.filter((i) => isStuck(route.hazards[i])).length
+            try {
+              // Dall'ultima alla prima: i waypoint inseriti non spostano le tratte precedenti
+              const todo = bad.filter((i) => !isStuck(route.hazards[i])).reverse()
+              for (const [n, i] of todo.entries()) {
+                setBusy(`tratta ${n + 1}/${todo.length}`)
+                const r = await route.fixLeg(i, (text) => setBusy(`tratta ${n + 1}/${todo.length}: ${text}`))
+                if (r === 'none' || r === 'error') none++
+              }
+            } finally {
+              setFailed(none)
+              setBusy(null)
             }
-          } finally {
-            setFailed(none)
-            setBusy(null)
-          }
-        }}
-        className="flex flex-none items-center gap-1 rounded border border-line bg-surface px-2 py-1 text-[10px] font-semibold tracking-widest text-paper hover:bg-raised"
-      >
-        <Route size={11} />
-        AGGIRA TUTTO
-      </button>
-    </div>
+          }}
+          className="flex flex-none items-center gap-1 rounded border border-line bg-surface px-2 py-1 text-[10px] font-semibold tracking-widest text-paper hover:bg-raised"
+        >
+          <Route size={11} />
+          AGGIRA TUTTO
+        </button>
+      </div>
+      {parksRow}
+    </>
   )
 }
 

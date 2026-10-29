@@ -42,7 +42,7 @@ export default function SettingsSheet({
   weatherError,
   gribStatus,
 }) {
-  const { boat, setBoat } = useAppStore()
+  const { boat, setBoat, coastBand, setCoastBand } = useAppStore()
   const [customPolars, setCustomPolars] = useState([])
   const [uploadStatus, setUploadStatus] = useState(null)
   const fileInputRef = useRef(null)
@@ -257,6 +257,46 @@ export default function SettingsSheet({
             <div className="pt-1 text-[10px] text-fog-dim">
               La rotta segnala e aggira terra e fondali sotto{' '}
               {((boat.draftM ?? 1.9) + (boat.safetyMarginM ?? 1)).toFixed(1)} m
+            </div>
+            <div className="label pt-3 pb-1 flex items-center gap-1.5">
+              <Gauge size={11} /> Fascia dalla costa: Capitanerie non in elenco
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <input
+                type="number"
+                min="50"
+                max="1000"
+                step="50"
+                value={coastBand.beach}
+                onChange={(e) => setCoastBand({ beach: Number(e.target.value) })}
+                className="w-16 rounded-md border border-line bg-surface px-2 py-1.5 text-center text-xs text-paper outline-none focus:border-phos"
+              />
+              <span className="text-[10px] text-fog">m spiagge</span>
+              <input
+                type="number"
+                min="50"
+                max="1000"
+                step="50"
+                value={coastBand.beachSicily}
+                onChange={(e) => setCoastBand({ beachSicily: Number(e.target.value) })}
+                className="w-16 rounded-md border border-line bg-surface px-2 py-1.5 text-center text-xs text-paper outline-none focus:border-phos"
+              />
+              <span className="text-[10px] text-fog">m spiagge Sicilia</span>
+              <input
+                type="number"
+                min="50"
+                max="1000"
+                step="50"
+                value={coastBand.cliff}
+                onChange={(e) => setCoastBand({ cliff: Number(e.target.value) })}
+                className="w-16 rounded-md border border-line bg-surface px-2 py-1.5 text-center text-xs text-paper outline-none focus:border-phos"
+              />
+              <span className="text-[10px] text-fog">m coste a picco</span>
+            </div>
+            <div className="pt-1 text-[10px] text-fog-dim">
+              Dove l'app ha l'ordinanza balneare della Capitaneria (Liguria, Toscana, Sardegna, Catania, Eolie, Licata,
+              Porto Empedocle, Lazio sud, Soverato) usa le sue distanze, stagione e orari; altrove queste. Francia e
+              Corsica: 300 m, max 5 nodi.
             </div>
           </Section>
 

@@ -3,6 +3,9 @@ import { Navigation2, MapPin, Anchor, X, Ship, BarChart3 } from 'lucide-react'
 import { haversine, bearing, formatDeg, metersToNm, cardinal } from '../../lib/geo.js'
 import { depthAt } from '../../lib/depthAt.js'
 import { formatDepth } from './DepthHover.jsx'
+import { bandAt, bandText } from '../../lib/coastBand.js'
+import { isMilitary, ordinancesNear } from '../../lib/ordinances.js'
+import { useAppStore } from '../../store/useAppStore.js'
 
 /**
  * Long-press menu su mappa — per iPad/touch UX.
@@ -28,6 +31,9 @@ export default function MapContextMenu({
 }) {
   const [menu, setMenu] = useState(null) // { lat, lon, x, y }
   const [depth, setDepth] = useState(undefined) // undefined = in arrivo, null = terra / nessun dato
+  const [band, setBand] = useState(undefined) // fascia dalla costa: undefined = in arrivo
+  const coastBand = useAppStore((s) => s.coastBand)
+  const [nearby, setNearby] = useState([]) // ordinanze entro 1,5 km
   const pressTimerRef = useRef(null)
   const startPosRef = useRef(null)
 
@@ -41,6 +47,30 @@ export default function MapContextMenu({
       alive = false
     }
   }, [menu])
+
+  // Ordinanze recenti delle Capitanerie qui vicino
+  useEffect(() => {
+    if (!menu) return undefined
+    let alive = true
+    setNearby([])
+    ordinancesNear(menu.lat, menu.lon, 1500).then((list) => alive && setNearby(list.slice(0, 3)))
+    return () => {
+      alive = false
+    }
+  }, [menu])
+
+  // Distanza dalla costa e fascia delle ordinanze balneari
+  useEffect(() => {
+    if (!menu) return undefined
+    let alive = true
+    setBand(undefined)
+    bandAt(menu.lat, menu.lon, coastBand)
+      .catch(() => null)
+      .then((b) => alive && setBand(b ?? null))
+    return () => {
+      alive = false
+    }
+  }, [menu, coastBand])
 
   useEffect(() => {
     if (!map || !mapReady || !enabled) return undefined
@@ -208,6 +238,30 @@ export default function MapContextMenu({
               '— (terra o nessun dato)'
             )}
           </div>
+          {nearby.map((o) => (
+            <a
+              key={o.id}
+              href={o.url || undefined}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`mt-1 block text-[10px] leading-tight ${isMilitary(o) ? 'text-danger' : 'text-warn'}`}
+            >
+              Ord. {o.n} · {o.title.length > 70 ? `${o.title.slice(0, 70)}…` : o.title}
+              <span className="block text-[9px] text-fog-dim">
+                {o.office} · {Math.round(o.distanceM)} m
+              </span>
+            </a>
+          ))}
+          {band === undefined ? (
+            <div className="mt-1 text-[10px] text-fog">Fascia dalla costa…</div>
+          ) : (
+            band && (
+              <div className={`mt-1 text-[10px] ${bandText(band).warn ? 'text-danger' : 'text-fog'}`}>
+                {bandText(band).text}
+                <div className="text-[9px] text-fog-dim">{bandText(band).detail}</div>
+              </div>
+            )
+          )}
         </div>
         {actions.length > 0 ? (
           actions.map((a, i) => {
