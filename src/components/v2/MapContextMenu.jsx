@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Navigation2, MapPin, Anchor, X, Ship, BarChart3 } from 'lucide-react'
 import { haversine, bearing, formatDeg, metersToNm, cardinal } from '../../lib/geo.js'
+import { depthAt } from '../../lib/depthAt.js'
+import { formatDepth } from './DepthHover.jsx'
 
 /**
  * Long-press menu su mappa — per iPad/touch UX.
@@ -25,8 +27,20 @@ export default function MapContextMenu({
   boatPosition,
 }) {
   const [menu, setMenu] = useState(null) // { lat, lon, x, y }
+  const [depth, setDepth] = useState(undefined) // undefined = in arrivo, null = terra / nessun dato
   const pressTimerRef = useRef(null)
   const startPosRef = useRef(null)
+
+  // Profondità del punto toccato (Shom dove c'è, altrimenti EMODnet)
+  useEffect(() => {
+    if (!menu) return undefined
+    let alive = true
+    setDepth(undefined)
+    depthAt(menu.lat, menu.lon).then((d) => alive && setDepth(d))
+    return () => {
+      alive = false
+    }
+  }, [menu])
 
   useEffect(() => {
     if (!map || !mapReady || !enabled) return undefined
@@ -39,7 +53,8 @@ export default function MapContextMenu({
       const t = e.touches[0]
       startPosRef.current = { x: t.clientX, y: t.clientY }
       pressTimerRef.current = setTimeout(() => {
-        const ll = map.unproject([t.clientX - container.getBoundingClientRect().left, t.clientY - container.getBoundingClientRect().top])
+        const rect = container.getBoundingClientRect()
+        const ll = map.containerPointToLatLng([t.clientX - rect.left, t.clientY - rect.top])
         setMenu({
           lat: ll.lat,
           lon: ll.lng,
@@ -74,7 +89,7 @@ export default function MapContextMenu({
     const onContextMenu = (e) => {
       e.preventDefault()
       const rect = container.getBoundingClientRect()
-      const ll = map.unproject([e.clientX - rect.left, e.clientY - rect.top])
+      const ll = map.containerPointToLatLng([e.clientX - rect.left, e.clientY - rect.top])
       setMenu({
         lat: ll.lat,
         lon: ll.lng,
@@ -180,6 +195,19 @@ export default function MapContextMenu({
           <div className="text-[10px] text-fog">Posizione</div>
           <div className="font-mono text-xs text-paper">{menu.lat.toFixed(4)}, {menu.lon.toFixed(4)}</div>
           {infoRow}
+          <div className="mt-1 text-[10px] text-fog">
+            Profondità{' '}
+            {depth === undefined ? (
+              '…'
+            ) : depth ? (
+              <>
+                <span className="font-mono text-xs font-semibold text-paper">{formatDepth(depth.depth)} m</span>{' '}
+                {depth.source === 'Shom' ? '(Shom)' : '(EMODnet, indicativa)'}
+              </>
+            ) : (
+              '— (terra o nessun dato)'
+            )}
+          </div>
         </div>
         {actions.length > 0 ? (
           actions.map((a, i) => {

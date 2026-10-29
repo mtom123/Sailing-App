@@ -19,6 +19,9 @@
  *   public/isobaths-hd/<x>_<y>.json    un tassello ogni 2 × 2 km:
  *     { lines: [[profondità, lat0, lon0, dlat1, dlon1, ...]],   (1e-5 gradi, a differenze)
  *       cov:   [[lat0, lon0, dlat1, dlon1, ...]] }             contorno dell'area rilevata
+ *   public/isobaths-hd/<x>_<y>.bin     quote a 10 m del tassello (profondità al puntatore):
+ *     Int16 little-endian in decimetri, righe da nord, -32768 = nessun dato;
+ *     centro della prima cella in index.json → grids[<x>_<y>] (Lambert-93)
  *
  * Profondità riferite al livello medio del mare (IGN69), non allo zero
  * idrografico. Dati Shom, Licence Ouverte 2.0. Non per la navigazione.
@@ -42,6 +45,8 @@ const TILE_KM = 2 // tasselli di uscita: 2 × 2 dalles
 const LEVELS = [...Array.from({ length: 30 }, (_, i) => i + 1), 35, 40, 50] // m
 const SIMPLIFY = 1.5 // m, Douglas-Peucker
 const NODATA = -99999
+const GRID = 10 // m, griglia delle quote per la profondità al puntatore
+const GRID_NODATA = -32768
 
 // ---------------------------------------------------------------- lettura
 
@@ -224,9 +229,32 @@ function buildTile(dalles, tx, ty) {
     }
   }
 
+  // Quote a 10 m: media delle celle da 5 m valide di ogni 2 × 2 (bordi esclusi)
+  const k = GRID / CELL
+  const gw = PER_TILE / k
+  const depthGrid = new Int16Array(gw * gw).fill(GRID_NODATA)
+  for (let R = 0; R < gw; R++) {
+    for (let C = 0; C < gw; C++) {
+      let sum = 0
+      let n = 0
+      for (let dr = 0; dr < k; dr++) {
+        for (let dc = 0; dc < k; dc++) {
+          const v = values[(1 + R * k + dr) * w + (1 + C * k + dc)]
+          if (!Number.isNaN(v)) {
+            sum += v
+            n++
+          }
+        }
+      }
+      if (n) depthGrid[R * gw + C] = Math.max(-32767, Math.min(32767, Math.round((sum / n) * 10)))
+    }
+  }
+  // Centro della prima cella (nord-ovest) della griglia a 10 m
+  const origin = [(iMin + 1 + (k - 1) / 2) * CELL, (jMax - 1 - (k - 1) / 2) * CELL]
+
   const sw = toWgs84.forward([(offI + tx * PER_TILE) * CELL, (offJ + ty * PER_TILE) * CELL])
   const ne = toWgs84.forward([(offI + (tx + 1) * PER_TILE) * CELL, (offJ + (ty + 1) * PER_TILE) * CELL])
-  return { lines, cov, bbox: [sw[1], sw[0], ne[1], ne[0]].map((v) => Math.round(v * 1e5) / 1e5) }
+  return { lines, cov, depthGrid, origin, bbox: [sw[1], sw[0], ne[1], ne[0]].map((v) => Math.round(v * 1e5) / 1e5) }
 }
 
 // ---------------------------------------------------------------- main
@@ -253,17 +281,17 @@ try {
   }
   console.log(`${asc.length} dalles MNT 5 m`)
 
-  const grids = asc.map(readAsc)
-  offI = ((grids[0].i0 % PER_DALLE) + PER_DALLE) % PER_DALLE
-  offJ = ((grids[0].j0 % PER_DALLE) + PER_DALLE) % PER_DALLE
+  const read = asc.map(readAsc)
+  offI = ((read[0].i0 % PER_DALLE) + PER_DALLE) % PER_DALLE
+  offJ = ((read[0].j0 % PER_DALLE) + PER_DALLE) % PER_DALLE
   const dalles = new Map()
-  for (const d of grids) {
+  for (const d of read) {
     if ((d.i0 - offI) % PER_DALLE || (d.j0 - offJ) % PER_DALLE) throw new Error('dalles non allineate tra loro')
     dalles.set(dalleKey(d.i0, d.j0), d)
   }
 
   const tiles = new Set()
-  for (const d of grids) {
+  for (const d of read) {
     const [x, y] = dalleKey(d.i0, d.j0).split(',').map(Number)
     tiles.add(`${Math.floor(x / TILE_KM)},${Math.floor(y / TILE_KM)}`)
   }
@@ -271,8 +299,11 @@ try {
   mkdirSync(OUT_DIR, { recursive: true })
   const indexFile = join(OUT_DIR, 'index.json')
   let index = {}
+  let grids = {}
   try {
-    index = JSON.parse(readFileSync(indexFile, 'utf8')).tiles
+    const old = JSON.parse(readFileSync(indexFile, 'utf8'))
+    index = old.tiles || {}
+    grids = old.grids || {}
   } catch {}
   let bytes = 0
   for (const key of tiles) {
@@ -282,8 +313,10 @@ try {
     if (!tile || !tile.lines.length) continue
     const json = JSON.stringify({ lines: tile.lines, cov: tile.cov })
     writeFileSync(join(OUT_DIR, `${name}.json`), json)
+    writeFileSync(join(OUT_DIR, `${name}.bin`), Buffer.from(tile.depthGrid.buffer))
     index[name] = tile.bbox
-    bytes += json.length
+    grids[name] = tile.origin
+    bytes += json.length + tile.depthGrid.byteLength
   }
   writeFileSync(
     indexFile,
@@ -291,6 +324,8 @@ try {
       source: 'Shom – Litto3D®, Licence Ouverte 2.0. Profondità IGN69 (livello medio). Non per la navigazione.',
       levels: LEVELS,
       tiles: index,
+      grid: { cell: GRID, size: (TILE_KM * DALLE) / GRID, nodata: GRID_NODATA },
+      grids,
     })
   )
   console.log(`${Object.keys(index).length} tasselli in ${OUT_DIR}, ${(bytes / 1e6).toFixed(1)} MB scritti ora`)

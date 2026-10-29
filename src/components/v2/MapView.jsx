@@ -14,6 +14,7 @@ import { LiguriaHabitatLayer } from '../../lib/liguriaHabitat.js'
 const ISOBATH_VECTOR_MIN_ZOOM = 12
 import ConnectivityIndicator from './ConnectivityIndicator.jsx'
 import MapContextMenu from './MapContextMenu.jsx'
+import DepthHover from './DepthHover.jsx'
 import MeteogramPopup from './MeteogramPopup.jsx'
 import WaypointPopup from './WaypointPopup.jsx'
 import {
@@ -855,6 +856,9 @@ export default function MapView({
           })}
         </div>
       )}
+
+      {/* Profondità sotto il puntatore (mouse) */}
+      <DepthHover map={mapRef.current} mapReady={mapReady} />
 
       {/* Long-press context menu */}
       <MapContextMenu

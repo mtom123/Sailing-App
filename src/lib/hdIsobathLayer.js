@@ -11,19 +11,25 @@ import L from 'leaflet'
 import { CHART_COLORS, IMAGERY_COLORS } from './isobaths.js'
 import { PANE, LABEL_PANE, ensurePane, drawDepthLabels } from './isobathLayer.js'
 
-const BASE = `${import.meta.env.BASE_URL}isobaths-hd/`
+export const HD_BASE = `${import.meta.env.BASE_URL}isobaths-hd/`
 
 let indexPromise = null
 const tiles = new Map() // nome -> Promise<{ lines, cov }>
 
-function loadIndex() {
+/** { list: [{ name, bounds, origin }], grid: { cell, size, nodata } | null } */
+export function loadIndex() {
   if (!indexPromise) {
-    indexPromise = fetch(`${BASE}index.json`)
-      .then((r) => (r.ok ? r.json() : { tiles: {} }))
-      .then((j) =>
-        Object.entries(j.tiles || {}).map(([name, [s, w, n, e]]) => ({ name, bounds: L.latLngBounds([s, w], [n, e]) }))
-      )
-      .catch(() => [])
+    indexPromise = fetch(`${HD_BASE}index.json`)
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((j) => ({
+        list: Object.entries(j.tiles || {}).map(([name, [s, w, n, e]]) => ({
+          name,
+          bounds: L.latLngBounds([s, w], [n, e]),
+          origin: j.grids?.[name],
+        })),
+        grid: j.grid || null,
+      }))
+      .catch(() => ({ list: [], grid: null }))
   }
   return indexPromise
 }
@@ -43,7 +49,7 @@ function decode(arr, from) {
 
 function loadTile(name) {
   if (!tiles.has(name)) {
-    const p = fetch(`${BASE}${name}.json`)
+    const p = fetch(`${HD_BASE}${name}.json`)
       .then((r) => {
         if (!r.ok) throw new Error(`isobate HD ${r.status}`)
         return r.json()
@@ -127,7 +133,7 @@ export const HdIsobathLayer = L.Layer.extend({
     const view = map.getBounds().pad(0.3)
     loadIndex().then((index) => {
       if (!this._map) return
-      for (const { name, bounds } of index) {
+      for (const { name, bounds } of index.list) {
         if (!bounds.intersects(view) || this._shown.has(name)) continue
         loadTile(name)
           .then((t) => this._show(name, t))
