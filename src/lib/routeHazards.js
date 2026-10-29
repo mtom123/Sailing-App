@@ -18,8 +18,13 @@ const MAX_RASTER = 1500 // px per lato del canvas dell'acqua (iPad: memoria)
 const MAX_SAMPLES = 2500 // punti controllati per tratta
 const MAX_CELLS = 250000 // celle della griglia per l'aggiramento
 const SHORE_BUFFER_M = 40 // distanza minima da terra e bassi fondali nell'aggiramento
+const ENDPOINT_FREE_M = 500 // aggiramento, attorno ai waypoint: solo la terra blocca (porti e baie)
+const ENDPOINT_SHALLOW_OK_M = 150 // controllo: bassi fondali accanto a un waypoint non segnalati
 
 const project = (lat, lon) => L.CRS.EPSG3857.project(L.latLng(lat, lon))
+// Metri Web Mercator per metro reale alla latitudine data (≈1,4 a 44° N):
+// le distanze delle costanti sono metri veri
+const mercPerM = (lat) => 1 / Math.cos((lat * Math.PI) / 180)
 const unproject = (x, y) => L.CRS.EPSG3857.unproject(L.point(x, y))
 
 /**
@@ -102,16 +107,20 @@ export async function checkLeg(a, b, minDepth) {
     const ll = lls[i]
     // Il primo e l'ultimo punto sono i waypoint: lì decide chi li ha messi
     const ends = i === 0 || i === pts.length - 1
+    const nearEnd = Math.min(i, pts.length - 1 - i) * (len / (pts.length - 1)) < ENDPOINT_SHALLOW_OK_M * mercPerM(a.lat)
     const d = sample(ll.lat, ll.lng)
     if (d && (!shallowest || d.depth < shallowest.depth)) shallowest = d
     let kind = null
     if (!ends && isWater && !isWater(x, y)) kind = 'land'
-    else if (!ends && d && d.depth < minDepth) kind = 'shallow'
+    else if (!ends && !nearEnd && d && d.depth < minDepth) kind = 'shallow'
     if (kind && current && current.kind === kind) {
       current.path.push([ll.lat, ll.lng])
-      if (d) current.depth = Math.min(current.depth ?? Infinity, d.depth)
+      if (d && d.depth < (current.depth ?? Infinity)) {
+        current.depth = d.depth
+        current.source = d.source
+      }
     } else if (kind) {
-      current = { kind, path: [[ll.lat, ll.lng]], depth: d ? d.depth : undefined }
+      current = { kind, path: [[ll.lat, ll.lng]], depth: d ? d.depth : undefined, source: d ? d.source : undefined }
       hazards.push(current)
     } else {
       current = null
@@ -170,13 +179,15 @@ class Heap {
  * inserire ([lat, lon][], vuoto se la tratta è già sicura) oppure null se
  * non si trova un passaggio nella zona attorno alla tratta.
  */
-export async function detourLeg(a, b, minDepth) {
+export async function detourLeg(a, b, minDepth, debug = null) {
   const pa = project(a.lat, a.lon)
   const pb = project(b.lat, b.lon)
   const len = Math.hypot(pb.x - pa.x, pb.y - pa.y)
-  const box = legBox(a, b, Math.max(600, 0.35 * len))
+  const m = mercPerM((a.lat + b.lat) / 2)
+  const box = legBox(a, b, Math.max(600 * m, 0.35 * len))
   const [minX, minY, maxX, maxY] = box
-  const res = Math.max(10, Math.sqrt(((maxX - minX) * (maxY - minY)) / MAX_CELLS))
+  // Fino a 5 m per le tratte corte: moli e frangiflutti sono stretti
+  const res = Math.max(5, Math.sqrt(((maxX - minX) * (maxY - minY)) / MAX_CELLS))
   const w = Math.ceil((maxX - minX) / res)
   const h = Math.ceil((maxY - minY) / res)
   const cx = (c) => minX + (c + 0.5) * res
@@ -193,73 +204,68 @@ export async function detourLeg(a, b, minDepth) {
   }
   const [isWater, sample] = await Promise.all([waterRaster(box, res), prepareDepth(probe)])
 
+  // Vicino ai due waypoint (porti, baie) niente margine né limite di profondità:
+  // con le celle di una tratta lunga l'imboccatura di un porto risulterebbe chiusa
+  const freeR = Math.max(ENDPOINT_FREE_M * m, 4 * res)
+  const nearEnd = (x, y) => Math.hypot(x - pa.x, y - pa.y) < freeR || Math.hypot(x - pb.x, y - pb.y) < freeR
+
   // Celle bloccate: terra o fondale troppo basso (profondità sconosciuta in acqua: passa)
+  const land = new Uint8Array(w * h)
   const blocked = new Uint8Array(w * h)
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
       const x = cx(c)
       const y = cy(r)
       if (isWater && !isWater(x, y)) {
-        blocked[r * w + c] = 1
+        land[r * w + c] = 1
+        if (!nearEnd(x, y)) blocked[r * w + c] = 1
         continue
       }
+      if (nearEnd(x, y)) continue
       const ll = unproject(x, y)
       const d = sample(ll.lat, ll.lng)
       if (d && d.depth < minDepth) blocked[r * w + c] = 1
     }
   }
-  // Margine: si allargano gli ostacoli di qualche cella
-  const k = Math.max(1, Math.round(SHORE_BUFFER_M / res))
-  const unsafe = new Uint8Array(w * h)
-  for (let r = 0; r < h; r++) {
-    for (let c = 0; c < w; c++) {
-      if (!blocked[r * w + c]) continue
-      for (let dr = -k; dr <= k; dr++) {
-        const rr = r + dr
-        if (rr < 0 || rr >= h) continue
-        for (let dc = -k; dc <= k; dc++) {
-          const cc = c + dc
-          if (cc >= 0 && cc < w) unsafe[rr * w + cc] = 1
+  // Celle vietate: ostacoli allargati di k celle (margine), ma attorno ai
+  // waypoint vale solo la terra
+  const buildUnsafe = (k) => {
+    const unsafe = new Uint8Array(w * h)
+    for (let r = 0; r < h; r++) {
+      for (let c = 0; c < w; c++) {
+        if (!blocked[r * w + c]) continue
+        for (let dr = -k; dr <= k; dr++) {
+          const rr = r + dr
+          if (rr < 0 || rr >= h) continue
+          for (let dc = -k; dc <= k; dc++) {
+            const cc = c + dc
+            if (cc >= 0 && cc < w) unsafe[rr * w + cc] = 1
+          }
         }
       }
     }
+    // Attorno ai waypoint solo la terra, allargata di una cella se le celle
+    // sono piccole (un molo sottile cade facilmente tra due centri cella)
+    const kl = res <= 15 ? 1 : 0
+    const landNear = (c, r) => {
+      for (let dr = -kl; dr <= kl; dr++) {
+        for (let dc = -kl; dc <= kl; dc++) {
+          const rr = r + dr
+          const cc = c + dc
+          if (rr >= 0 && rr < h && cc >= 0 && cc < w && land[rr * w + cc]) return 1
+        }
+      }
+      return 0
+    }
+    for (let r = 0; r < h; r++) {
+      for (let c = 0; c < w; c++) {
+        if (nearEnd(cx(c), cy(r))) unsafe[r * w + c] = landNear(c, r)
+      }
+    }
+    return unsafe
   }
 
   const toCell = (p) => [Math.min(w - 1, Math.max(0, Math.floor((p.x - minX) / res))), Math.min(h - 1, Math.max(0, Math.floor((maxY - p.y) / res)))]
-  // Waypoint vicino a riva o in un basso: si parte dalla cella libera più vicina
-  const nearestFree = ([c0, r0]) => {
-    if (!unsafe[r0 * w + c0]) return [c0, r0]
-    for (let rad = 1; rad < 60; rad++) {
-      for (let dr = -rad; dr <= rad; dr++) {
-        for (let dc = -rad; dc <= rad; dc++) {
-          if (Math.max(Math.abs(dr), Math.abs(dc)) !== rad) continue
-          const c = c0 + dc
-          const r = r0 + dr
-          if (c >= 0 && r >= 0 && c < w && r < h && !unsafe[r * w + c]) return [c, r]
-        }
-      }
-    }
-    return null
-  }
-  const s = nearestFree(toCell(pa))
-  const g = nearestFree(toCell(pb))
-  if (!s || !g) return null
-
-  const start = s[1] * w + s[0]
-  const goal = g[1] * w + g[0]
-  // Float64: con Float32 l'arrotondamento faceva sembrare "migliore" un costo
-  // già noto e la stessa cella tornava in coda senza fine
-  const gScore = new Float64Array(w * h).fill(Infinity)
-  const came = new Int32Array(w * h).fill(-1)
-  const closed = new Uint8Array(w * h) // ogni cella si espande una volta sola
-  const heur = (i) => {
-    const dx = Math.abs((i % w) - g[0])
-    const dy = Math.abs(Math.floor(i / w) - g[1])
-    return Math.max(dx, dy) + (Math.SQRT2 - 1) * Math.min(dx, dy)
-  }
-  const open = new Heap()
-  gScore[start] = 0
-  open.push(start, heur(start))
   const DIRS = [
     [1, 0, 1],
     [-1, 0, 1],
@@ -270,36 +276,82 @@ export async function detourLeg(a, b, minDepth) {
     [-1, 1, Math.SQRT2],
     [-1, -1, Math.SQRT2],
   ]
-  let found = false
-  while (open.size) {
-    const cur = open.pop()
-    if (closed[cur]) continue
-    closed[cur] = 1
-    if (cur === goal) {
-      found = true
-      break
+
+  // A* sulle celle libere; percorso di celle [c, r] o null
+  const search = (unsafe) => {
+    // Waypoint vicino a riva o in un basso: si parte dalla cella libera più vicina
+    const nearestFree = ([c0, r0]) => {
+      if (!unsafe[r0 * w + c0]) return [c0, r0]
+      for (let rad = 1; rad < 60; rad++) {
+        for (let dr = -rad; dr <= rad; dr++) {
+          for (let dc = -rad; dc <= rad; dc++) {
+            if (Math.max(Math.abs(dr), Math.abs(dc)) !== rad) continue
+            const c = c0 + dc
+            const r = r0 + dr
+            if (c >= 0 && r >= 0 && c < w && r < h && !unsafe[r * w + c]) return [c, r]
+          }
+        }
+      }
+      return null
     }
-    const c = cur % w
-    const r = Math.floor(cur / w)
-    for (const [dc, dr, cost] of DIRS) {
-      const nc = c + dc
-      const nr = r + dr
-      if (nc < 0 || nr < 0 || nc >= w || nr >= h) continue
-      const ni = nr * w + nc
-      if (unsafe[ni] || closed[ni]) continue
-      const t = gScore[cur] + cost
-      if (t < gScore[ni]) {
-        gScore[ni] = t
-        came[ni] = cur
-        open.push(ni, t + heur(ni))
+    const s = nearestFree(toCell(pa))
+    const g = nearestFree(toCell(pb))
+    if (!s || !g) return null
+    const start = s[1] * w + s[0]
+    const goal = g[1] * w + g[0]
+    // Float64: con Float32 l'arrotondamento faceva sembrare "migliore" un costo
+    // già noto e la stessa cella tornava in coda senza fine
+    const gScore = new Float64Array(w * h).fill(Infinity)
+    const came = new Int32Array(w * h).fill(-1)
+    const closed = new Uint8Array(w * h) // ogni cella si espande una volta sola
+    const heur = (i) => {
+      const dx = Math.abs((i % w) - g[0])
+      const dy = Math.abs(Math.floor(i / w) - g[1])
+      return Math.max(dx, dy) + (Math.SQRT2 - 1) * Math.min(dx, dy)
+    }
+    const open = new Heap()
+    gScore[start] = 0
+    open.push(start, heur(start))
+    while (open.size) {
+      const cur = open.pop()
+      if (closed[cur]) continue
+      closed[cur] = 1
+      if (cur === goal) {
+        const path = []
+        for (let i = goal; i !== -1; i = came[i]) path.push([i % w, Math.floor(i / w)])
+        return path.reverse()
+      }
+      const c = cur % w
+      const r = Math.floor(cur / w)
+      for (const [dc, dr, cost] of DIRS) {
+        const nc = c + dc
+        const nr = r + dr
+        if (nc < 0 || nr < 0 || nc >= w || nr >= h) continue
+        const ni = nr * w + nc
+        if (unsafe[ni] || closed[ni]) continue
+        const t = gScore[cur] + cost
+        if (t < gScore[ni]) {
+          gScore[ni] = t
+          came[ni] = cur
+          open.push(ni, t + heur(ni))
+        }
       }
     }
+    return null
   }
-  if (!found) return null
 
-  const path = []
-  for (let i = goal; i !== -1; i = came[i]) path.push([i % w, Math.floor(i / w)])
-  path.reverse()
+  // Prima con il margine dalla costa; se chiude un passaggio (canali, porti
+  // grandi con celle da ~100 m) si riprova senza: resta in acqua e sopra minDepth
+  let unsafe = null
+  let path = null
+  for (const k of [Math.max(1, Math.round((SHORE_BUFFER_M * m) / res)), 0]) {
+    unsafe = buildUnsafe(k)
+    path = search(unsafe)
+    if (debug) (debug.tries = debug.tries || []).push({ k, found: !!path })
+    if (path) break
+  }
+  if (debug) Object.assign(debug, { w, h, res, freeR, haveWater: !!isWater })
+  if (!path) return null
 
   // Semplificazione in due passate, sempre con il controllo "visibile in
   // linea retta senza celle pericolose":
@@ -353,4 +405,45 @@ export async function detourLeg(a, b, minDepth) {
     const ll = unproject(cx(c), cy(r))
     return [ll.lat, ll.lng]
   })
+}
+
+/**
+ * Aggiramento completo: detourLeg, poi ogni tratta del percorso che il
+ * controllo dettagliato segnala ancora viene ricalcolata da sola (più corta,
+ * quindi griglia più fine e costa più precisa), fino a 3 volte; infine si
+ * tolgono i waypoint superflui. Stesso risultato di detourLeg: punti
+ * intermedi, [] se la tratta è già sicura, null se non c'è passaggio.
+ */
+export async function detourLegRefined(a, b, minDepth, onProgress = () => {}) {
+  const first = await detourLeg(a, b, minDepth)
+  if (!first) return null
+  if (!first.length) return []
+  const toWp = ([lat, lon]) => ({ lat, lon })
+  let pts = first.map(toWp)
+  for (let pass = 0; pass < 3; pass++) {
+    const all = [a, ...pts, b]
+    const out = []
+    let changed = false
+    for (let i = 0; i < all.length - 1; i++) {
+      onProgress(`affino ${i + 1}/${all.length - 1}`)
+      out.push(all[i])
+      if ((await checkLeg(all[i], all[i + 1], minDepth)).ok) continue
+      const sub = await detourLeg(all[i], all[i + 1], minDepth)
+      if (sub && sub.length) {
+        out.push(...sub.map(toWp))
+        changed = true
+      }
+    }
+    pts = out.slice(1)
+    if (!changed) break
+  }
+  // Waypoint superflui: via se la tratta diretta tra i vicini è sicura
+  for (let k = 0; k < pts.length; ) {
+    onProgress(`semplifico ${k + 1}/${pts.length}`)
+    const prev = k === 0 ? a : pts[k - 1]
+    const next = k === pts.length - 1 ? b : pts[k + 1]
+    if ((await checkLeg(prev, next, minDepth)).ok) pts.splice(k, 1)
+    else k++
+  }
+  return pts.map((p) => [p.lat, p.lon])
 }

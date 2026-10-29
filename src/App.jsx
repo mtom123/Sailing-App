@@ -33,7 +33,7 @@ import { haversine, bearing, formatDeg, cardinal, metersToNm } from './lib/geo.j
 import { armAudio, startAlarm, stopAlarm, warnBeep } from './lib/alarm.js'
 import { sunTimes, moonPhase } from './lib/sun.js'
 import { routeLegs, routeTotalNm, crossTrackError } from './lib/route.js'
-import { detourLeg } from './lib/routeHazards.js'
+import { detourLegRefined } from './lib/routeHazards.js'
 
 // Adaptive hooks: gli hook leggono dallo store
 function useRouteAdapter(geo) {
@@ -45,12 +45,19 @@ function useRouteAdapter(geo) {
   const hazards = useRouteHazards(waypoints, minDepth)
 
   // Aggira la tratta i → i+1: inserisce i waypoint intermedi trovati.
-  // 'ok' già sicura, 'fixed' aggirata, 'none' nessun passaggio trovato
-  const fixLeg = async (i) => {
+  // 'ok' già sicura, 'fixed' aggirata, 'none' nessun passaggio, 'error' dati
+  // non disponibili. onProgress(testo) durante il calcolo
+  const fixLeg = async (i, onProgress) => {
     const a = waypoints[i]
     const b = waypoints[i + 1]
     if (!a || !b) return 'none'
-    const points = await detourLeg(a, b, minDepth)
+    let points
+    try {
+      points = await detourLegRefined(a, b, minDepth, onProgress)
+    } catch (err) {
+      console.warn('Aggiramento non riuscito', err)
+      return 'error'
+    }
     if (!points) return 'none'
     if (!points.length) return 'ok'
     setRouteDraft((d) => {

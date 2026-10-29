@@ -34,33 +34,47 @@ const fmtDuration = (ms) => {
 // Descrizione del pericolo peggiore di una tratta (checkLeg)
 function hazardText(result, minDepth) {
   if (result.hazards.some((h) => h.kind === 'land')) return 'Passa sulla terra'
-  const depths = result.hazards.map((h) => h.depth).filter((d) => d != null)
-  const min = depths.length ? Math.min(...depths) : null
-  return min != null ? `Fondale ${formatDepth(min)} m (minimo ${formatDepth(minDepth)} m)` : 'Bassi fondali'
+  const shallow = result.hazards.filter((h) => h.depth != null)
+  if (!shallow.length) return 'Bassi fondali'
+  const worst = shallow.reduce((m, h) => (h.depth < m.depth ? h : m))
+  // EMODnet (celle da ~115 m) sotto costa mescola scogli e mare: va verificato
+  const estimated = worst.source === 'EMODnet' ? ', stimato: verifica a vista' : ''
+  return `Fondale ${formatDepth(worst.depth)} m (minimo ${formatDepth(minDepth)} m${estimated})`
+}
+
+const FIX_MESSAGES = {
+  none: 'Nessun passaggio sicuro qui vicino: sposta i waypoint',
+  error: 'Costa o fondali non disponibili ora: riprova',
 }
 
 // Avviso sotto una tratta con terra o bassi fondali, e pulsante per aggirarli
 function LegHazard({ result, minDepth, onFix }) {
-  const [state, setState] = useState(null) // null | 'busy' | 'none'
+  const [busy, setBusy] = useState(null) // testo dell'avanzamento mentre calcola
+  const [outcome, setOutcome] = useState(null) // 'none' | 'error'
   if (!result || result.ok) return null
   const land = result.hazards.some((h) => h.kind === 'land')
   return (
     <div className={`flex items-center gap-2 px-3 pb-1.5 text-[10px] ${land ? 'text-danger' : 'text-warn'}`}>
       <AlertTriangle size={12} className="flex-none" />
       <span className="min-w-0 flex-1">
-        {state === 'none' ? 'Nessun passaggio sicuro qui vicino: sposta i waypoint' : hazardText(result, minDepth)}
+        {busy ? `Calcolo aggiramento… ${busy}` : FIX_MESSAGES[outcome] || hazardText(result, minDepth)}
       </span>
       <button
         type="button"
-        disabled={state === 'busy'}
+        disabled={!!busy}
         onClick={async () => {
-          setState('busy')
-          const r = await onFix()
-          setState(r === 'none' ? 'none' : null)
+          setBusy('…')
+          setOutcome(null)
+          try {
+            const r = await onFix((text) => setBusy(text))
+            setOutcome(FIX_MESSAGES[r] ? r : null)
+          } finally {
+            setBusy(null)
+          }
         }}
         className="flex-none rounded border border-line bg-surface px-2 py-1 font-semibold tracking-widest text-paper hover:bg-raised disabled:opacity-50"
       >
-        {state === 'busy' ? '…' : 'AGGIRA'}
+        {busy ? '…' : 'AGGIRA'}
       </button>
     </div>
   )
@@ -68,8 +82,12 @@ function LegHazard({ result, minDepth, onFix }) {
 
 // Riepilogo dei pericoli della rotta con "aggira tutto"
 function RouteHazards({ route }) {
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState(null) // testo dell'avanzamento mentre calcola
+  const [failed, setFailed] = useState(0) // tratte senza passaggio all'ultimo tentativo
   const bad = (route.hazards || []).map((r, i) => (r && !r.ok ? i : -1)).filter((i) => i >= 0)
+  if (busy) {
+    return <div className="border-b border-line px-3 py-1.5 text-[10px] text-fog">Calcolo aggiramento… {busy}</div>
+  }
   if (route.checkingHazards && !bad.length) {
     return <div className="border-b border-line px-3 py-1.5 text-[10px] text-fog">Controllo fondali e costa…</div>
   }
@@ -80,20 +98,29 @@ function RouteHazards({ route }) {
       <AlertTriangle size={14} className={land ? 'text-danger' : 'text-warn'} />
       <span className={`min-w-0 flex-1 text-[10px] ${land ? 'text-danger' : 'text-warn'}`}>
         {bad.length === 1 ? '1 tratta' : `${bad.length} tratte`} su {land ? 'terra o ' : ''}fondali sotto {formatDepth(route.minDepth)} m
+        {failed > 0 && ` · ${failed} senza passaggio: sposta i waypoint`}
       </span>
       <button
         type="button"
-        disabled={busy}
         onClick={async () => {
-          setBusy(true)
-          // Dall'ultima alla prima: i waypoint inseriti non spostano le tratte precedenti
-          for (const i of [...bad].reverse()) await route.fixLeg(i)
-          setBusy(false)
+          let none = 0
+          try {
+            // Dall'ultima alla prima: i waypoint inseriti non spostano le tratte precedenti
+            const todo = [...bad].reverse()
+            for (const [n, i] of todo.entries()) {
+              setBusy(`tratta ${n + 1}/${todo.length}`)
+              const r = await route.fixLeg(i, (text) => setBusy(`tratta ${n + 1}/${todo.length}: ${text}`))
+              if (r === 'none' || r === 'error') none++
+            }
+          } finally {
+            setFailed(none)
+            setBusy(null)
+          }
         }}
-        className="flex flex-none items-center gap-1 rounded border border-line bg-surface px-2 py-1 text-[10px] font-semibold tracking-widest text-paper hover:bg-raised disabled:opacity-50"
+        className="flex flex-none items-center gap-1 rounded border border-line bg-surface px-2 py-1 text-[10px] font-semibold tracking-widest text-paper hover:bg-raised"
       >
         <Route size={11} />
-        {busy ? '…' : 'AGGIRA TUTTO'}
+        AGGIRA TUTTO
       </button>
     </div>
   )
@@ -320,7 +347,7 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
                   {metersToNm(leg.dist).toFixed(1)} nm · {formatDeg(leg.brg)}°
                 </span>
               </div>
-              <LegHazard result={route.hazards?.[i]} minDepth={route.minDepth} onFix={() => route.fixLeg(i)} />
+              <LegHazard result={route.hazards?.[i]} minDepth={route.minDepth} onFix={(onProgress) => route.fixLeg(i, onProgress)} />
             </div>
           ))}
         </div>
