@@ -22,6 +22,7 @@ import useTrack from './hooks/useTrack.js'
 import useRainRadar from './hooks/useRainRadar.js'
 import useGrib from './hooks/useGrib.js'
 import useWeatherRouting from './hooks/useWeatherRouting.js'
+import useRouteHazards from './hooks/useRouteHazards.js'
 
 // Libs
 import { ANCHORAGES } from './data/anchorages.js'
@@ -32,11 +33,36 @@ import { haversine, bearing, formatDeg, cardinal, metersToNm } from './lib/geo.j
 import { armAudio, startAlarm, stopAlarm, warnBeep } from './lib/alarm.js'
 import { sunTimes, moonPhase } from './lib/sun.js'
 import { routeLegs, routeTotalNm, crossTrackError } from './lib/route.js'
+import { detourLeg } from './lib/routeHazards.js'
 
 // Adaptive hooks: gli hook leggono dallo store
 function useRouteAdapter(geo) {
-  const { routeDraft, routeEditing, routeNavigating, activeWaypointIdx, planSpeed, departureOffsetH, savedRoutes, addSavedRoute, deleteSavedRoute, setRouteDraft, setRouteEditing, setRouteNavigating, setActiveWaypointIdx, setPlanSpeed, setDepartureOffsetH } = useAppStore()
+  const { routeDraft, routeEditing, routeNavigating, activeWaypointIdx, planSpeed, departureOffsetH, savedRoutes, addSavedRoute, deleteSavedRoute, setRouteDraft, setRouteEditing, setRouteNavigating, setActiveWaypointIdx, setPlanSpeed, setDepartureOffsetH, boat } = useAppStore()
   const waypoints = routeDraft.waypoints
+
+  // Terra e bassi fondali lungo le tratte (pescaggio + margine)
+  const minDepth = (boat.draftM ?? 1.9) + (boat.safetyMarginM ?? 1)
+  const hazards = useRouteHazards(waypoints, minDepth)
+
+  // Aggira la tratta i → i+1: inserisce i waypoint intermedi trovati.
+  // 'ok' già sicura, 'fixed' aggirata, 'none' nessun passaggio trovato
+  const fixLeg = async (i) => {
+    const a = waypoints[i]
+    const b = waypoints[i + 1]
+    if (!a || !b) return 'none'
+    const points = await detourLeg(a, b, minDepth)
+    if (!points) return 'none'
+    if (!points.length) return 'ok'
+    setRouteDraft((d) => {
+      const at = d.waypoints.findIndex((w) => w.id === a.id)
+      if (at < 0 || d.waypoints[at + 1]?.id !== b.id) return d // rotta cambiata nel frattempo
+      const stamp = Date.now().toString(36)
+      const added = points.map(([lat, lon], k) => ({ id: `w${stamp}d${k}`, lat, lon }))
+      const wps = [...d.waypoints.slice(0, at + 1), ...added, ...d.waypoints.slice(at + 1)]
+      return { ...d, waypoints: wps.map((w, idx) => ({ ...w, name: `WP${idx + 1}` })) }
+    })
+    return 'fixed'
+  }
 
   const legs = useMemo(() => routeLegs(waypoints), [waypoints])
   const totalNm = useMemo(() => routeTotalNm(waypoints), [waypoints])
@@ -98,6 +124,10 @@ function useRouteAdapter(geo) {
     deleteSavedRoute,
     setRouteDraft,
     nav,
+    minDepth,
+    hazards: hazards.legs,
+    checkingHazards: hazards.checking,
+    fixLeg,
   }
 }
 

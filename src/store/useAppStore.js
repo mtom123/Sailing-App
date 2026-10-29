@@ -72,6 +72,9 @@ export const useAppStore = create(
         motoringSpeedKn: 6.5,
         upwindAngleDeg: 45,
         downwindAngleDeg: 150,
+        // Rotta: avviso e aggiramento sotto pescaggio + margine
+        draftM: 1.9,
+        safetyMarginM: 1,
       },
       setBoat: (boat) => set((s) => ({ boat: { ...s.boat, ...boat } })),
 
@@ -143,11 +146,12 @@ export const useAppStore = create(
     }),
     {
       name: 'timone.v2',
-      // I livelli nuovi (es. isobate) prendono il default anche se c'è uno stato salvato
+      // I campi nuovi (livelli, dati barca) prendono il default anche se c'è uno stato salvato
       merge: (persisted, current) => ({
         ...current,
         ...persisted,
         layers: { ...current.layers, ...persisted?.layers },
+        boat: { ...current.boat, ...persisted?.boat },
       }),
       partialize: (s) => ({
         baseStyle: s.baseStyle,

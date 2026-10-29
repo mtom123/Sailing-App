@@ -63,20 +63,20 @@ function loadHdGrid(name) {
   return hdGrids.get(name)
 }
 
-async function hdDepth(lat, lon) {
-  const index = await loadIndex()
+// Quota Shom (m, negativa in mare) da una griglia già caricata, o null
+function hdValue(index, grids, lat, lon) {
   if (!index.grid) return null
   const { cell, size, nodata } = index.grid
   const [x, y] = toLambert93(lat, lon)
   for (const t of index.list) {
     // Il riquadro lat/lon del tassello è approssimato (in Lambert-93 è un
     // quadrato, qui leggermente ruotato): decide la posizione nella griglia
-    if (!t.origin || !t.bounds.pad(0.1).contains([lat, lon])) continue
+    const grid = grids.get(t.name)
+    if (!grid || !t.origin) continue
     const [x0, y0] = t.origin
     const c = (x - x0) / cell
     const r = (y0 - y) / cell
     if (c < -0.5 || r < -0.5 || c > size - 0.5 || r > size - 0.5) continue
-    const grid = await loadHdGrid(t.name)
     const get = (cc, rr) => {
       if (cc < 0 || rr < 0 || cc >= size || rr >= size) return null
       const v = grid[rr * size + cc]
@@ -88,8 +88,10 @@ async function hdDepth(lat, lon) {
   return null
 }
 
-async function emodnetDepth(lat, lon) {
-  const block = await loadBlock(blockIndex(lon), blockIndex(lat))
+// Quota EMODnet da un blocco già caricato, o null
+function emodnetValue(blocks, lat, lon) {
+  const block = blocks.get(`${blockIndex(lon)},${blockIndex(lat)}`)
+  if (!block) return null
   // Centro della cella (I, J) in ((I + 0.5) / 960, (J + 0.5) / 960); righe da nord
   const c = lon * CELLS_PER_DEGREE - 0.5 - block.i0
   const r = block.jTop + 0.5 - lat * CELLS_PER_DEGREE
@@ -98,25 +100,50 @@ async function emodnetDepth(lat, lon) {
 }
 
 /**
+ * Carica i dati che coprono i punti dati ([lat, lon][]) e restituisce un
+ * campionatore sincrono (lat, lon) → { depth, source } | null, per controllare
+ * migliaia di punti senza attese (controllo e aggiramento delle rotte).
+ * Fuori dai dati caricati risponde null.
+ */
+export async function prepareDepth(points) {
+  const index = await loadIndex()
+  const blockKeys = new Map()
+  const hdNames = new Set()
+  for (const [lat, lon] of points) {
+    blockKeys.set(`${blockIndex(lon)},${blockIndex(lat)}`, [blockIndex(lon), blockIndex(lat)])
+    for (const t of index.list) if (t.origin && t.bounds.pad(0.1).contains([lat, lon])) hdNames.add(t.name)
+  }
+  const blocks = new Map()
+  const grids = new Map()
+  await Promise.all([
+    ...[...blockKeys].map(([key, [bx, by]]) =>
+      loadBlock(bx, by)
+        .then((b) => blocks.set(key, b))
+        .catch(() => {})
+    ),
+    ...[...hdNames].map((name) =>
+      loadHdGrid(name)
+        .then((g) => grids.set(name, g))
+        .catch(() => {})
+    ),
+  ])
+  return (lat, lon) => {
+    let v = hdValue(index, grids, lat, lon)
+    let source = 'Shom'
+    if (v == null) {
+      v = emodnetValue(blocks, lat, lon)
+      source = 'EMODnet'
+    }
+    if (v == null || v >= 0) return null
+    return { depth: -v, source }
+  }
+}
+
+/**
  * { depth: metri sotto il livello del mare, source: 'Shom' | 'EMODnet' },
  * oppure null a terra o senza dati.
  */
 export async function depthAt(lat, lon) {
-  let v = null
-  let source = 'Shom'
-  try {
-    v = await hdDepth(lat, lon)
-  } catch {
-    v = null
-  }
-  if (v == null) {
-    source = 'EMODnet'
-    try {
-      v = await emodnetDepth(lat, lon)
-    } catch {
-      v = null
-    }
-  }
-  if (v == null || v >= 0) return null
-  return { depth: -v, source }
+  const sample = await prepareDepth([[lat, lon]])
+  return sample(lat, lon)
 }

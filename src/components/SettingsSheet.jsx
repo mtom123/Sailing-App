@@ -229,6 +229,35 @@ export default function SettingsSheet({
               />
               <span className="text-[10px] text-fog">° poppa</span>
             </div>
+            <div className="label pt-3 pb-1 flex items-center gap-1.5">
+              <Gauge size={11} /> Pescaggio e margine (rotte)
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min="0.5"
+                max="6"
+                step="0.1"
+                value={boat.draftM ?? 1.9}
+                onChange={(e) => setBoat({ draftM: Number(e.target.value) })}
+                className="w-16 rounded-md border border-line bg-surface px-2 py-1.5 text-center text-xs text-paper outline-none focus:border-phos"
+              />
+              <span className="text-[10px] text-fog">m pescaggio</span>
+              <input
+                type="number"
+                min="0"
+                max="10"
+                step="0.5"
+                value={boat.safetyMarginM ?? 1}
+                onChange={(e) => setBoat({ safetyMarginM: Number(e.target.value) })}
+                className="w-16 rounded-md border border-line bg-surface px-2 py-1.5 text-center text-xs text-paper outline-none focus:border-phos"
+              />
+              <span className="text-[10px] text-fog">m margine</span>
+            </div>
+            <div className="pt-1 text-[10px] text-fog-dim">
+              La rotta segnala e aggira terra e fondali sotto{' '}
+              {((boat.draftM ?? 1.9) + (boat.safetyMarginM ?? 1)).toFixed(1)} m
+            </div>
           </Section>
 
           <Section title="Sorgente AIS" icon={Radio}>

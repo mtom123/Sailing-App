@@ -13,10 +13,13 @@ import {
   Waves,
   Shield,
   Sparkles,
+  AlertTriangle,
+  Route,
 } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore.js'
 import { formatDeg, metersToNm } from '../../lib/geo.js'
 import { downloadFile, etaTimes, routeToGPX } from '../../lib/route.js'
+import { formatDepth } from './DepthHover.jsx'
 
 const fmtTime = (ms) =>
   new Date(ms).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
@@ -26,6 +29,74 @@ const fmtDuration = (ms) => {
   const mins = Math.round(ms / 60000)
   const h = Math.floor(mins / 60)
   return h > 0 ? `${h}h ${String(mins % 60).padStart(2, '0')}m` : `${mins}m`
+}
+
+// Descrizione del pericolo peggiore di una tratta (checkLeg)
+function hazardText(result, minDepth) {
+  if (result.hazards.some((h) => h.kind === 'land')) return 'Passa sulla terra'
+  const depths = result.hazards.map((h) => h.depth).filter((d) => d != null)
+  const min = depths.length ? Math.min(...depths) : null
+  return min != null ? `Fondale ${formatDepth(min)} m (minimo ${formatDepth(minDepth)} m)` : 'Bassi fondali'
+}
+
+// Avviso sotto una tratta con terra o bassi fondali, e pulsante per aggirarli
+function LegHazard({ result, minDepth, onFix }) {
+  const [state, setState] = useState(null) // null | 'busy' | 'none'
+  if (!result || result.ok) return null
+  const land = result.hazards.some((h) => h.kind === 'land')
+  return (
+    <div className={`flex items-center gap-2 px-3 pb-1.5 text-[10px] ${land ? 'text-danger' : 'text-warn'}`}>
+      <AlertTriangle size={12} className="flex-none" />
+      <span className="min-w-0 flex-1">
+        {state === 'none' ? 'Nessun passaggio sicuro qui vicino: sposta i waypoint' : hazardText(result, minDepth)}
+      </span>
+      <button
+        type="button"
+        disabled={state === 'busy'}
+        onClick={async () => {
+          setState('busy')
+          const r = await onFix()
+          setState(r === 'none' ? 'none' : null)
+        }}
+        className="flex-none rounded border border-line bg-surface px-2 py-1 font-semibold tracking-widest text-paper hover:bg-raised disabled:opacity-50"
+      >
+        {state === 'busy' ? '…' : 'AGGIRA'}
+      </button>
+    </div>
+  )
+}
+
+// Riepilogo dei pericoli della rotta con "aggira tutto"
+function RouteHazards({ route }) {
+  const [busy, setBusy] = useState(false)
+  const bad = (route.hazards || []).map((r, i) => (r && !r.ok ? i : -1)).filter((i) => i >= 0)
+  if (route.checkingHazards && !bad.length) {
+    return <div className="border-b border-line px-3 py-1.5 text-[10px] text-fog">Controllo fondali e costa…</div>
+  }
+  if (!bad.length) return null
+  const land = bad.some((i) => route.hazards[i].hazards.some((h) => h.kind === 'land'))
+  return (
+    <div className={`flex items-center gap-2 border-b border-line px-3 py-2 ${land ? 'bg-danger/10' : 'bg-warn/10'}`}>
+      <AlertTriangle size={14} className={land ? 'text-danger' : 'text-warn'} />
+      <span className={`min-w-0 flex-1 text-[10px] ${land ? 'text-danger' : 'text-warn'}`}>
+        {bad.length === 1 ? '1 tratta' : `${bad.length} tratte`} su {land ? 'terra o ' : ''}fondali sotto {formatDepth(route.minDepth)} m
+      </span>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true)
+          // Dall'ultima alla prima: i waypoint inseriti non spostano le tratte precedenti
+          for (const i of [...bad].reverse()) await route.fixLeg(i)
+          setBusy(false)
+        }}
+        className="flex flex-none items-center gap-1 rounded border border-line bg-surface px-2 py-1 text-[10px] font-semibold tracking-widest text-paper hover:bg-raised disabled:opacity-50"
+      >
+        <Route size={11} />
+        {busy ? '…' : 'AGGIRA TUTTO'}
+      </button>
+    </div>
+  )
 }
 
 const ROUTE_TYPES = [
@@ -237,18 +308,19 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
           </button>
         </div>
 
+        <RouteHazards route={route} />
         <div className="scroll-y min-h-0 flex-1">
-          {route.legs.map((leg) => (
-            <div
-              key={`${leg.from.id}-${leg.to.id}`}
-              className="flex items-center justify-between border-b border-line px-3 py-1.5"
-            >
-              <span className="text-xs text-paper">
-                {leg.from.name} → {leg.to.name}
-              </span>
-              <span className="text-[10px] text-fog tabular">
-                {metersToNm(leg.dist).toFixed(1)} nm · {formatDeg(leg.brg)}°
-              </span>
+          {route.legs.map((leg, i) => (
+            <div key={`${leg.from.id}-${leg.to.id}`} className="border-b border-line">
+              <div className="flex items-center justify-between px-3 py-1.5">
+                <span className="text-xs text-paper">
+                  {leg.from.name} → {leg.to.name}
+                </span>
+                <span className="text-[10px] text-fog tabular">
+                  {metersToNm(leg.dist).toFixed(1)} nm · {formatDeg(leg.brg)}°
+                </span>
+              </div>
+              <LegHazard result={route.hazards?.[i]} minDepth={route.minDepth} onFix={() => route.fixLeg(i)} />
             </div>
           ))}
         </div>
@@ -286,6 +358,8 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
           <Pencil size={15} />
         </button>
       </div>
+
+      <RouteHazards route={route} />
 
       {/* Live NAV */}
       {nav && (

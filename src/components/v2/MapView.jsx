@@ -618,6 +618,17 @@ export default function MapView({
           keyboard: false,
         }).addTo(group)
       }
+      // Pericoli sulle tratte: rosso terra, arancione fondale sotto pescaggio + margine
+      for (const leg of route.hazards || []) {
+        for (const hz of leg?.hazards || []) {
+          L.polyline(hz.path, {
+            color: hz.kind === 'land' ? '#FF5252' : '#F5A623',
+            weight: 6,
+            opacity: 0.95,
+            interactive: false,
+          }).addTo(group)
+        }
+      }
     }
 
     // Waypoint markers: nel gruppo della rotta, che clearLayers() svuota a
@@ -649,7 +660,7 @@ export default function MapView({
       m.addTo(group)
       markers.set(w.id, m)
     })
-  }, [route.waypoints, route.editing, route.nav, mapReady])
+  }, [route.waypoints, route.editing, route.nav, route.hazards, mapReady])
 
   // === Route alternative options ===
   useEffect(() => {
