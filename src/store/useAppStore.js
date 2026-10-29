@@ -77,7 +77,10 @@ export const useAppStore = create(
 
       // === Route draft ===
       routeDraft: { name: '', waypoints: [] },
-      setRouteDraft: (routeDraft) => set({ routeDraft }),
+      // Valore o funzione (bozza precedente → nuova), come lo useState di React:
+      // RoutePanel (annulla ultimo WP, salva) passa una funzione
+      setRouteDraft: (routeDraft) =>
+        set((s) => ({ routeDraft: typeof routeDraft === 'function' ? routeDraft(s.routeDraft) : routeDraft })),
       moveWaypointUp: (id) =>
         set((s) => {
           const wps = [...s.routeDraft.waypoints]

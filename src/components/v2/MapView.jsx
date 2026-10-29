@@ -450,6 +450,14 @@ export default function MapView({
     setVis(refs.seamarks, layers.seamarks)
   }, [baseStyle, layers.bathy, layers.posidonia, layers.shomRelief, layers.isobaths, layers.seamarks, mapReady])
 
+  // === Cursore a croce mentre si traccia la rotta ===
+  // (classList, non className di React: non tocca le classi di Leaflet)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    el.classList.toggle('cursor-crosshair', !!route.editing)
+  }, [route.editing, mapReady])
+
   // === Follow boat ===
   useEffect(() => {
     if (!mapReady || !follow || geo.lat == null) return
@@ -612,7 +620,8 @@ export default function MapView({
       }
     }
 
-    // Waypoint markers
+    // Waypoint markers: nel gruppo della rotta, che clearLayers() svuota a
+    // ogni ridisegno (aggiunti alla mappa restavano quelli tolti con UNDO)
     const markers = markersRef.current.waypoints
     markers.clear()
     wps.forEach((w, i) => {
@@ -637,18 +646,9 @@ export default function MapView({
           setWaypointPopupId(w.id)
         })
       }
-      m.addTo(map)
+      m.addTo(group)
       markers.set(w.id, m)
     })
-
-    // Cleanup stale
-    const seen = new Set(wps.map((w) => w.id))
-    for (const [id, m] of markers) {
-      if (!seen.has(id)) {
-        map.removeLayer(m)
-        markers.delete(id)
-      }
-    }
   }, [route.waypoints, route.editing, route.nav, mapReady])
 
   // === Route alternative options ===
@@ -699,6 +699,9 @@ export default function MapView({
         dashArray: '6 4',
         fillColor: color,
         fillOpacity: p.status === 'inside' ? 0.18 : 0.07,
+        // Tracciando la rotta il tocco deve aggiungere il waypoint, non aprire
+        // la scheda del parco (che ferma il click: dentro il parco niente WP)
+        interactive: !route.editing,
       })
         .bindPopup(popupHTML(p.name, [
           { label: 'Authority', value: p.authority, color: '#8FA0AE' },
@@ -707,7 +710,7 @@ export default function MapView({
         ]))
         .addTo(group)
     }
-  }, [parks, layers.parks, mapReady])
+  }, [parks, layers.parks, mapReady, route.editing])
 
   const toggleRouteEditing = () => {
     const st = useAppStore.getState()
@@ -728,9 +731,12 @@ export default function MapView({
 
   return (
     <div className="relative h-full w-full" style={{ minHeight: 0, minWidth: 0 }}>
+      {/* className fisso: Leaflet aggiunge le sue classi (leaflet-container,
+          overflow nascosto); se React lo cambiasse le cancellerebbe e la
+          mappa "scivolerebbe" di lato. Il cursore a croce è in un effetto. */}
       <div
         ref={containerRef}
-        className={`absolute inset-0 h-full w-full ${route.editing ? 'cursor-crosshair' : ''}`}
+        className="absolute inset-0 h-full w-full"
         style={{
           touchAction: 'none',
           height: '100%',
