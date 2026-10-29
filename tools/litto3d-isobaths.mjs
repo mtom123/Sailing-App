@@ -9,6 +9,11 @@
  * Uso:
  *   npm run litto3d -- <cartella o archivio> [...]   # scrive public/isobaths-hd/
  *
+ * Passare sempre TUTTI i dati insieme (es. la cartella con tutti i MNT5):
+ * un tassello a cavallo di due zone elaborate in momenti diversi verrebbe
+ * riscritto con i dati di una sola. I MNT5 estratti pesano ~0,3 MB a km²,
+ * gli archivi del Shom (con le nuvole di punti) anche 2,5 GB per zona.
+ *
  * Uscita:
  *   public/isobaths-hd/index.json      elenco dei tasselli con il loro riquadro
  *   public/isobaths-hd/<x>_<y>.json    un tassello ogni 2 × 2 km:
