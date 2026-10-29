@@ -6,6 +6,8 @@
  *
  * Poi tiene solo ciò che cade in acqua secondo la costa OpenStreetMap
  * (waterMask.js): con celle da ~115 m le isobate passerebbero sugli scogli.
+ * Dove ci sono i rilievi Shom (hdIsobathLayer.js) si cancella del tutto:
+ * lì valgono le isobate ogni metro.
  */
 import L from 'leaflet'
 import { loadBlock, blockIndex, mergeBlocks, BLOCK } from './depthGrid.js'
@@ -13,32 +15,92 @@ import { buildIsobaths } from './isobathVector.js'
 import { CHART_COLORS, IMAGERY_COLORS, SHALLOW_LIMIT } from './isobaths.js'
 import { waterRings } from './waterMask.js'
 
-const PANE = 'isobathPane'
-const LABEL_PANE = 'isobathLabelPane'
+export const PANE = 'isobathPane'
+export const LABEL_PANE = 'isobathLabelPane'
 const MAX_BLOCKS = 30 // ~15 × 11 km l'uno: oltre, zoom troppo lontano
 const LABEL_SPACING = 280 // px tra due etichette sulla stessa linea
 const MAX_LABELS = 160
 
-function ensurePane(map, name, zIndex) {
+export function ensurePane(map, name, zIndex) {
   if (map.getPane(name)) return
   const pane = map.createPane(name)
   pane.style.zIndex = zIndex
   pane.style.pointerEvents = 'none'
 }
 
-// Canvas che sa applicare una maschera: un poligono con `mask: true`,
-// disegnato per ultimo, cancella tutto ciò che sta fuori da esso
-const MaskedCanvas = L.Canvas.extend({
+// Canvas che sa applicare maschere, disegnate per ultime: un poligono con
+// `mask: true` cancella tutto ciò che sta fuori, uno con `cut: true` tutto
+// ciò che sta dentro
+export const MaskedCanvas = L.Canvas.extend({
   _fillStroke(ctx, layer) {
-    if (!layer.options.mask) return L.Canvas.prototype._fillStroke.call(this, ctx, layer)
+    const { mask, cut } = layer.options
+    if (!mask && !cut) return L.Canvas.prototype._fillStroke.call(this, ctx, layer)
     ctx.save()
-    ctx.globalCompositeOperation = 'destination-in'
+    ctx.globalCompositeOperation = mask ? 'destination-in' : 'destination-out'
     ctx.globalAlpha = 1
     ctx.fillStyle = '#000'
-    ctx.fill('nonzero') // i tasselli d'acqua vicini si sovrappongono
+    ctx.fill('nonzero') // anelli di tasselli vicini si sovrappongono
     ctx.restore()
   },
 })
+
+/**
+ * Test "il punto (in pixel layer) sta dentro questi anelli?" — anelli [lat, lon][].
+ * Senza anelli: `fallback` per ogni punto.
+ */
+export function ringsTest(map, rings, fallback) {
+  if (!rings) return () => fallback
+  const path = new Path2D()
+  for (const ring of rings) {
+    ring.forEach((ll, i) => {
+      const p = map.latLngToLayerPoint(ll)
+      if (i === 0) path.moveTo(p.x, p.y)
+      else path.lineTo(p.x, p.y)
+    })
+    path.closePath()
+  }
+  const ctx = document.createElement('canvas').getContext('2d')
+  return (p) => ctx.isPointInPath(path, p.x, p.y, 'nonzero')
+}
+
+/**
+ * Profondità lungo le linee, ogni `spacing` px, ruotate come la linea.
+ * lines: [{ polyline, depth, color }]; `accept(p)` scarta posizioni (pixel layer).
+ */
+export function drawDepthLabels(map, group, lines, { halo, accept = () => true, spacing = LABEL_SPACING, max = MAX_LABELS }) {
+  group.clearLayers()
+  const view = map.getBounds()
+  let count = 0
+  for (const { polyline, depth, color } of lines) {
+    if (count >= max) break
+    if (!view.intersects(polyline.getBounds())) continue
+    const latlngs = polyline.getLatLngs()
+    let prev = map.latLngToLayerPoint(latlngs[0])
+    let walked = spacing / 2
+    for (let i = 1; i < latlngs.length && count < max; i++) {
+      const p = map.latLngToLayerPoint(latlngs[i])
+      walked += prev.distanceTo(p)
+      if (walked >= spacing && view.contains(latlngs[i]) && accept(p)) {
+        walked = 0
+        let angle = (Math.atan2(p.y - prev.y, p.x - prev.x) * 180) / Math.PI
+        if (angle > 90) angle -= 180
+        if (angle < -90) angle += 180
+        L.marker(latlngs[i], {
+          pane: LABEL_PANE,
+          interactive: false,
+          keyboard: false,
+          icon: L.divIcon({
+            className: 'timone-isobath-label',
+            iconSize: [0, 0],
+            html: `<span style="color:${color};--halo:${halo};transform:translate(-50%,-50%) rotate(${angle.toFixed(0)}deg)">${depth}</span>`,
+          }),
+        }).addTo(group)
+        count++
+      }
+      prev = p
+    }
+  }
+}
 
 export const IsobathLayer = L.Layer.extend({
   options: {
@@ -52,7 +114,9 @@ export const IsobathLayer = L.Layer.extend({
     this._data = null
     this._lines = []
     this._waterRings = null
+    this._hdRings = null
     this._mask = null
+    this._cut = null
     this._req = 0
     this._maskReq = 0
   },
@@ -80,6 +144,14 @@ export const IsobathLayer = L.Layer.extend({
     if (imagery === this.options.imagery) return
     this.options.imagery = imagery
     this._draw()
+  },
+
+  // Aree con le isobate ogni metro del Shom: qui le EMODnet non si disegnano
+  setHdCoverage(rings) {
+    this._hdRings = rings && rings.length ? rings : null
+    if (!this._map) return
+    this._setMask()
+    this._drawLabels()
   },
 
   _update() {
@@ -133,26 +205,38 @@ export const IsobathLayer = L.Layer.extend({
       .catch((err) => console.warn('Costa OpenStreetMap non disponibile', err))
   },
 
-  // La maschera va sempre aggiunta per ultima, dopo fasce e linee
+  // Le maschere vanno sempre aggiunte per ultime, dopo fasce e linee
   _setMask() {
     if (this._mask) this._group.removeLayer(this._mask)
+    if (this._cut) this._group.removeLayer(this._cut)
     this._mask = null
+    this._cut = null
     // Niente mare nella zona: una maschera vuota non cancellerebbe niente
     const noWater = !!this._waterRings && this._waterRings.length === 0
     if (this._renderer._container) this._renderer._container.style.visibility = noWater ? 'hidden' : ''
-    if (!this._waterRings || noWater) return
-    this._mask = L.polygon(this._waterRings, {
-      renderer: this._renderer,
-      mask: true,
-      stroke: false,
-      interactive: false,
-    }).addTo(this._group)
+    if (this._waterRings && !noWater) {
+      this._mask = L.polygon(this._waterRings, {
+        renderer: this._renderer,
+        mask: true,
+        stroke: false,
+        interactive: false,
+      }).addTo(this._group)
+    }
+    if (this._hdRings) {
+      this._cut = L.polygon(this._hdRings, {
+        renderer: this._renderer,
+        cut: true,
+        stroke: false,
+        interactive: false,
+      }).addTo(this._group)
+    }
   },
 
   _draw() {
     if (!this._map || !this._data) return
     this._group.clearLayers()
     this._mask = null
+    this._cut = null
     const imagery = this.options.imagery
     const [shallowColor, deepColor] = imagery ? IMAGERY_COLORS : CHART_COLORS
 
@@ -183,60 +267,15 @@ export const IsobathLayer = L.Layer.extend({
     this._drawLabels()
   },
 
-  // Test "è in acqua?" sui pixel della mappa, con gli anelli della costa OSM
-  _waterTest() {
-    const map = this._map
-    if (!this._waterRings) return () => true
-    const path = new Path2D()
-    for (const ring of this._waterRings) {
-      ring.forEach((ll, i) => {
-        const p = map.latLngToLayerPoint(ll)
-        if (i === 0) path.moveTo(p.x, p.y)
-        else path.lineTo(p.x, p.y)
-      })
-      path.closePath()
-    }
-    const ctx = document.createElement('canvas').getContext('2d')
-    return (p) => ctx.isPointInPath(path, p.x, p.y, 'nonzero')
-  },
-
-  // Profondità lungo le linee, ogni LABEL_SPACING px, ruotate come la linea
+  // Etichette solo in acqua e fuori dalle aree Shom
   _drawLabels() {
     const map = this._map
     if (!map) return
-    this._labels.clearLayers()
-    const view = map.getBounds()
-    const inWater = this._waterTest()
-    const halo = this.options.imagery ? IMAGERY_COLORS[2] : CHART_COLORS[2]
-    let count = 0
-    for (const { polyline, depth, color } of this._lines) {
-      if (count >= MAX_LABELS) break
-      if (!view.intersects(polyline.getBounds())) continue
-      const latlngs = polyline.getLatLngs()
-      let prev = map.latLngToLayerPoint(latlngs[0])
-      let walked = LABEL_SPACING / 2
-      for (let i = 1; i < latlngs.length && count < MAX_LABELS; i++) {
-        const p = map.latLngToLayerPoint(latlngs[i])
-        walked += prev.distanceTo(p)
-        if (walked >= LABEL_SPACING && view.contains(latlngs[i]) && inWater(p)) {
-          walked = 0
-          let angle = (Math.atan2(p.y - prev.y, p.x - prev.x) * 180) / Math.PI
-          if (angle > 90) angle -= 180
-          if (angle < -90) angle += 180
-          L.marker(latlngs[i], {
-            pane: LABEL_PANE,
-            interactive: false,
-            keyboard: false,
-            icon: L.divIcon({
-              className: 'timone-isobath-label',
-              iconSize: [0, 0],
-              html: `<span style="color:${color};--halo:${halo};transform:translate(-50%,-50%) rotate(${angle.toFixed(0)}deg)">${depth}</span>`,
-            }),
-          }).addTo(this._labels)
-          count++
-        }
-        prev = p
-      }
-    }
+    const inWater = ringsTest(map, this._waterRings, true)
+    const inHd = ringsTest(map, this._hdRings, false)
+    drawDepthLabels(map, this._labels, this._lines, {
+      halo: this.options.imagery ? IMAGERY_COLORS[2] : CHART_COLORS[2],
+      accept: (p) => inWater(p) && !inHd(p),
+    })
   },
 })

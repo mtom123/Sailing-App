@@ -8,6 +8,7 @@ import { EMODNET_WMS_URL, EMODNET_DEPTH_LAYER, isobathSld } from '../../lib/isob
 import { SEAGRASS_WMS_URL, SEAGRASS_LAYER, seagrassSld } from '../../lib/seagrass.js'
 import { IsobathLayer } from '../../lib/isobathLayer.js'
 import { ShomReliefLayer } from '../../lib/shomRelief.js'
+import { HdIsobathLayer } from '../../lib/hdIsobathLayer.js'
 import { LiguriaHabitatLayer } from '../../lib/liguriaHabitat.js'
 
 const ISOBATH_VECTOR_MIN_ZOOM = 12
@@ -311,6 +312,12 @@ export default function MapView({
         minZoom: ISOBATH_VECTOR_MIN_ZOOM,
         attribution: '© EMODnet Bathymetry',
       })
+      // Isobate ogni metro dai rilievi Shom, dove ci sono (public/isobaths-hd):
+      // nella loro area le EMODnet si nascondono
+      tileLayerRefs.current.isobathHd = new HdIsobathLayer({
+        imagery,
+        onCoverage: (rings) => tileLayerRefs.current.isobathVector.setHdCoverage(rings),
+      })
       // Rilievo HD del Shom (Corsica, Costa Azzurra): sopra le carte, sotto le isobate
       map.createPane('reliefPane').style.zIndex = 240
       tileLayerRefs.current.shomRelief = new ShomReliefLayer({ pane: 'reliefPane' })
@@ -332,6 +339,7 @@ export default function MapView({
       if (layers.shomRelief) map.addLayer(tileLayerRefs.current.shomRelief)
       if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobaths)
       if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobathVector)
+      if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobathHd)
       if (layers.seamarks) map.addLayer(tileLayerRefs.current.seamarks)
 
       // Layer groups for routes, tracks, parks
@@ -425,6 +433,7 @@ export default function MapView({
       refs.isobathsImagery = imagery
     }
     refs.isobathVector?.setImagery(imagery)
+    refs.isobathHd?.setImagery(imagery)
 
     const setVis = (layer, visible) => {
       if (!layer) return
@@ -436,6 +445,7 @@ export default function MapView({
     setVis(refs.shomRelief, layers.shomRelief)
     setVis(refs.isobaths, layers.isobaths)
     setVis(refs.isobathVector, layers.isobaths)
+    setVis(refs.isobathHd, layers.isobaths)
     setVis(refs.seamarks, layers.seamarks)
   }, [baseStyle, layers.bathy, layers.posidonia, layers.shomRelief, layers.isobaths, layers.seamarks, mapReady])
 

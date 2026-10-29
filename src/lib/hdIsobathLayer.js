@@ -1,0 +1,168 @@
+/**
+ * Isobate ogni metro dai rilievi Litto3D® del Shom (Corsica, Costa Azzurra…),
+ * calcolate in anticipo da tools/litto3d-isobaths.mjs e pubblicate con l'app
+ * in public/isobaths-hd/. Si caricano solo i tasselli (2 × 2 km) della zona
+ * visibile. Ogni tassello porta anche il contorno dell'area rilevata, passato
+ * a `onCoverage`: lì le isobate EMODnet, meno precise, si nascondono.
+ *
+ * Profondità riferite al livello medio del mare (IGN69). Non per la navigazione.
+ */
+import L from 'leaflet'
+import { CHART_COLORS, IMAGERY_COLORS } from './isobaths.js'
+import { PANE, LABEL_PANE, ensurePane, drawDepthLabels } from './isobathLayer.js'
+
+const BASE = `${import.meta.env.BASE_URL}isobaths-hd/`
+
+let indexPromise = null
+const tiles = new Map() // nome -> Promise<{ lines, cov }>
+
+function loadIndex() {
+  if (!indexPromise) {
+    indexPromise = fetch(`${BASE}index.json`)
+      .then((r) => (r.ok ? r.json() : { tiles: {} }))
+      .then((j) =>
+        Object.entries(j.tiles || {}).map(([name, [s, w, n, e]]) => ({ name, bounds: L.latLngBounds([s, w], [n, e]) }))
+      )
+      .catch(() => [])
+  }
+  return indexPromise
+}
+
+// [lat0, lon0, dlat1, dlon1, ...] in 1e-5 gradi → [lat, lon][]
+function decode(arr, from) {
+  const out = []
+  let lat = 0
+  let lon = 0
+  for (let i = from; i + 1 < arr.length; i += 2) {
+    lat += arr[i]
+    lon += arr[i + 1]
+    out.push([lat / 1e5, lon / 1e5])
+  }
+  return out
+}
+
+function loadTile(name) {
+  if (!tiles.has(name)) {
+    const p = fetch(`${BASE}${name}.json`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`isobate HD ${r.status}`)
+        return r.json()
+      })
+      .then((j) => ({
+        lines: j.lines.map((l) => ({ depth: l[0], path: decode(l, 1) })),
+        cov: j.cov.map((c) => decode(c, 0)),
+      }))
+    p.catch(() => tiles.delete(name))
+    tiles.set(name, p)
+  }
+  return tiles.get(name)
+}
+
+// Ogni 5 m (e i bassi fondali) linea marcata con etichetta, gli altri metri
+// sottili e solo da vicino: sulle coste ripide si accavallerebbero
+const major = (depth) => depth <= 3 || depth % 5 === 0
+const MINOR_ZOOM = 16
+
+export const HdIsobathLayer = L.Layer.extend({
+  options: {
+    minZoom: 13,
+    imagery: false,
+    onCoverage: () => {},
+    attribution: '© Shom – Litto3D® (isobate HD)',
+  },
+
+  initialize(options) {
+    L.setOptions(this, options)
+    this._shown = new Map() // nome tassello -> { layers, lines, cov }
+    this._lines = []
+  },
+
+  onAdd(map) {
+    ensurePane(map, PANE, 250)
+    ensurePane(map, LABEL_PANE, 255)
+    this._renderer = L.canvas({ pane: PANE, padding: 0.5 })
+    this._group = L.layerGroup().addTo(map)
+    this._minor = L.layerGroup()
+    this._labels = L.layerGroup().addTo(map)
+    map.on('moveend', this._update, this)
+    this._update()
+  },
+
+  onRemove(map) {
+    map.off('moveend', this._update, this)
+    this._group.remove()
+    this._minor.remove()
+    this._labels.remove()
+    this._group.clearLayers()
+    this._minor.clearLayers()
+    this._shown.clear()
+    this.options.onCoverage(null)
+  },
+
+  setImagery(imagery) {
+    if (imagery === this.options.imagery) return
+    this.options.imagery = imagery
+    const names = [...this._shown.keys()]
+    this._group.clearLayers()
+    this._minor.clearLayers()
+    this._shown.clear()
+    names.forEach((name) => loadTile(name).then((t) => this._show(name, t)))
+  },
+
+  _update() {
+    const map = this._map
+    if (!map) return
+    if (map.getZoom() < this.options.minZoom) {
+      // Isobate HD nascoste: le EMODnet tornano anche nelle aree Shom
+      this._group.remove()
+      this._minor.remove()
+      this._labels.clearLayers()
+      this.options.onCoverage(null)
+      return
+    }
+    this._group.addTo(map)
+    if (map.getZoom() >= MINOR_ZOOM) this._minor.addTo(map)
+    else this._minor.remove()
+    this.options.onCoverage([...this._shown.values()].flatMap((t) => t.cov))
+    const view = map.getBounds().pad(0.3)
+    loadIndex().then((index) => {
+      if (!this._map) return
+      for (const { name, bounds } of index) {
+        if (!bounds.intersects(view) || this._shown.has(name)) continue
+        loadTile(name)
+          .then((t) => this._show(name, t))
+          .catch((err) => console.warn('Isobate HD non disponibili', err))
+      }
+      this._drawLabels()
+    })
+  },
+
+  _show(name, tile) {
+    if (!this._map || this._shown.has(name)) return
+    const [shallowColor, deepColor] = this.options.imagery ? IMAGERY_COLORS : CHART_COLORS
+    const lines = tile.lines.map(({ depth, path }) => {
+      const strong = major(depth)
+      const color = depth <= 10 ? shallowColor : deepColor
+      const polyline = L.polyline(path, {
+        renderer: this._renderer,
+        color,
+        weight: strong ? 1.4 : 0.6,
+        opacity: strong ? 1 : 0.7,
+        interactive: false,
+      }).addTo(strong ? this._group : this._minor)
+      return { polyline, depth, color, strong }
+    })
+    this._shown.set(name, { lines, cov: tile.cov })
+    this._lines = [...this._shown.values()].flatMap((t) => t.lines.filter((l) => l.strong))
+    this.options.onCoverage([...this._shown.values()].flatMap((t) => t.cov))
+    this._drawLabels()
+  },
+
+  _drawLabels() {
+    if (!this._map || this._map.getZoom() < this.options.minZoom) return
+    drawDepthLabels(this._map, this._labels, this._lines, {
+      halo: this.options.imagery ? IMAGERY_COLORS[2] : CHART_COLORS[2],
+      spacing: 220,
+    })
+  },
+})
