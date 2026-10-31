@@ -19,7 +19,8 @@ import { LiguriaHabitatLayer } from '../../lib/liguriaHabitat.js'
 const ISOBATH_VECTOR_MIN_ZOOM = 12
 import ConnectivityIndicator from './ConnectivityIndicator.jsx'
 import MapContextMenu from './MapContextMenu.jsx'
-import DepthHover from './DepthHover.jsx'
+import DepthHover, { formatDepth } from './DepthHover.jsx'
+import { depthAt } from '../../lib/depthAt.js'
 import MeteogramPopup from './MeteogramPopup.jsx'
 import WaypointPopup from './WaypointPopup.jsx'
 import { LandTintLayer } from '../../lib/landTintLayer.js'
@@ -41,6 +42,21 @@ import {
 // ============================================================
 // Marker HTML helpers — Leaflet divIcon
 // ============================================================
+// Profondità a centrobarca, accanto alla freccia (non ruota con la rotta).
+// Rossa sotto pescaggio + margine; "≈" quando viene dal modello EMODnet
+function boatDepthEl(info, warnBelowM) {
+  const shallow = info && info.depth < warnBelowM
+  const bg = shallow ? '#FF5252' : 'rgb(var(--rgb-abyss) / 0.9)'
+  const fg = shallow ? '#0a1620' : 'var(--color-paper)'
+  const value = info ? `${info.source === 'Shom' ? '' : '≈'}${formatDepth(info.depth)} m` : '— m'
+  return L.divIcon({
+    className: 'timone-marker',
+    html: `<div style="white-space:nowrap;background:${bg};color:${fg};border:1.5px solid ${shallow ? '#0a1620' : 'var(--color-paper)'};border-radius:6px;padding:1px 7px;font:700 calc(15px * var(--fs)) var(--font-mono);box-shadow:0 2px 6px rgba(0,0,0,0.5)">${value}</div>`,
+    iconSize: null,
+    iconAnchor: [-20, 14], // a destra della freccia
+  })
+}
+
 function boatMarkerEl(cog) {
   const rot = cog != null ? cog : 0
   return L.divIcon({
@@ -577,6 +593,34 @@ export default function MapView({
       markersRef.current.boat.setIcon(boatMarkerEl(geo.cog))
     }
   }, [geo.lat, geo.lon, geo.cog, mapReady])
+
+  // === Profondità a centrobarca ===
+  const boatCfg = useAppStore((s) => s.boat)
+  const [boatDepth, setBoatDepth] = useState(undefined) // undefined: in caricamento, null: senza dati
+  const depthReq = useRef({ n: 0, lat: null, lon: null })
+  useEffect(() => {
+    if (geo.lat == null) return
+    const r = depthReq.current
+    if (r.lat != null && haversine(r.lat, r.lon, geo.lat, geo.lon) < 5) return
+    r.lat = geo.lat
+    r.lon = geo.lon
+    const n = ++r.n
+    depthAt(geo.lat, geo.lon)
+      .then((d) => n === r.n && setBoatDepth(d))
+      .catch(() => n === r.n && setBoatDepth(null))
+  }, [geo.lat, geo.lon])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!mapReady || !map || geo.lat == null || boatDepth === undefined) return
+    const icon = boatDepthEl(boatDepth, boatCfg.draftM + boatCfg.safetyMarginM)
+    if (!markersRef.current.depth) {
+      markersRef.current.depth = L.marker([geo.lat, geo.lon], { icon, interactive: false, zIndexOffset: 990 }).addTo(map)
+    } else {
+      markersRef.current.depth.setLatLng([geo.lat, geo.lon])
+      markersRef.current.depth.setIcon(icon)
+    }
+  }, [geo.lat, geo.lon, boatDepth, boatCfg.draftM, boatCfg.safetyMarginM, mapReady])
 
   // === MOB marker ===
   useEffect(() => {
