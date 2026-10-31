@@ -52,6 +52,9 @@ export const useAppStore = create(
       // Notte e tema giorno (alto contrasto al sole) si escludono
       setNightMode: (nightMode) => set(nightMode ? { nightMode, dayTheme: false } : { nightMode }),
       dayTheme: false,
+      // Dimensione del testo: moltiplica tutte le scritte (1 = originale)
+      textScale: 1.2,
+      setTextScale: (textScale) => set({ textScale }),
       setDayTheme: (dayTheme) => set(dayTheme ? { dayTheme, nightMode: false } : { dayTheme }),
 
       // === Time scrubber ===
@@ -176,6 +179,7 @@ export const useAppStore = create(
         aishubUser: s.aishubUser,
         windAlarm: s.windAlarm,
         dayTheme: s.dayTheme,
+        textScale: s.textScale,
         anchorRadius: s.anchorRadius,
       }),
     }

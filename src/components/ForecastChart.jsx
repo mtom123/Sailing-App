@@ -147,7 +147,7 @@ export default function ForecastChart({ hourly }) {
     <div>
       <div className="flex items-center justify-between px-1 pb-1">
         <span className="label">Previsione 72h</span>
-        <span className="text-[10px] text-paper tabular-nums">
+        <span className="text-[calc(10px*var(--fs))] text-paper tabular-nums">
           {new Date(readout.t).toLocaleString('it-IT', {
             weekday: 'short',
             hour: '2-digit',
@@ -155,7 +155,7 @@ export default function ForecastChart({ hourly }) {
           })}
         </span>
       </div>
-      <div className="flex gap-3 px-1 pb-1 text-[9px] uppercase tracking-widest text-fog">
+      <div className="flex gap-3 px-1 pb-1 text-[calc(9px*var(--fs))] uppercase tracking-widest text-fog">
         <span className="flex items-center gap-1">
           <span className="inline-block h-[3px] w-4" style={{ background: C_WIND }} />
           Vento {readout.wind != null ? `${readout.wind.toFixed(0)} kn` : '--'}
@@ -167,7 +167,7 @@ export default function ForecastChart({ hourly }) {
           Raffiche {readout.gust != null ? `${readout.gust.toFixed(0)} kn` : '--'}
         </span>
       </div>
-      <div className="flex gap-3 px-1 pb-1 text-[9px] uppercase tracking-widest text-fog">
+      <div className="flex gap-3 px-1 pb-1 text-[calc(9px*var(--fs))] uppercase tracking-widest text-fog">
         <span className="flex items-center gap-1">
           <span className="inline-block h-[3px] w-4" style={{ background: C_WAVE }} />
           Onda {readout.wave != null ? `${readout.wave.toFixed(1)} m` : '--'}

@@ -69,7 +69,7 @@ export default function MeteogramPopup({ lat, lon, onClose }) {
     <div className="glass-strong absolute right-3 top-16 z-[1500] w-[300px] max-w-[90%] rounded-lg p-3 slide-up">
       <div className="flex items-center justify-between pb-2 border-b border-line">
         <div>
-          <div className="text-[10px] text-fog">Forecast 24h</div>
+          <div className="text-[calc(10px*var(--fs))] text-fog">Forecast 24h</div>
           <div className="font-mono text-xs text-paper">{lat.toFixed(3)}, {lon.toFixed(3)}</div>
         </div>
         <button
@@ -106,7 +106,7 @@ export default function MeteogramPopup({ lat, lon, onClose }) {
               )
             })}
           </div>
-          <div className="flex justify-between text-[9px] text-fog font-mono pb-2 border-b border-line">
+          <div className="flex justify-between text-[calc(9px*var(--fs))] text-fog font-mono pb-2 border-b border-line">
             <span>{new Date(data.times[0] + 'Z').toLocaleTimeString('it-IT', { hour: '2-digit' })}</span>
             <span>+6h</span>
             <span>+12h</span>
@@ -119,26 +119,26 @@ export default function MeteogramPopup({ lat, lon, onClose }) {
             <div>
               <div className="label">Vento</div>
               <div className="font-mono text-sm font-bold text-phos">
-                {data.wind[0]?.toFixed(0) ?? '--'}<span className="text-[9px] text-fog ml-1">kn</span>
+                {data.wind[0]?.toFixed(0) ?? '--'}<span className="text-[calc(9px*var(--fs))] text-fog ml-1">kn</span>
               </div>
-              <div className="text-[9px] text-fog">{cardinal(data.windDir[0])}</div>
+              <div className="text-[calc(9px*var(--fs))] text-fog">{cardinal(data.windDir[0])}</div>
             </div>
             <div>
               <div className="label">Raffica</div>
               <div className="font-mono text-sm font-bold text-warn">
-                {data.gust[0]?.toFixed(0) ?? '--'}<span className="text-[9px] text-fog ml-1">kn</span>
+                {data.gust[0]?.toFixed(0) ?? '--'}<span className="text-[calc(9px*var(--fs))] text-fog ml-1">kn</span>
               </div>
             </div>
             <div>
               <div className="label">Onda</div>
               <div className="font-mono text-sm font-bold text-info">
-                {data.wave?.[0]?.toFixed(1) ?? '--'}<span className="text-[9px] text-fog ml-1">m</span>
+                {data.wave?.[0]?.toFixed(1) ?? '--'}<span className="text-[calc(9px*var(--fs))] text-fog ml-1">m</span>
               </div>
             </div>
           </div>
 
           {/* Max values next 24h */}
-          <div className="grid grid-cols-2 gap-2 pt-2 mt-2 border-t border-line text-[10px]">
+          <div className="grid grid-cols-2 gap-2 pt-2 mt-2 border-t border-line text-[calc(10px*var(--fs))]">
             <div>
               <span className="text-fog">Max vento 24h:</span>{' '}
               <span className="font-mono font-bold text-paper">

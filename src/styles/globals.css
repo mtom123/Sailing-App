@@ -48,7 +48,7 @@ body,
 }
 
 .label {
-  font-size: 10px;
+  font-size: calc(10px * var(--fs));
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -134,7 +134,7 @@ body,
 .leaflet-control-attribution {
   background: rgb(var(--rgb-abyss) / 0.7) !important;
   color: var(--color-fog-dim) !important;
-  font-size: 9px !important;
+  font-size: 9px !important; /* crediti: piccoli a ogni dimensione del testo */
   border-radius: 6px 0 0 0 !important;
   padding: 2px 6px !important;
 }
@@ -172,7 +172,7 @@ body,
 .leaflet-popup-content {
   margin: 10px 14px !important;
   font-family: var(--font-ui) !important;
-  font-size: 12px;
+  font-size: calc(12px * var(--fs));
   line-height: 1.5;
 }
 .leaflet-popup-tip {
@@ -198,7 +198,7 @@ body,
   border: 1px solid var(--color-line);
   border-radius: 4px;
   padding: 2px 6px;
-  font: bold 10px ui-monospace, monospace;
+  font: bold calc(10px * var(--fs)) ui-monospace, monospace;
   white-space: nowrap;
   transform: translate(-50%, -50%);
   pointer-events: none;
@@ -211,7 +211,7 @@ body,
   background: rgb(var(--rgb-abyss) / 0.8);
   border-radius: 3px;
   padding: 1px 4px;
-  font: bold 9px ui-monospace, monospace;
+  font: bold calc(9px * var(--fs)) ui-monospace, monospace;
   white-space: nowrap;
   pointer-events: none;
 }
@@ -219,7 +219,7 @@ body,
 /* Profondità lungo le isobate (colore e alone impostati dal livello) */
 .timone-isobath-label span {
   position: absolute;
-  font: bold 10px ui-monospace, monospace;
+  font: bold calc(10px * var(--fs)) ui-monospace, monospace;
   white-space: nowrap;
   pointer-events: none;
   text-shadow:

@@ -329,6 +329,10 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('theme-day', dayTheme)
   }, [dayTheme])
+  const textScale = useAppStore((s) => s.textScale)
+  useEffect(() => {
+    document.documentElement.style.setProperty('--fs', String(textScale || 1))
+  }, [textScale])
 
   // Dove si è ora (GPS): zone vietate/militari/AMP e fascia dalla costa
   const gpsAlerts = useGpsAlerts(geo)
@@ -346,7 +350,7 @@ export default function App() {
     <div className="relative flex h-full w-full overflow-hidden bg-abyss text-paper" style={{ minHeight: 0 }}>
       {/* LEFT panel (instruments) */}
       {leftPanelOpen && (
-        <div className="h-full w-[280px] min-w-[200px] max-w-[35%] flex-none" style={{ minHeight: 0 }}>
+        <div className="h-full w-[calc(280px*var(--fs))] min-w-[200px] max-w-[45%] flex-none" style={{ minHeight: 0 }}>
           <InstrumentPanel geo={geo} weather={weather} sun={sun} moon={moon} />
         </div>
       )}
@@ -384,7 +388,7 @@ export default function App() {
                     {{ nogo: '⚠ ZONA VIETATA: ', military: '⚠ ZONA MILITARE: ', protected: 'AREA MARINA PROTETTA: ' }[gpsAlerts.zone.kind]}
                     {gpsAlerts.zone.name}
                   </b>
-                  <span className="text-[10px] opacity-70">
+                  <span className="text-[calc(10px*var(--fs))] opacity-70">
                     {gpsAlerts.zone.kind === 'military'
                       ? 'Verifica gli avvisi ai naviganti'
                       : zoneSummary(ampRuleFor(gpsAlerts.zone.name), zoneLetter(gpsAlerts.zone.name)) || "Tocca l'area per le regole"}
@@ -408,7 +412,7 @@ export default function App() {
                         ? '⚠ FERMO NELLA FASCIA COSTIERA: ancoraggio vietato'
                         : '⚠ NELLA FASCIA COSTIERA'}
                   </b>
-                  <div className="text-[10px] opacity-80">{gpsAlerts.band.text}</div>
+                  <div className="text-[calc(10px*var(--fs))] opacity-80">{gpsAlerts.band.text}</div>
                 </div>
               )}
             </div>
@@ -435,14 +439,14 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setAlarmMuted(true)}
-                className="touch rounded-md border border-line bg-surface px-3 py-1.5 text-[10px] tracking-widest text-fog"
+                className="touch rounded-md border border-line bg-surface px-3 py-1.5 text-[calc(10px*var(--fs))] tracking-widest text-fog"
               >
                 TACITA
               </button>
               <button
                 type="button"
                 onClick={raiseAnchor}
-                className="touch rounded-md border border-danger bg-danger/20 px-3 py-1.5 text-[10px] tracking-widest text-danger"
+                className="touch rounded-md border border-danger bg-danger/20 px-3 py-1.5 text-[calc(10px*var(--fs))] tracking-widest text-danger"
               >
                 RECUPERA
               </button>
@@ -468,7 +472,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setMob(null)}
-                className="touch rounded-md border border-line bg-surface px-3 py-1.5 text-[10px] tracking-widest text-fog"
+                className="touch rounded-md border border-line bg-surface px-3 py-1.5 text-[calc(10px*var(--fs))] tracking-widest text-fog"
               >
                 ANNULLA
               </button>
@@ -495,7 +499,7 @@ export default function App() {
                     key={t.id}
                     type="button"
                     onClick={() => setActiveDrawer(t.id)}
-                    className={`flex-1 border-b-2 py-3 text-[10px] font-semibold tracking-widest transition-all ${
+                    className={`flex-1 border-b-2 py-3 text-[calc(10px*var(--fs))] font-semibold tracking-widest transition-all ${
                       active
                         ? 'border-phos text-phos'
                         : 'border-transparent text-fog hover:text-paper'
@@ -608,21 +612,21 @@ function WeatherDetail({ weather }) {
             <div className="label">Velocità</div>
             <div className="font-mono text-lg font-bold text-phos">
               {wind?.speed != null ? wind.speed.toFixed(0) : '--'}
-              <span className="text-[10px] text-fog ml-1">kn</span>
+              <span className="text-[calc(10px*var(--fs))] text-fog ml-1">kn</span>
             </div>
           </div>
           <div className="rounded-md border border-line bg-surface p-2">
             <div className="label">Raffica</div>
             <div className="font-mono text-lg font-bold text-warn">
               {wind?.gust != null ? wind.gust.toFixed(0) : '--'}
-              <span className="text-[10px] text-fog ml-1">kn</span>
+              <span className="text-[calc(10px*var(--fs))] text-fog ml-1">kn</span>
             </div>
           </div>
           <div className="rounded-md border border-line bg-surface p-2">
             <div className="label">Direz.</div>
             <div className="font-mono text-lg font-bold text-paper">
               {wind?.dir != null ? formatDeg(wind.dir) : '---'}°
-              <div className="text-[10px] text-fog">{wind?.dir != null ? cardinal(wind.dir) : ''}</div>
+              <div className="text-[calc(10px*var(--fs))] text-fog">{wind?.dir != null ? cardinal(wind.dir) : ''}</div>
             </div>
           </div>
         </div>
@@ -634,14 +638,14 @@ function WeatherDetail({ weather }) {
             <div className="label">Altezza</div>
             <div className="font-mono text-lg font-bold text-paper">
               {wave?.height != null ? wave.height.toFixed(1) : '--'}
-              <span className="text-[10px] text-fog ml-1">m</span>
+              <span className="text-[calc(10px*var(--fs))] text-fog ml-1">m</span>
             </div>
           </div>
           <div className="rounded-md border border-line bg-surface p-2">
             <div className="label">Periodo</div>
             <div className="font-mono text-lg font-bold text-paper">
               {wave?.period != null ? wave.period.toFixed(0) : '--'}
-              <span className="text-[10px] text-fog ml-1">s</span>
+              <span className="text-[calc(10px*var(--fs))] text-fog ml-1">s</span>
             </div>
           </div>
           <div className="rounded-md border border-line bg-surface p-2">
@@ -657,7 +661,7 @@ function WeatherDetail({ weather }) {
         <div className="rounded-md border border-line bg-surface p-2">
           <div className="font-mono text-lg font-bold text-paper">
             {pressure ? pressure.value.toFixed(0) : '--'}
-            <span className="text-[10px] text-fog ml-1">hPa</span>
+            <span className="text-[calc(10px*var(--fs))] text-fog ml-1">hPa</span>
           </div>
           {pressure?.trend3h != null && (
             <div className={`text-xs ${pressure.trend3h < -0.8 ? 'text-danger' : pressure.trend3h > 0.8 ? 'text-phos' : 'text-fog'}`}>
@@ -676,8 +680,8 @@ function WeatherDetail({ weather }) {
               </span>
               <span className="font-mono text-phos">{h.wind?.toFixed(0) ?? '--'}kn</span>
               <span className="font-mono text-warn">↑{h.gust?.toFixed(0) ?? '--'}</span>
-              <span className="text-fog text-[10px] w-8">{h.windDir != null ? cardinal(h.windDir) : ''}</span>
-              <span className="font-mono text-paper text-[10px]">{h.wave?.toFixed(1) ?? '--'}m</span>
+              <span className="text-fog text-[calc(10px*var(--fs))] w-8">{h.windDir != null ? cardinal(h.windDir) : ''}</span>
+              <span className="font-mono text-paper text-[calc(10px*var(--fs))]">{h.wave?.toFixed(1) ?? '--'}m</span>
             </div>
           ))}
         </div>

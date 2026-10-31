@@ -17,13 +17,13 @@ function Stat({ label, value, unit, accent }) {
       <div className="label">{label}</div>
       <div className={`text-xl font-bold tabular-nums ${accent ? 'text-phos' : 'text-paper'}`}>
         {value}
-        {unit && <span className="text-[10px] text-fog"> {unit}</span>}
+        {unit && <span className="text-[calc(10px*var(--fs))] text-fog"> {unit}</span>}
       </div>
     </div>
   )
 }
 
-const btn = 'flex flex-1 items-center justify-center gap-1.5 border py-3 text-[11px] font-bold tracking-[0.15em] active:opacity-70 disabled:opacity-40'
+const btn = 'flex flex-1 items-center justify-center gap-1.5 border py-3 text-[calc(11px*var(--fs))] font-bold tracking-[0.15em] active:opacity-70 disabled:opacity-40'
 
 export default function TrackPanel({ track, gpsOk }) {
   const { status, current, stats, wakeLock, saved, shownIds } = track
@@ -49,7 +49,7 @@ export default function TrackPanel({ track, gpsOk }) {
       {/* --- Traccia in corso --------------------------------------------- */}
       {current && stats ? (
         <>
-          <div className="flex items-center gap-1.5 pb-1.5 text-[11px] font-bold tracking-widest">
+          <div className="flex items-center gap-1.5 pb-1.5 text-[calc(11px*var(--fs))] font-bold tracking-widest">
             <Circle size={10} className={status === 'recording' ? 'text-danger' : 'text-warn'} fill="currentColor" />
             <span className={status === 'recording' ? 'text-danger' : 'text-warn'}>{status === 'recording' ? 'REGISTRAZIONE' : 'IN PAUSA'}</span>
             <span className="ml-auto truncate font-normal tracking-normal text-fog">{current.name}</span>
@@ -91,11 +91,11 @@ export default function TrackPanel({ track, gpsOk }) {
               </button>
             </div>
           ) : (
-            <button type="button" onClick={() => setConfirm('discard')} className="mt-1.5 w-full py-1.5 text-[10px] tracking-widest text-fog">
+            <button type="button" onClick={() => setConfirm('discard')} className="mt-1.5 w-full py-1.5 text-[calc(10px*var(--fs))] tracking-widest text-fog">
               SCARTA TRACCIA
             </button>
           )}
-          <div className="pt-1 text-[9px] leading-relaxed text-fog">
+          <div className="pt-1 text-[calc(9px*var(--fs))] leading-relaxed text-fog">
             {stats.points} punti · {wakeLock === 'on' ? 'schermo tenuto acceso' : 'tieni lo schermo acceso: a schermo spento il GPS si ferma'}
           </div>
         </>
@@ -104,7 +104,7 @@ export default function TrackPanel({ track, gpsOk }) {
           <button type="button" disabled={!gpsOk} onClick={track.start} className={`${btn} w-full border-phos bg-phos/10 text-phos`}>
             <Circle size={12} /> REGISTRA TRACCIA
           </button>
-          <div className="pt-1 text-[9px] leading-relaxed text-fog">
+          <div className="pt-1 text-[calc(9px*var(--fs))] leading-relaxed text-fog">
             {gpsOk
               ? 'Un punto ogni 10 m. La traccia si salva anche se chiudi l’app; mentre registri lo schermo resta acceso.'
               : 'Richiede il fix GPS.'}
@@ -114,13 +114,13 @@ export default function TrackPanel({ track, gpsOk }) {
 
       {/* --- Archivio ------------------------------------------------------ */}
       <div className="label pb-1.5 pt-4">Tracce salvate</div>
-      {saved.length === 0 && <div className="text-[10px] text-fog">Nessuna traccia salvata.</div>}
+      {saved.length === 0 && <div className="text-[calc(10px*var(--fs))] text-fog">Nessuna traccia salvata.</div>}
       {saved.map((t) => (
         <div key={t.id} className="mb-1.5 border border-line bg-panel px-2 py-1.5">
           <div className="flex items-start gap-2">
             <div className="min-w-0 flex-1">
-              <div className="truncate text-[12px] font-bold text-paper">{t.name}</div>
-              <div className="text-[10px] tabular-nums text-fog">
+              <div className="truncate text-[calc(12px*var(--fs))] font-bold text-paper">{t.name}</div>
+              <div className="text-[calc(10px*var(--fs))] tabular-nums text-fog">
                 {t.stats ? `${t.stats.distanceNm.toFixed(1)} nm · ${fmtDuration(t.stats.durationMs)} · media ${t.stats.avgKn.toFixed(1)} kn · max ${t.stats.maxKn.toFixed(1)} kn` : ''}
               </div>
             </div>
@@ -149,7 +149,7 @@ export default function TrackPanel({ track, gpsOk }) {
                     setConfirm(null)
                     track.remove(t.id)
                   }}
-                  className="flex h-9 flex-none items-center justify-center border border-danger px-2 text-[10px] font-bold text-danger"
+                  className="flex h-9 flex-none items-center justify-center border border-danger px-2 text-[calc(10px*var(--fs))] font-bold text-danger"
                 >
                   ELIMINA
                 </button>

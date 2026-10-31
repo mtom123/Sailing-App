@@ -1,4 +1,4 @@
-import { Radio, Ship, Wifi, X, Sailboat, Gauge, Database, Activity, Upload, FileText, Trash } from 'lucide-react'
+import { Radio, Ship, Wifi, X, Sailboat, Gauge, Database, Activity, Upload, FileText, Trash, Type } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { useAppStore } from '../store/useAppStore.js'
 import { BOAT_LIBRARY, registerCustomPolar, listAvailablePolars } from '../routing/polarSolver.js'
@@ -28,6 +28,14 @@ function Section({ title, icon: Icon, children }) {
   )
 }
 
+// [etichetta, fattore] per la dimensione del testo
+const TEXT_SIZES = [
+  ['Normale', 1],
+  ['Grande', 1.2],
+  ['Molto grande', 1.4],
+  ['Massimo', 1.6],
+]
+
 export default function SettingsSheet({
   open,
   onClose,
@@ -42,7 +50,7 @@ export default function SettingsSheet({
   weatherError,
   gribStatus,
 }) {
-  const { boat, setBoat, coastBand, setCoastBand } = useAppStore()
+  const { boat, setBoat, coastBand, setCoastBand, textScale, setTextScale } = useAppStore()
   const [customPolars, setCustomPolars] = useState([])
   const [uploadStatus, setUploadStatus] = useState(null)
   const fileInputRef = useRef(null)
@@ -105,6 +113,25 @@ export default function SettingsSheet({
         </div>
 
         <div className="scroll-y min-h-0 flex-1">
+          <Section title="Dimensione testo" icon={Type}>
+            <div className="grid grid-cols-4 gap-1">
+              {TEXT_SIZES.map(([label, value]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setTextScale(value)}
+                  className={`rounded-md border px-1 py-2.5 font-semibold ${
+                    textScale === value ? 'border-phos bg-phos/10 text-phos' : 'border-line text-paper hover:bg-raised'
+                  }`}
+                  style={{ fontSize: `${12 * value}px` }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="pt-1 text-[calc(10px*var(--fs))] text-fog-dim">Ingrandisce menu, pannelli e schede della carta</div>
+          </Section>
+
           <Section title="Configurazione barca" icon={Sailboat}>
             <div className="label pb-1">Polar</div>
             <div className="flex flex-col gap-1">
@@ -124,7 +151,7 @@ export default function SettingsSheet({
                       <span className={`block text-xs font-semibold ${active ? 'text-phos' : 'text-paper'}`}>
                         {b.name}
                       </span>
-                      <span className="block text-[10px] text-fog">
+                      <span className="block text-[calc(10px*var(--fs))] text-fog">
                         {b.type} · {b.length} · {b.year}
                       </span>
                     </span>
@@ -148,7 +175,7 @@ export default function SettingsSheet({
                       <span className={`block text-xs font-semibold ${active ? 'text-phos' : 'text-paper'}`}>
                         {p.name}
                       </span>
-                      <span className="block text-[10px] text-fog">
+                      <span className="block text-[calc(10px*var(--fs))] text-fog">
                         Custom · {p.polarData?.tws?.length || 0} TWS × {p.polarData?.twa?.length || 0} TWA
                       </span>
                     </span>
@@ -176,7 +203,7 @@ export default function SettingsSheet({
               </button>
               {uploadStatus && (
                 <div
-                  className={`mt-1.5 text-[10px] ${
+                  className={`mt-1.5 text-[calc(10px*var(--fs))] ${
                     uploadStatus.type === 'success' ? 'text-phos' :
                     uploadStatus.type === 'error' ? 'text-danger' : 'text-fog'
                   }`}
@@ -184,7 +211,7 @@ export default function SettingsSheet({
                   {uploadStatus.msg}
                 </div>
               )}
-              <div className="mt-1 text-[9px] text-fog-dim leading-snug">
+              <div className="mt-1 text-[calc(9px*var(--fs))] text-fog-dim leading-snug">
                 Format: CSV (TWA col × TWS row) o MaxSea .pol (TWS TWA BS per riga).
                 La polar viene salvata localmente (IndexedDB) e usata dal routing engine.
               </div>
@@ -218,7 +245,7 @@ export default function SettingsSheet({
                 onChange={(e) => setBoat({ upwindAngleDeg: Number(e.target.value) })}
                 className="w-16 rounded-md border border-line bg-surface px-2 py-1.5 text-center text-xs text-paper outline-none focus:border-phos"
               />
-              <span className="text-[10px] text-fog">° bolina</span>
+              <span className="text-[calc(10px*var(--fs))] text-fog">° bolina</span>
               <input
                 type="number"
                 min="140"
@@ -227,7 +254,7 @@ export default function SettingsSheet({
                 onChange={(e) => setBoat({ downwindAngleDeg: Number(e.target.value) })}
                 className="w-16 rounded-md border border-line bg-surface px-2 py-1.5 text-center text-xs text-paper outline-none focus:border-phos"
               />
-              <span className="text-[10px] text-fog">° poppa</span>
+              <span className="text-[calc(10px*var(--fs))] text-fog">° poppa</span>
             </div>
             <div className="label pt-3 pb-1 flex items-center gap-1.5">
               <Gauge size={11} /> Pescaggio e margine (rotte)
@@ -242,7 +269,7 @@ export default function SettingsSheet({
                 onChange={(e) => setBoat({ draftM: Number(e.target.value) })}
                 className="w-16 rounded-md border border-line bg-surface px-2 py-1.5 text-center text-xs text-paper outline-none focus:border-phos"
               />
-              <span className="text-[10px] text-fog">m pescaggio</span>
+              <span className="text-[calc(10px*var(--fs))] text-fog">m pescaggio</span>
               <input
                 type="number"
                 min="0"
@@ -252,9 +279,9 @@ export default function SettingsSheet({
                 onChange={(e) => setBoat({ safetyMarginM: Number(e.target.value) })}
                 className="w-16 rounded-md border border-line bg-surface px-2 py-1.5 text-center text-xs text-paper outline-none focus:border-phos"
               />
-              <span className="text-[10px] text-fog">m margine</span>
+              <span className="text-[calc(10px*var(--fs))] text-fog">m margine</span>
             </div>
-            <div className="pt-1 text-[10px] text-fog-dim">
+            <div className="pt-1 text-[calc(10px*var(--fs))] text-fog-dim">
               La rotta segnala e aggira terra e fondali sotto{' '}
               {((boat.draftM ?? 1.9) + (boat.safetyMarginM ?? 1)).toFixed(1)} m
             </div>
@@ -271,7 +298,7 @@ export default function SettingsSheet({
                 onChange={(e) => setCoastBand({ beach: Number(e.target.value) })}
                 className="w-16 rounded-md border border-line bg-surface px-2 py-1.5 text-center text-xs text-paper outline-none focus:border-phos"
               />
-              <span className="text-[10px] text-fog">m spiagge</span>
+              <span className="text-[calc(10px*var(--fs))] text-fog">m spiagge</span>
               <input
                 type="number"
                 min="50"
@@ -281,7 +308,7 @@ export default function SettingsSheet({
                 onChange={(e) => setCoastBand({ beachSicily: Number(e.target.value) })}
                 className="w-16 rounded-md border border-line bg-surface px-2 py-1.5 text-center text-xs text-paper outline-none focus:border-phos"
               />
-              <span className="text-[10px] text-fog">m spiagge Sicilia</span>
+              <span className="text-[calc(10px*var(--fs))] text-fog">m spiagge Sicilia</span>
               <input
                 type="number"
                 min="50"
@@ -291,9 +318,9 @@ export default function SettingsSheet({
                 onChange={(e) => setCoastBand({ cliff: Number(e.target.value) })}
                 className="w-16 rounded-md border border-line bg-surface px-2 py-1.5 text-center text-xs text-paper outline-none focus:border-phos"
               />
-              <span className="text-[10px] text-fog">m coste a picco</span>
+              <span className="text-[calc(10px*var(--fs))] text-fog">m coste a picco</span>
             </div>
-            <div className="pt-1 text-[10px] text-fog-dim">
+            <div className="pt-1 text-[calc(10px*var(--fs))] text-fog-dim">
               Dove l'app ha l'ordinanza balneare della Capitaneria (Liguria, Toscana, Sardegna, Catania, Eolie, Licata,
               Porto Empedocle, Lazio sud, Soverato) usa le sue distanze, stagione e orari; altrove queste. Francia e
               Corsica: 300 m, max 5 nodi.
@@ -317,13 +344,13 @@ export default function SettingsSheet({
                     <Icon size={15} className={active ? 'text-phos' : 'text-fog'} />
                     <span className="flex-1">
                       <span
-                        className={`block text-[11px] font-bold tracking-widest ${
+                        className={`block text-[calc(11px*var(--fs))] font-bold tracking-widest ${
                           active ? 'text-phos' : 'text-paper'
                         }`}
                       >
                         {m.label}
                       </span>
-                      <span className="block text-[9px] text-fog">{m.hint}</span>
+                      <span className="block text-[calc(9px*var(--fs))] text-fog">{m.hint}</span>
                     </span>
                   </button>
                 )
@@ -352,7 +379,7 @@ export default function SettingsSheet({
               />
             )}
             <div
-              className={`mt-2 text-[10px] leading-snug ${
+              className={`mt-2 text-[calc(10px*var(--fs))] leading-snug ${
                 aisStatus.state === 'error' ? 'text-danger' : 'text-fog'
               }`}
             >
@@ -388,16 +415,16 @@ export default function SettingsSheet({
                 onChange={(e) => windAlarm.setThreshold(Number(e.target.value) || 30)}
                 className="w-16 rounded-md border border-line bg-surface px-2 py-2 text-center text-sm text-paper outline-none focus:border-phos"
               />
-              <span className="text-[10px] text-fog">kn</span>
+              <span className="text-[calc(10px*var(--fs))] text-fog">kn</span>
             </div>
-            <div className="pt-1.5 text-[10px] text-fog">
+            <div className="pt-1.5 text-[calc(10px*var(--fs))] text-fog">
               Triplo segnale acustico e banner quando le raffiche superano la soglia.
             </div>
           </Section>
 
           {gribStatus && (
             <Section title="Stato dati weather routing" icon={Database}>
-              <div className="space-y-1 text-[10px]">
+              <div className="space-y-1 text-[calc(10px*var(--fs))]">
                 <div className="flex justify-between">
                   <span className="text-fog">Vento (GRIB):</span>
                   <span className={gribStatus.wind ? 'text-phos' : 'text-warn'}>
@@ -428,12 +455,12 @@ export default function SettingsSheet({
 
           {weatherError && (
             <Section title="Avvisi">
-              <div className="text-[10px] text-warn">{weatherError}</div>
+              <div className="text-[calc(10px*var(--fs))] text-warn">{weatherError}</div>
             </Section>
           )}
 
           <Section title="Informazioni">
-            <div className="text-[10px] leading-relaxed text-fog">
+            <div className="text-[calc(10px*var(--fs))] leading-relaxed text-fog">
               <b className="text-paper">TIMONE v2.1</b> — PWA di navigazione con weather routing
               isocrone. Dati: Open-Meteo, OpenSeaMap, EMODnet, Esri, RainViewer, Natural Earth.
               Ausilio alla navigazione: non sostituisce le carte ufficiali né le ordinanze delle

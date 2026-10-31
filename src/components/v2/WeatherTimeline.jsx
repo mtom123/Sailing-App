@@ -118,7 +118,7 @@ export default function WeatherTimeline() {
           </div>
         </div>
         {/* Tick labels */}
-        <div className="absolute inset-x-0 bottom-0 flex justify-between text-[9px] text-fog-dim">
+        <div className="absolute inset-x-0 bottom-0 flex justify-between text-[calc(9px*var(--fs))] text-fog-dim">
           {TICKS.map((t) => (
             <button
               key={t}
@@ -149,7 +149,7 @@ export default function WeatherTimeline() {
             key={s}
             type="button"
             onClick={() => setPlaySpeed(s)}
-            className={`rounded-md px-2 py-1 text-[10px] font-mono font-bold transition-all ${
+            className={`rounded-md px-2 py-1 text-[calc(10px*var(--fs))] font-mono font-bold transition-all ${
               playSpeed === s
                 ? 'bg-phos/15 text-phos border border-phos/50'
                 : 'text-fog hover:text-paper border border-transparent'

@@ -76,7 +76,7 @@ export default function TideChart({ hourly }) {
     <div>
       <div className="flex items-center justify-between px-1 pb-1">
         <span className="label">Marea (msl)</span>
-        <span className="text-[10px] text-paper tabular-nums">
+        <span className="text-[calc(10px*var(--fs))] text-paper tabular-nums">
           {level != null ? `${level >= 0 ? '+' : ''}${level.toFixed(2)} m` : '--'}
           {' · '}
           {new Date(hourly[idx].t).toLocaleString('it-IT', {

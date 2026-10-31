@@ -21,19 +21,19 @@ function AnchorageRow({ item, onSelect }) {
           style={{ background: color }}
         />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[12px] font-bold text-paper">{item.name}</div>
-          <div className="truncate text-[9px] uppercase tracking-wider text-fog">
+          <div className="truncate text-[calc(12px*var(--fs))] font-bold text-paper">{item.name}</div>
+          <div className="truncate text-[calc(9px*var(--fs))] uppercase tracking-wider text-fog">
             {item.region}
           </div>
-          <div className="mt-0.5 text-[10px] tabular-nums" style={{ color }}>
+          <div className="mt-0.5 text-[calc(10px*var(--fs))] tabular-nums" style={{ color }}>
             {item.safety.reason}
           </div>
         </div>
         <div className="flex-none text-right">
-          <div className="text-[12px] font-bold text-paper tabular-nums">
+          <div className="text-[calc(12px*var(--fs))] font-bold text-paper tabular-nums">
             {item.distance != null ? `${metersToNm(item.distance).toFixed(1)}` : '--'}
           </div>
-          <div className="text-[8px] uppercase text-fog">
+          <div className="text-[calc(8px*var(--fs))] uppercase text-fog">
             nm {item.bearing != null ? `· ${formatDeg(item.bearing)}° ${cardinal(item.bearing)}` : ''}
           </div>
         </div>
@@ -62,15 +62,15 @@ export default function AnchoragePanel({
       <div className={`border-b border-line p-2 ${alarmActive ? 'alarm-flash' : ''}`}>
         <div className="label pb-1.5">Anchor Watch</div>
         {band && (
-          <div className={`mb-1.5 text-[10px] ${band.warn ? 'border border-danger/50 bg-danger/10 p-1.5 font-bold text-danger' : 'text-fog'}`}>
+          <div className={`mb-1.5 text-[calc(10px*var(--fs))] ${band.warn ? 'border border-danger/50 bg-danger/10 p-1.5 font-bold text-danger' : 'text-fog'}`}>
             {anchorWatch ? 'Ancora' : 'Qui'}: {band.text}
-            <div className="text-[9px] font-normal text-fog">{band.detail}</div>
+            <div className="text-[calc(9px*var(--fs))] font-normal text-fog">{band.detail}</div>
           </div>
         )}
 
         {!anchorWatch && (
           <>
-            <div className="flex items-center justify-between pb-1 text-[10px] text-fog">
+            <div className="flex items-center justify-between pb-1 text-[calc(10px*var(--fs))] text-fog">
               <span>Raggio scarroccio</span>
               <span className="font-bold text-paper tabular-nums">{radius} m</span>
             </div>
@@ -87,7 +87,7 @@ export default function AnchoragePanel({
               type="button"
               onClick={onDropAnchor}
               disabled={!gpsOk}
-              className={`mt-1.5 flex w-full items-center justify-center gap-2 border py-3 text-[12px] font-bold tracking-[0.2em] ${
+              className={`mt-1.5 flex w-full items-center justify-center gap-2 border py-3 text-[calc(12px*var(--fs))] font-bold tracking-[0.2em] ${
                 gpsOk
                   ? 'border-phos bg-phos/10 text-phos active:bg-phos/25'
                   : 'border-line text-fog opacity-50'
@@ -97,7 +97,7 @@ export default function AnchoragePanel({
               ANCORA CADUTA
             </button>
             {!gpsOk && (
-              <div className="pt-1 text-[9px] text-fog">Richiede il fix GPS</div>
+              <div className="pt-1 text-[calc(9px*var(--fs))] text-fog">Richiede il fix GPS</div>
             )}
           </>
         )}
@@ -113,7 +113,7 @@ export default function AnchoragePanel({
                 {watchDistance != null ? watchDistance.toFixed(0) : '--'}
                 <span className="text-xs"> m</span>
               </span>
-              <span className="text-[10px] text-fog tabular-nums">/ {anchorWatch.radius} m</span>
+              <span className="text-[calc(10px*var(--fs))] text-fog tabular-nums">/ {anchorWatch.radius} m</span>
             </div>
             <div className="mt-1 h-2 w-full border border-line bg-panel">
               <div
@@ -125,7 +125,7 @@ export default function AnchoragePanel({
               />
             </div>
             {alarmActive && (
-              <div className="mt-1.5 text-center text-[11px] font-bold tracking-[0.25em] text-danger">
+              <div className="mt-1.5 text-center text-[calc(11px*var(--fs))] font-bold tracking-[0.25em] text-danger">
                 !! FUORI RAGGIO !!
               </div>
             )}
@@ -133,7 +133,7 @@ export default function AnchoragePanel({
               <button
                 type="button"
                 onClick={onRaiseAnchor}
-                className="flex flex-1 items-center justify-center gap-1 border border-line bg-panel py-2.5 text-[10px] font-bold tracking-widest text-paper active:bg-raised"
+                className="flex flex-1 items-center justify-center gap-1 border border-line bg-panel py-2.5 text-[calc(10px*var(--fs))] font-bold tracking-widest text-paper active:bg-raised"
               >
                 <LocateFixed size={13} />
                 RECUPERA
@@ -142,7 +142,7 @@ export default function AnchoragePanel({
                 <button
                   type="button"
                   onClick={onMuteAlarm}
-                  className="flex flex-1 items-center justify-center gap-1 border border-danger bg-danger/15 py-2.5 text-[10px] font-bold tracking-widest text-danger"
+                  className="flex flex-1 items-center justify-center gap-1 border border-danger bg-danger/15 py-2.5 text-[calc(10px*var(--fs))] font-bold tracking-widest text-danger"
                 >
                   <BellOff size={13} />
                   TACITA

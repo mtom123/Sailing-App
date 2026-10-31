@@ -32,7 +32,7 @@ export default class MapErrorBoundary extends Component {
               Il tuo browser non supporta WebGL o ha disattivato l'accelerazione hardware.
               TIMONE funziona comunque con strumenti, weather routing e timeline.
             </div>
-            <div className="text-[10px] text-fog-dim">
+            <div className="text-[calc(10px*var(--fs))] text-fog-dim">
               Errore: {this.state.error?.message || 'unknown'}
             </div>
             <button

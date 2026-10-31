@@ -106,6 +106,16 @@ const boxShadow = {
   glow: '0 0 20px rgba(94, 230, 200, 0.3)',
 }
 
+/* Dimensioni del testo moltiplicate per --fs (impostazione "Dimensione testo") */
+const fs = (rem, lh) => [`calc(${rem}rem * var(--fs))`, { lineHeight: `calc(${lh}rem * var(--fs))` }]
+const fontSize = {
+  xs: fs(0.75, 1),
+  sm: fs(0.875, 1.25),
+  base: fs(1, 1.5),
+  lg: fs(1.125, 1.75),
+  xl: fs(1.25, 1.75),
+}
+
 const cssVar = (prefix, values) =>
   Object.fromEntries(
     Object.entries(values).map(([k, v]) => [`--${prefix}-${k}`, Array.isArray(v) ? v.map((f) => (f.includes(' ') ? `'${f}'` : f)).join(', ') : v])
@@ -122,6 +132,7 @@ export default {
     extend: {
       colors,
       fontFamily,
+      fontSize,
       borderRadius,
       boxShadow,
       // Come Tailwind 4: bordi senza colore esplicito usano currentColor
@@ -132,6 +143,7 @@ export default {
     ({ addBase }) =>
       addBase({
         ':root': {
+          '--fs': '1.2', // dimensione testo: l'app la aggiorna dalle impostazioni
           ...themeVars(dark),
           ...cssVar('color', { 'bathy-deep': colors['bathy-deep'], 'bathy-mid': colors['bathy-mid'], 'bathy-shallow': colors['bathy-shallow'], 'bathy-reef': colors['bathy-reef'], 'bathy-shoal': colors['bathy-shoal'] }),
           ...cssVar('font', fontFamily),

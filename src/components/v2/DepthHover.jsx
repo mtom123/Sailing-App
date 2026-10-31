@@ -73,8 +73,8 @@ export default function DepthHover({ map, mapReady }) {
       className="glass pointer-events-none fixed z-[1200] rounded-md px-2 py-1"
       style={{ left: info.x + 14, top: info.y + 14 }}
     >
-      <span className="font-mono text-[12px] font-semibold text-paper">{formatDepth(info.depth)} m</span>
-      <span className="ml-1.5 text-[9px] tracking-wide text-fog">{info.source === 'Shom' ? 'Shom' : 'EMODnet ≈'}</span>
+      <span className="font-mono text-[calc(12px*var(--fs))] font-semibold text-paper">{formatDepth(info.depth)} m</span>
+      <span className="ml-1.5 text-[calc(9px*var(--fs))] tracking-wide text-fog">{info.source === 'Shom' ? 'Shom' : 'EMODnet ≈'}</span>
     </div>
   )
 }

@@ -74,7 +74,7 @@ export default function InstrumentPanel({ geo, weather, sun, moon }) {
         />
       </div>
 
-      <div className="px-3 pb-1 text-[10px] text-fog tabular-nums">
+      <div className="px-3 pb-1 text-[calc(10px*var(--fs))] text-fog tabular-nums">
         {gpsOk
           ? `${formatCoord(geo.lat, true)}  ${formatCoord(geo.lon, false)}`
           : geo.error || 'In attesa del segnale GPS…'}
@@ -114,7 +114,7 @@ export default function InstrumentPanel({ geo, weather, sun, moon }) {
             <div className="label">Barometro</div>
             <div className="text-sm font-bold text-paper tabular-nums">
               {pressure ? `${pressure.value.toFixed(0)}` : '--'}
-              <span className="text-[9px] text-fog"> hPa </span>
+              <span className="text-[calc(9px*var(--fs))] text-fog"> hPa </span>
               <span style={{ color: trend.color }}>{trend.glyph}</span>
             </div>
           </div>

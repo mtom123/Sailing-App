@@ -95,11 +95,11 @@ function popupHTML(title, lines) {
   const rows = lines
     .map(
       (l) =>
-        `<div style="font-size:11px;color:${l.color || 'var(--color-paper)'};margin-top:2px">${l.label}: <b style="font-family:'JetBrains Mono',monospace">${l.value}</b></div>`
+        `<div style="font-size:calc(11px*var(--fs));color:${l.color || 'var(--color-paper)'};margin-top:2px">${l.label}: <b style="font-family:'JetBrains Mono',monospace">${l.value}</b></div>`
     )
     .join('')
   return `<div style="min-width:160px">
-    <div style="font-weight:600;color:var(--color-paper);font-size:13px;margin-bottom:4px">${title}</div>
+    <div style="font-weight:600;color:var(--color-paper);font-size:calc(13px*var(--fs));margin-bottom:4px">${title}</div>
     ${rows}
   </div>`
 }
@@ -864,7 +864,7 @@ export default function MapView({
           <button
             type="button"
             onClick={() => setActiveDrawer('log')}
-            className={`glass mt-1.5 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold tracking-widest ${trackRec.paused ? 'text-warn' : 'text-danger'}`}
+            className={`glass mt-1.5 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[calc(10px*var(--fs))] font-bold tracking-widest ${trackRec.paused ? 'text-warn' : 'text-danger'}`}
           >
             <span className={`inline-block h-2 w-2 rounded-full ${trackRec.paused ? 'bg-warn' : 'bg-danger animate-pulse'}`} />
             {trackRec.paused ? 'PAUSA' : 'REC'} {trackRec.distanceNm.toFixed(1)} nm
@@ -924,7 +924,7 @@ export default function MapView({
           <button
             type="button"
             onClick={() => setRouteEditing(false)}
-            className="rounded-md border border-warn bg-warn/15 px-3 py-1.5 text-[10px] font-semibold tracking-widest text-warn touch"
+            className="rounded-md border border-warn bg-warn/15 px-3 py-1.5 text-[calc(10px*var(--fs))] font-semibold tracking-widest text-warn touch"
           >
             FINE
           </button>
@@ -962,10 +962,10 @@ export default function MapView({
                 key={t.id}
                 type="button"
                 onClick={() => setActiveDrawer(t.id)}
-                className="glass flex h-14 w-12 flex-col items-center justify-center gap-0.5 rounded-l-lg text-fog hover:text-paper transition-colors"
+                className="glass flex h-14 w-[calc(48px*var(--fs))] flex-col items-center justify-center gap-0.5 rounded-l-lg text-fog hover:text-paper transition-colors"
               >
                 <Icon size={16} />
-                <span className="text-[7px] font-bold tracking-widest">{t.label}</span>
+                <span className="text-[calc(7px*var(--fs))] font-bold tracking-wider">{t.label}</span>
               </button>
             )
           })}
@@ -1100,7 +1100,7 @@ function LayerPopover({ onClose }) {
               key={id}
               type="button"
               onClick={() => setBaseStyle(id)}
-              className={`flex-1 rounded-md border py-2 text-[10px] font-semibold tracking-widest transition-all ${
+              className={`flex-1 rounded-md border py-2 text-[calc(10px*var(--fs))] font-semibold tracking-widest transition-all ${
                 baseStyle === id
                   ? 'border-phos bg-phos/10 text-phos'
                   : 'border-line bg-surface text-fog'
@@ -1116,10 +1116,10 @@ function LayerPopover({ onClose }) {
             key={l.key}
             type="button"
             onClick={() => toggleLayer(l.key)}
-            className="flex w-full items-center gap-2.5 rounded-md px-2 py-2.5 text-left text-[11px] tracking-wide hover:bg-raised transition-colors"
+            className="flex w-full items-center gap-2.5 rounded-md px-2 py-2.5 text-left text-[calc(11px*var(--fs))] tracking-wide hover:bg-raised transition-colors"
           >
             <span
-              className={`flex h-4 w-4 flex-none items-center justify-center rounded border text-[10px] ${
+              className={`flex h-4 w-4 flex-none items-center justify-center rounded border text-[calc(10px*var(--fs))] ${
                 layers[l.key] ? 'border-phos text-phos' : 'border-line text-transparent'
               }`}
             >
@@ -1141,7 +1141,7 @@ function FloatingHUD({ geo }) {
         <div className="label">SOG</div>
         <div className="font-mono text-lg font-bold text-phos">
           {geo.sog != null ? geo.sog.toFixed(1) : '--'}
-          <span className="text-[10px] text-fog ml-1">kn</span>
+          <span className="text-[calc(10px*var(--fs))] text-fog ml-1">kn</span>
         </div>
       </div>
       <div className="h-8 w-px bg-line" />
@@ -1149,7 +1149,7 @@ function FloatingHUD({ geo }) {
         <div className="label">COG</div>
         <div className="font-mono text-lg font-bold text-paper">
           {geo.cog != null ? formatDeg(geo.cog) : '---'}
-          <span className="text-[10px] text-fog ml-1">°</span>
+          <span className="text-[calc(10px*var(--fs))] text-fog ml-1">°</span>
         </div>
       </div>
     </div>

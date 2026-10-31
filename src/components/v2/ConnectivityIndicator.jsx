@@ -36,7 +36,7 @@ export default function ConnectivityIndicator({ gribAvailable, weatherAvailable 
   return (
     <div className="glass flex items-center gap-1.5 rounded-full px-2.5 py-1" title={state.hint}>
       <Icon size={11} style={{ color: state.color }} />
-      <span className="text-[9px] font-bold tracking-widest" style={{ color: state.color }}>
+      <span className="text-[calc(9px*var(--fs))] font-bold tracking-widest" style={{ color: state.color }}>
         {state.label}
       </span>
     </div>

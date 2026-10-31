@@ -58,7 +58,7 @@ const FIX_MESSAGES = {
 function ParksNotice({ parks, className = '' }) {
   if (!parks?.length) return null
   return (
-    <div className={`flex items-start gap-2 px-3 text-[10px] text-info ${className}`}>
+    <div className={`flex items-start gap-2 px-3 text-[calc(10px*var(--fs))] text-info ${className}`}>
       <Shield size={12} className="mt-px flex-none" />
       <span className="min-w-0 flex-1">
         {parks.map((p) => {
@@ -88,13 +88,13 @@ function ParksNotice({ parks, className = '' }) {
 function BandNotice({ waypoints }) {
   if (!waypoints?.length) return null
   return (
-    <div className="flex items-start gap-2 border-b border-line px-3 py-1.5 text-[10px]">
+    <div className="flex items-start gap-2 border-b border-line px-3 py-1.5 text-[calc(10px*var(--fs))]">
       <Anchor size={12} className="mt-px flex-none text-danger" />
       <span className="min-w-0 flex-1">
         {waypoints.map((w) => (
           <span key={w.id} className={`block ${w.warn ? 'text-danger' : 'text-fog'}`}>
             {w.name}: {w.text}
-            <span className="block text-[9px] text-fog-dim">{w.detail}</span>
+            <span className="block text-[calc(9px*var(--fs))] text-fog-dim">{w.detail}</span>
           </span>
         ))}
       </span>
@@ -106,7 +106,7 @@ function BandNotice({ waypoints }) {
 function MilitaryNotice({ names, className = '' }) {
   if (!names?.length) return null
   return (
-    <div className={`flex items-center gap-2 px-3 text-[10px] text-warn ${className}`}>
+    <div className={`flex items-center gap-2 px-3 text-[calc(10px*var(--fs))] text-warn ${className}`}>
       <AlertTriangle size={12} className="flex-none" />
       <span className="min-w-0 flex-1">
         Zona militare: {names.join(' · ')}. Vietata durante le esercitazioni: verifica gli avvisi ai naviganti
@@ -119,7 +119,7 @@ function MilitaryNotice({ names, className = '' }) {
 function OrdinanceNotice({ ordinances, className = '' }) {
   if (!ordinances?.length) return null
   return (
-    <div className={`flex items-start gap-2 px-3 text-[10px] ${className}`}>
+    <div className={`flex items-start gap-2 px-3 text-[calc(10px*var(--fs))] ${className}`}>
       <AlertTriangle size={12} className="mt-px flex-none text-warn" />
       <span className="min-w-0 flex-1">
         {ordinances.map((o) => (
@@ -131,7 +131,7 @@ function OrdinanceNotice({ ordinances, className = '' }) {
             className={`block leading-tight ${o.military ? 'text-danger' : 'text-warn'}`}
           >
             Ord. {o.n}: {o.title.length > 80 ? `${o.title.slice(0, 80)}…` : o.title}
-            <span className="block text-[9px] text-fog-dim">{o.office}</span>
+            <span className="block text-[calc(9px*var(--fs))] text-fog-dim">{o.office}</span>
           </a>
         ))}
       </span>
@@ -159,7 +159,7 @@ function LegHazard({ result, minDepth, onFix }) {
   const land = result.hazards.some(isSevere)
   return (
     <>
-      <div className={`flex items-center gap-2 px-3 pb-1.5 text-[10px] ${land ? 'text-danger' : 'text-warn'}`}>
+      <div className={`flex items-center gap-2 px-3 pb-1.5 text-[calc(10px*var(--fs))] ${land ? 'text-danger' : 'text-warn'}`}>
         <AlertTriangle size={12} className="flex-none" />
         <span className="min-w-0 flex-1">
           {busy ? `Calcolo aggiramento… ${busy}` : FIX_MESSAGES[outcome] || hazardText(result, minDepth)}
@@ -210,10 +210,10 @@ function RouteHazards({ route }) {
     </>
   )
   if (busy) {
-    return <div className="border-b border-line px-3 py-1.5 text-[10px] text-fog">Calcolo aggiramento… {busy}</div>
+    return <div className="border-b border-line px-3 py-1.5 text-[calc(10px*var(--fs))] text-fog">Calcolo aggiramento… {busy}</div>
   }
   if (route.checkingHazards && !bad.length) {
-    return <div className="border-b border-line px-3 py-1.5 text-[10px] text-fog">Controllo fondali, costa e aree protette…</div>
+    return <div className="border-b border-line px-3 py-1.5 text-[calc(10px*var(--fs))] text-fog">Controllo fondali, costa e aree protette…</div>
   }
   if (!bad.length) return parksRow
   const kinds = new Set(bad.flatMap((i) => route.hazards[i].hazards.map((h) => h.kind)))
@@ -227,7 +227,7 @@ function RouteHazards({ route }) {
     <>
       <div className={`flex items-center gap-2 border-b border-line px-3 py-2 ${land ? 'bg-danger/10' : 'bg-warn/10'}`}>
         <AlertTriangle size={14} className={land ? 'text-danger' : 'text-warn'} />
-        <span className={`min-w-0 flex-1 text-[10px] ${land ? 'text-danger' : 'text-warn'}`}>
+        <span className={`min-w-0 flex-1 text-[calc(10px*var(--fs))] ${land ? 'text-danger' : 'text-warn'}`}>
           {bad.length === 1 ? '1 tratta' : `${bad.length} tratte`} su {what.join(', ').replace(/, ([^,]*)$/, ' o $1')}
           {failed > 0 && ` · ${failed} senza passaggio: sposta i waypoint`}
         </span>
@@ -248,7 +248,7 @@ function RouteHazards({ route }) {
               setBusy(null)
             }
           }}
-          className="flex flex-none items-center gap-1 rounded border border-line bg-surface px-2 py-1 text-[10px] font-semibold tracking-widest text-paper hover:bg-raised"
+          className="flex flex-none items-center gap-1 rounded border border-line bg-surface px-2 py-1 text-[calc(10px*var(--fs))] font-semibold tracking-widest text-paper hover:bg-raised"
         >
           <Route size={11} />
           AGGIRA TUTTO
@@ -309,7 +309,7 @@ function SavedRoutes() {
             className="min-w-0 flex-1 text-left hover:opacity-70"
           >
             <div className="truncate text-xs font-semibold text-paper">{r.name}</div>
-            <div className="text-[10px] text-fog">
+            <div className="text-[calc(10px*var(--fs))] text-fog">
               {r.waypoints.length} WP ·{' '}
               {new Date(r.createdAt).toLocaleDateString('it-IT')}
             </div>
@@ -393,7 +393,7 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
             <Plus size={15} />
             NUOVA ROTTA
           </BigButton>
-          <p className="pt-2 text-[10px] leading-relaxed text-fog">
+          <p className="pt-2 text-[calc(10px*var(--fs))] leading-relaxed text-fog">
             Tocca il mare sulla mappa per posare i waypoint. Trascinali per
             correggerli, toccali per eliminarli. Con 2+ WP puoi chiedere il
             weather routing automatico.
@@ -414,23 +414,23 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
           <div className="text-xs font-semibold tracking-wider text-warn">
             TOCCA IL MARE PER AGGIUNGERE WAYPOINT
           </div>
-          <div className="pt-1 text-[10px] text-fog">
+          <div className="pt-1 text-[calc(10px*var(--fs))] text-fog">
             Trascina per spostare · tocca un waypoint per eliminarlo
           </div>
         </div>
 
         <div className="flex items-baseline justify-between border-b border-line px-3 py-2">
           <span className="text-lg font-bold text-paper tabular">
-            {waypoints.length} <span className="text-[10px] text-fog">WP</span>
+            {waypoints.length} <span className="text-[calc(10px*var(--fs))] text-fog">WP</span>
           </span>
           <span className="text-lg font-bold text-phos tabular">
-            {totalNm.toFixed(1)} <span className="text-[10px] text-fog">nm</span>
+            {totalNm.toFixed(1)} <span className="text-[calc(10px*var(--fs))] text-fog">nm</span>
           </span>
           <button
             type="button"
             disabled={!waypoints.length}
             onClick={undoWaypoint}
-            className="flex items-center gap-1 rounded-md border border-line bg-surface px-3 py-2 text-[10px] font-semibold tracking-widest text-paper hover:bg-raised disabled:opacity-40"
+            className="flex items-center gap-1 rounded-md border border-line bg-surface px-3 py-2 text-[calc(10px*var(--fs))] font-semibold tracking-widest text-paper hover:bg-raised disabled:opacity-40"
           >
             <Undo2 size={13} />
             UNDO
@@ -457,12 +457,12 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
             SALVA ROTTA
           </BigButton>
           {waypoints.length < 2 && (
-            <div className="pt-1 text-[10px] text-fog">Servono almeno 2 waypoint</div>
+            <div className="pt-1 text-[calc(10px*var(--fs))] text-fog">Servono almeno 2 waypoint</div>
           )}
           <button
             type="button"
             onClick={clearDraftLocal}
-            className="mt-1.5 w-full rounded-md border border-line bg-surface py-2 text-[10px] font-semibold tracking-widest text-danger hover:bg-raised"
+            className="mt-1.5 w-full rounded-md border border-line bg-surface py-2 text-[calc(10px*var(--fs))] font-semibold tracking-widest text-danger hover:bg-raised"
           >
             ANNULLA E SVUOTA
           </button>
@@ -476,7 +476,7 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
                 <span className="text-xs text-paper">
                   {leg.from.name} → {leg.to.name}
                 </span>
-                <span className="text-[10px] text-fog tabular">
+                <span className="text-[calc(10px*var(--fs))] text-fog tabular">
                   {metersToNm(leg.dist).toFixed(1)} nm · {formatDeg(leg.brg)}°
                 </span>
               </div>
@@ -505,7 +505,7 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
           <div className="truncate text-sm font-semibold text-paper">
             {route.routeName || 'Rotta senza nome'}
           </div>
-          <div className="text-[10px] text-phos tabular">
+          <div className="text-[calc(10px*var(--fs))] text-phos tabular">
             {totalNm.toFixed(1)} nm · {fmtDuration(totalMs)} a {planSpeed} kn
           </div>
         </div>
@@ -528,14 +528,14 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
             <span className="text-xs font-semibold tracking-widest text-phos">
               → {nav.dest.name}
             </span>
-            <span className="text-[10px] text-fog">ETA {fmtTime(nav.etaMs)}</span>
+            <span className="text-[calc(10px*var(--fs))] text-fog">ETA {fmtTime(nav.etaMs)}</span>
           </div>
           <div className="mt-1 grid grid-cols-3 gap-1 text-center">
             <div>
               <div className="label">DTW</div>
               <div className="font-mono text-xl font-bold text-paper">
                 {nav.dtwNm.toFixed(1)}
-                <span className="text-[9px] text-fog"> nm</span>
+                <span className="text-[calc(9px*var(--fs))] text-fog"> nm</span>
               </div>
             </div>
             <div>
@@ -552,7 +552,7 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
                 }`}
               >
                 {Math.abs(metersToNm(nav.xte)).toFixed(2)}
-                <span className="text-[9px] text-fog"> {nav.xte < 0 ? '◀' : '▶'}</span>
+                <span className="text-[calc(9px*var(--fs))] text-fog"> {nav.xte < 0 ? '◀' : '▶'}</span>
               </div>
             </div>
           </div>
@@ -569,10 +569,10 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
                 WEATHER ROUTING
               </div>
               {computing && (
-                <span className="text-[9px] text-phos pulse-soft">CALCOLO…</span>
+                <span className="text-[calc(9px*var(--fs))] text-phos pulse-soft">CALCOLO…</span>
               )}
               {!computing && duration != null && (
-                <span className="text-[9px] text-fog-dim font-mono">{(duration / 1000).toFixed(1)}s</span>
+                <span className="text-[calc(9px*var(--fs))] text-fog-dim font-mono">{(duration / 1000).toFixed(1)}s</span>
               )}
             </div>
             <div className="grid grid-cols-3 gap-1.5">
@@ -596,20 +596,20 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
                     style={isActive ? { boxShadow: `0 0 12px ${t.color}33` } : undefined}
                   >
                     <Icon size={14} className="mx-auto mb-1" style={{ color: t.color }} />
-                    <div className="text-[9px] font-bold tracking-widest text-paper">{t.label}</div>
+                    <div className="text-[calc(9px*var(--fs))] font-bold tracking-widest text-paper">{t.label}</div>
                     {opt ? (
-                      <div className="mt-0.5 text-[9px] text-fog tabular">
+                      <div className="mt-0.5 text-[calc(9px*var(--fs))] text-fog tabular">
                         {opt.durationH.toFixed(1)}h · {opt.distNm.toFixed(0)}nm
                       </div>
                     ) : (
-                      <div className="mt-0.5 text-[9px] text-fog-dim">—</div>
+                      <div className="mt-0.5 text-[calc(9px*var(--fs))] text-fog-dim">—</div>
                     )}
                   </button>
                 )
               })}
             </div>
             {routeOptions?.[activeRouteOption] && (
-              <div className="mt-2 rounded-md border border-line bg-surface p-2 text-[10px] text-fog">
+              <div className="mt-2 rounded-md border border-line bg-surface p-2 text-[calc(10px*var(--fs))] text-fog">
                 <div className="text-paper font-semibold mb-1">
                   {ROUTE_TYPES.find((t) => t.key === activeRouteOption)?.desc}
                 </div>
@@ -623,7 +623,7 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
             {/* Comparison table — tutte e 3 le rotte a confronto */}
             {routeOptions && (routeOptions.fastest || routeOptions.comfortable || routeOptions.safest) && (
               <div className="mt-2 rounded-md border border-line bg-surface overflow-hidden">
-                <div className="grid grid-cols-4 gap-1 px-2 py-1.5 border-b border-line text-[9px] font-bold tracking-wider text-fog">
+                <div className="grid grid-cols-4 gap-1 px-2 py-1.5 border-b border-line text-[calc(9px*var(--fs))] font-bold tracking-wider text-fog">
                   <span>Rot</span>
                   <span className="text-right">ETA</span>
                   <span className="text-right">Dist</span>
@@ -638,7 +638,7 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
                       key={t.key}
                       type="button"
                       onClick={() => setActiveRouteOption(t.key)}
-                      className={`grid grid-cols-4 gap-1 px-2 py-1.5 w-full text-[10px] tabular transition-colors ${
+                      className={`grid grid-cols-4 gap-1 px-2 py-1.5 w-full text-[calc(10px*var(--fs))] tabular transition-colors ${
                         isActive ? 'bg-phos/10' : 'hover:bg-raised'
                       }`}
                     >
@@ -656,7 +656,7 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
               </div>
             )}
             {!routeOptions && !computing && (
-              <div className="mt-2 text-[10px] text-fog-dim text-center">
+              <div className="mt-2 text-[calc(10px*var(--fs))] text-fog-dim text-center">
                 In attesa dati vento (GRIB)…
               </div>
             )}
@@ -677,7 +677,7 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
                 key={h}
                 type="button"
                 onClick={() => setDepartureOffsetH(h)}
-                className={`flex-1 rounded-md border py-2 text-[10px] font-semibold tracking-widest transition-all ${
+                className={`flex-1 rounded-md border py-2 text-[calc(10px*var(--fs))] font-semibold tracking-widest transition-all ${
                   departureOffsetH === h
                     ? 'border-phos bg-phos/10 text-phos'
                     : 'border-line bg-surface text-fog hover:text-paper'
@@ -719,7 +719,7 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
               <span className="font-mono text-xs text-paper">
                 {fmtDayTime(etas[i])}
               </span>
-              <span className="w-16 text-right font-mono text-[10px] text-fog">
+              <span className="w-16 text-right font-mono text-[calc(10px*var(--fs))] text-fog">
                 {cumDists[i].toFixed(1)} nm
               </span>
             </div>

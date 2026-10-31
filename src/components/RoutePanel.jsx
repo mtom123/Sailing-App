@@ -41,7 +41,7 @@ function BigButton({ onClick, disabled, danger, children }) {
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`flex w-full items-center justify-center gap-2 border py-3 text-[12px] font-bold tracking-[0.2em] ${
+      className={`flex w-full items-center justify-center gap-2 border py-3 text-[calc(12px*var(--fs))] font-bold tracking-[0.2em] ${
         danger
           ? 'border-danger bg-danger/15 text-danger'
           : disabled
@@ -66,8 +66,8 @@ function SavedRoutes({ route }) {
             onClick={() => route.loadRoute(r.id)}
             className="min-w-0 flex-1 text-left active:opacity-70"
           >
-            <div className="truncate text-[12px] font-bold text-paper">{r.name}</div>
-            <div className="text-[9px] text-fog">
+            <div className="truncate text-[calc(12px*var(--fs))] font-bold text-paper">{r.name}</div>
+            <div className="text-[calc(9px*var(--fs))] text-fog">
               {r.waypoints.length} WP ·{' '}
               {new Date(r.createdAt).toLocaleDateString('it-IT')}
             </div>
@@ -113,7 +113,7 @@ export default function RoutePanel({
             <Plus size={15} />
             NUOVA ROTTA
           </BigButton>
-          <p className="pt-2 text-[10px] leading-relaxed text-fog">
+          <p className="pt-2 text-[calc(10px*var(--fs))] leading-relaxed text-fog">
             Poi tocca il mare sulla mappa per posare i waypoint. Trascinali per
             correggerli, toccali per eliminarli.
           </p>
@@ -130,26 +130,26 @@ export default function RoutePanel({
     return (
       <div className="flex h-full flex-col">
         <div className="border-b border-line bg-warn/5 p-3">
-          <div className="text-[11px] font-bold tracking-wider text-warn">
+          <div className="text-[calc(11px*var(--fs))] font-bold tracking-wider text-warn">
             TOCCA IL MARE PER AGGIUNGERE WAYPOINT
           </div>
-          <div className="pt-1 text-[10px] text-fog">
+          <div className="pt-1 text-[calc(10px*var(--fs))] text-fog">
             Trascina per spostare · tocca un waypoint per eliminarlo
           </div>
         </div>
 
         <div className="flex items-baseline justify-between border-b border-line px-3 py-2">
           <span className="text-lg font-bold text-paper tabular-nums">
-            {waypoints.length} <span className="text-[10px] text-fog">WP</span>
+            {waypoints.length} <span className="text-[calc(10px*var(--fs))] text-fog">WP</span>
           </span>
           <span className="text-lg font-bold text-phos tabular-nums">
-            {totalNm.toFixed(1)} <span className="text-[10px] text-fog">nm</span>
+            {totalNm.toFixed(1)} <span className="text-[calc(10px*var(--fs))] text-fog">nm</span>
           </span>
           <button
             type="button"
             disabled={!waypoints.length}
             onClick={route.undoWaypoint}
-            className="flex items-center gap-1 border border-line bg-panel px-3 py-2 text-[10px] font-bold tracking-widest text-paper active:bg-raised disabled:opacity-40"
+            className="flex items-center gap-1 border border-line bg-panel px-3 py-2 text-[calc(10px*var(--fs))] font-bold tracking-widest text-paper active:bg-raised disabled:opacity-40"
           >
             <Undo2 size={13} />
             UNDO
@@ -162,7 +162,7 @@ export default function RoutePanel({
             value={nameInput}
             onChange={(e) => setNameInput(e.target.value)}
             placeholder={route.routeName || 'Nome rotta (es. Palau → Bonifacio)'}
-            className="mb-2 w-full border border-line bg-panel px-2.5 py-2.5 text-[12px] text-paper outline-none focus:border-phos"
+            className="mb-2 w-full border border-line bg-panel px-2.5 py-2.5 text-[calc(12px*var(--fs))] text-paper outline-none focus:border-phos"
           />
           <BigButton
             disabled={waypoints.length < 2}
@@ -175,12 +175,12 @@ export default function RoutePanel({
             SALVA ROTTA
           </BigButton>
           {waypoints.length < 2 && (
-            <div className="pt-1 text-[9px] text-fog">Servono almeno 2 waypoint</div>
+            <div className="pt-1 text-[calc(9px*var(--fs))] text-fog">Servono almeno 2 waypoint</div>
           )}
           <button
             type="button"
             onClick={route.clearDraft}
-            className="mt-1.5 w-full border border-line bg-panel py-2 text-[10px] font-bold tracking-widest text-danger active:bg-raised"
+            className="mt-1.5 w-full border border-line bg-panel py-2 text-[calc(10px*var(--fs))] font-bold tracking-widest text-danger active:bg-raised"
           >
             ANNULLA E SVUOTA
           </button>
@@ -192,10 +192,10 @@ export default function RoutePanel({
               key={`${leg.from.id}-${leg.to.id}`}
               className="flex items-center justify-between border-b border-line px-3 py-1.5"
             >
-              <span className="text-[11px] text-paper">
+              <span className="text-[calc(11px*var(--fs))] text-paper">
                 {leg.from.name} → {leg.to.name}
               </span>
-              <span className="text-[10px] text-fog tabular-nums">
+              <span className="text-[calc(10px*var(--fs))] text-fog tabular-nums">
                 {metersToNm(leg.dist).toFixed(1)} nm · {formatDeg(leg.brg)}°
               </span>
             </div>
@@ -219,10 +219,10 @@ export default function RoutePanel({
       {/* Intestazione rotta */}
       <div className="flex items-center justify-between border-b border-line px-3 py-2">
         <div className="min-w-0">
-          <div className="truncate text-[13px] font-bold text-paper">
+          <div className="truncate text-[calc(13px*var(--fs))] font-bold text-paper">
             {route.routeName || 'Rotta senza nome'}
           </div>
-          <div className="text-[10px] text-phos tabular-nums">
+          <div className="text-[calc(10px*var(--fs))] text-phos tabular-nums">
             {totalNm.toFixed(1)} nm · {fmtDuration(totalMs)} a {route.planSpeed} kn
           </div>
         </div>
@@ -240,17 +240,17 @@ export default function RoutePanel({
       {nav && (
         <div className="border-b border-line bg-panel p-2.5">
           <div className="flex items-baseline justify-between">
-            <span className="text-[11px] font-bold tracking-widest text-phos">
+            <span className="text-[calc(11px*var(--fs))] font-bold tracking-widest text-phos">
               → {nav.dest.name}
             </span>
-            <span className="text-[10px] text-fog">ETA {fmtTime(nav.etaMs)}</span>
+            <span className="text-[calc(10px*var(--fs))] text-fog">ETA {fmtTime(nav.etaMs)}</span>
           </div>
           <div className="mt-1 grid grid-cols-3 gap-1 text-center">
             <div>
               <div className="label">DTW</div>
               <div className="text-xl font-bold text-paper tabular-nums">
                 {nav.dtwNm.toFixed(1)}
-                <span className="text-[9px] text-fog"> nm</span>
+                <span className="text-[calc(9px*var(--fs))] text-fog"> nm</span>
               </div>
             </div>
             <div>
@@ -267,7 +267,7 @@ export default function RoutePanel({
                 }`}
               >
                 {Math.abs(metersToNm(nav.xte)).toFixed(2)}
-                <span className="text-[9px] text-fog"> {nav.xte < 0 ? '◀' : '▶'}</span>
+                <span className="text-[calc(9px*var(--fs))] text-fog"> {nav.xte < 0 ? '◀' : '▶'}</span>
               </div>
             </div>
           </div>
@@ -289,7 +289,7 @@ export default function RoutePanel({
                 key={h}
                 type="button"
                 onClick={() => route.setDepartureOffsetH(h)}
-                className={`flex-1 border py-2 text-[10px] font-bold tracking-widest ${
+                className={`flex-1 border py-2 text-[calc(10px*var(--fs))] font-bold tracking-widest ${
                   route.departureOffsetH === h
                     ? 'border-phos bg-phos/10 text-phos'
                     : 'border-line bg-panel text-fog'
@@ -301,7 +301,7 @@ export default function RoutePanel({
           </div>
           <div className="flex items-center justify-between pt-2">
             <span className="label">Velocità piano</span>
-            <span className="text-[11px] font-bold text-paper tabular-nums">
+            <span className="text-[calc(11px*var(--fs))] font-bold text-paper tabular-nums">
               {route.planSpeed} kn
             </span>
           </div>
@@ -315,7 +315,7 @@ export default function RoutePanel({
             className="w-full accent-[#3DFF7A]"
           />
           {routeWx?.bestDeparture && (
-            <div className="mt-1 border border-phosdim bg-phos/5 p-1.5 text-[10px] text-phos">
+            <div className="mt-1 border border-phosdim bg-phos/5 p-1.5 text-[calc(10px*var(--fs))] text-phos">
               Meteo migliore partendo {fmtDayTime(routeWx.bestDeparture.at)}
             </div>
           )}
@@ -335,7 +335,7 @@ export default function RoutePanel({
                     className="inline-block h-1.5 w-6 flex-none"
                     style={{ background: color }}
                   />
-                  <span className="text-[9px]" style={{ color }}>
+                  <span className="text-[calc(9px*var(--fs))]" style={{ color }}>
                     {legWx.verdict.label} · {routeWx.describe(legWx.cond)}
                   </span>
                 </div>
@@ -346,16 +346,16 @@ export default function RoutePanel({
                 }`}
               >
                 <span
-                  className={`text-[12px] font-bold ${
+                  className={`text-[calc(12px*var(--fs))] font-bold ${
                     isActive ? 'text-phos' : 'text-paper'
                   }`}
                 >
                   {w.name}
                 </span>
-                <span className="text-[11px] text-paper tabular-nums">
+                <span className="text-[calc(11px*var(--fs))] text-paper tabular-nums">
                   {fmtDayTime(etas[i])}
                 </span>
-                <span className="w-16 text-right text-[10px] text-fog tabular-nums">
+                <span className="w-16 text-right text-[calc(10px*var(--fs))] text-fog tabular-nums">
                   {cumDists[i].toFixed(1)} nm
                 </span>
               </div>
@@ -364,7 +364,7 @@ export default function RoutePanel({
         })}
         <div className="flex items-baseline justify-between px-2.5 py-2">
           <span className="label">Arrivo</span>
-          <span className="text-[12px] font-bold text-phos tabular-nums">
+          <span className="text-[calc(12px*var(--fs))] font-bold text-phos tabular-nums">
             {fmtDayTime(etas[etas.length - 1])} · {fmtDuration(totalMs)}
           </span>
         </div>
@@ -382,7 +382,7 @@ export default function RoutePanel({
               {autopilot.engaged ? 'STOP PILOTA' : 'PILOTA — VAI'}
             </BigButton>
             <div
-              className={`mt-1 text-[9px] leading-snug ${
+              className={`mt-1 text-[calc(9px*var(--fs))] leading-snug ${
                 autopilot.status.state === 'error' ? 'text-danger' : 'text-fog'
               }`}
             >
@@ -405,7 +405,7 @@ export default function RoutePanel({
             type="button"
             disabled={!gpsOk}
             onClick={route.startNav}
-            className={`flex flex-[2] items-center justify-center gap-2 border py-3 text-[12px] font-bold tracking-[0.2em] ${
+            className={`flex flex-[2] items-center justify-center gap-2 border py-3 text-[calc(12px*var(--fs))] font-bold tracking-[0.2em] ${
               gpsOk
                 ? 'border-phos bg-phos/10 text-phos active:bg-phos/25'
                 : 'border-line text-fog opacity-50'
@@ -418,7 +418,7 @@ export default function RoutePanel({
           <button
             type="button"
             onClick={route.stopNav}
-            className="flex flex-[2] items-center justify-center gap-2 border border-danger bg-danger/15 py-3 text-[12px] font-bold tracking-[0.2em] text-danger"
+            className="flex flex-[2] items-center justify-center gap-2 border border-danger bg-danger/15 py-3 text-[calc(12px*var(--fs))] font-bold tracking-[0.2em] text-danger"
           >
             <Square size={14} />
             STOP NAV
@@ -432,14 +432,14 @@ export default function RoutePanel({
               routeToGPX(waypoints, route.routeName || 'Rotta TIMONE')
             )
           }
-          className="flex flex-1 items-center justify-center border border-line bg-panel py-3 text-[10px] font-bold tracking-widest text-paper active:bg-raised"
+          className="flex flex-1 items-center justify-center border border-line bg-panel py-3 text-[calc(10px*var(--fs))] font-bold tracking-widest text-paper active:bg-raised"
         >
           <Download size={13} />
         </button>
         <button
           type="button"
           onClick={route.clearDraft}
-          className="flex flex-1 items-center justify-center border border-line bg-panel py-3 text-[10px] font-bold tracking-widest text-danger active:bg-raised"
+          className="flex flex-1 items-center justify-center border border-line bg-panel py-3 text-[calc(10px*var(--fs))] font-bold tracking-widest text-danger active:bg-raised"
         >
           <Trash2 size={13} />
         </button>

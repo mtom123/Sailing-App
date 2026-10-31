@@ -27,7 +27,7 @@ export default function WaypointPopup({
     const dist = haversine(boatPosition.lat, boatPosition.lon, waypoint.lat, waypoint.lon)
     const brg = bearing(boatPosition.lat, boatPosition.lon, waypoint.lat, waypoint.lon)
     infoRow = (
-      <div className="text-[10px] text-fog font-mono pt-1 border-t border-line mt-1">
+      <div className="text-[calc(10px*var(--fs))] text-fog font-mono pt-1 border-t border-line mt-1">
         {metersToNm(dist).toFixed(2)} nm · {formatDeg(brg)}° {cardinal(brg)}
       </div>
     )
@@ -42,7 +42,7 @@ export default function WaypointPopup({
           </div>
           <div>
             <div className="text-xs font-semibold text-paper">{waypoint.name || `WP${index + 1}`}</div>
-            <div className="text-[10px] text-fog">Waypoint {index + 1} di {total}</div>
+            <div className="text-[calc(10px*var(--fs))] text-fog">Waypoint {index + 1} di {total}</div>
           </div>
         </div>
         <button
@@ -55,7 +55,7 @@ export default function WaypointPopup({
       </div>
 
       <div className="pt-2 pb-1">
-        <div className="font-mono text-[11px] text-paper">
+        <div className="font-mono text-[calc(11px*var(--fs))] text-paper">
           {waypoint.lat.toFixed(4)}, {waypoint.lon.toFixed(4)}
         </div>
         {infoRow}
@@ -66,7 +66,7 @@ export default function WaypointPopup({
           type="button"
           onClick={() => onMoveUp?.(waypoint.id)}
           disabled={index === 0}
-          className="touch flex items-center justify-center gap-1 rounded-md border border-line bg-surface px-2 py-2 text-[10px] font-semibold text-paper hover:bg-raised disabled:opacity-40"
+          className="touch flex items-center justify-center gap-1 rounded-md border border-line bg-surface px-2 py-2 text-[calc(10px*var(--fs))] font-semibold text-paper hover:bg-raised disabled:opacity-40"
         >
           <ChevronUp size={13} />
           SU
@@ -75,7 +75,7 @@ export default function WaypointPopup({
           type="button"
           onClick={() => onMoveDown?.(waypoint.id)}
           disabled={index === total - 1}
-          className="touch flex items-center justify-center gap-1 rounded-md border border-line bg-surface px-2 py-2 text-[10px] font-semibold text-paper hover:bg-raised disabled:opacity-40"
+          className="touch flex items-center justify-center gap-1 rounded-md border border-line bg-surface px-2 py-2 text-[calc(10px*var(--fs))] font-semibold text-paper hover:bg-raised disabled:opacity-40"
         >
           <ChevronDown size={13} />
           GIU
@@ -83,7 +83,7 @@ export default function WaypointPopup({
         <button
           type="button"
           onClick={() => onSetActive?.(index)}
-          className="touch flex items-center justify-center gap-1 rounded-md border border-phos/40 bg-phos/10 px-2 py-2 text-[10px] font-semibold text-phos hover:bg-phos/20"
+          className="touch flex items-center justify-center gap-1 rounded-md border border-phos/40 bg-phos/10 px-2 py-2 text-[calc(10px*var(--fs))] font-semibold text-phos hover:bg-phos/20"
         >
           <Navigation size={13} />
           ATTIVO
@@ -91,7 +91,7 @@ export default function WaypointPopup({
         <button
           type="button"
           onClick={() => onDelete?.(waypoint.id)}
-          className="touch flex items-center justify-center gap-1 rounded-md border border-danger/40 bg-danger/10 px-2 py-2 text-[10px] font-semibold text-danger hover:bg-danger/20"
+          className="touch flex items-center justify-center gap-1 rounded-md border border-danger/40 bg-danger/10 px-2 py-2 text-[calc(10px*var(--fs))] font-semibold text-danger hover:bg-danger/20"
         >
           <Trash2 size={13} />
           ELIMINA

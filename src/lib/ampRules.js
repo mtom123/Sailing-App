@@ -64,7 +64,7 @@ export function zoneSummary(rule, zone) {
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
 
 const list = (items, color = 'var(--color-paper)') =>
-  `<ul style="margin:2px 0 0 14px;padding:0;font-size:11px;color:${color}">${items.map((i) => `<li style="margin:1px 0">${esc(i)}</li>`).join('')}</ul>`
+  `<ul style="margin:2px 0 0 14px;padding:0;font-size:calc(11px*var(--fs));color:${color}">${items.map((i) => `<li style="margin:1px 0">${esc(i)}</li>`).join('')}</ul>`
 
 /**
  * HTML della scheda: regole della zona (o di tutte le zone se si tocca il
@@ -79,18 +79,18 @@ export function ampPopupHTML(area, { rule, zone }) {
     const zr = rule.zones[z]
     if (!zr) continue
     sections.push(
-      `<div style="margin-top:5px;font-size:11px;font-weight:600;color:${z === 'A' || z === 'MA' ? '#C026D3' : 'var(--color-warn)'}">Zona ${z}${zr.label ? ` · ${esc(zr.label)}` : ''}</div>${list(zr.rules)}`
+      `<div style="margin-top:5px;font-size:calc(11px*var(--fs));font-weight:600;color:${z === 'A' || z === 'MA' ? '#C026D3' : 'var(--color-warn)'}">Zona ${z}${zr.label ? ` · ${esc(zr.label)}` : ''}</div>${list(zr.rules)}`
     )
   }
   if (rule.general?.length) {
-    sections.push(`<div style="margin-top:5px;font-size:11px;font-weight:600;color:var(--color-fog)">In tutta l'area</div>${list(rule.general, 'var(--color-fog)')}`)
+    sections.push(`<div style="margin-top:5px;font-size:calc(11px*var(--fs));font-weight:600;color:var(--color-fog)">In tutta l'area</div>${list(rule.general, 'var(--color-fog)')}`)
   }
   const source = rule.source
     ? `<a href="${esc(rule.source)}" target="_blank" rel="noopener" style="color:var(--color-phos)">${esc(rule.edition)}</a>`
     : esc(rule.edition || '')
   return `<div style="min-width:220px;max-width:300px;max-height:340px;overflow-y:auto">
-    <div style="font-weight:600;color:var(--color-paper);font-size:13px">${esc(title)}</div>
+    <div style="font-weight:600;color:var(--color-paper);font-size:calc(13px*var(--fs))">${esc(title)}</div>
     ${sections.join('')}
-    <div style="margin-top:6px;font-size:10px;color:var(--color-fog-dim)">Fonte: ${source}. Sintesi: fanno fede il testo, le ordinanze e i disciplinari dell'ente gestore${rule.manager ? ` (${esc(rule.manager)})` : ''}.</div>
+    <div style="margin-top:6px;font-size:calc(10px*var(--fs));color:var(--color-fog-dim)">Fonte: ${source}. Sintesi: fanno fede il testo, le ordinanze e i disciplinari dell'ente gestore${rule.manager ? ` (${esc(rule.manager)})` : ''}.</div>
   </div>`
 }

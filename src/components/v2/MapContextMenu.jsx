@@ -197,7 +197,7 @@ export default function MapContextMenu({
     const dist = haversine(boatPosition.lat, boatPosition.lon, menu.lat, menu.lon)
     const brg = bearing(boatPosition.lat, boatPosition.lon, menu.lat, menu.lon)
     infoRow = (
-      <div className="text-[10px] text-fog font-mono">
+      <div className="text-[calc(10px*var(--fs))] text-fog font-mono">
         {metersToNm(dist).toFixed(2)} nm · {formatDeg(brg)}° {cardinal(brg)}
       </div>
     )
@@ -222,10 +222,10 @@ export default function MapContextMenu({
         style={{ left: x, top: y }}
       >
         <div className="px-3 py-2 border-b border-line">
-          <div className="text-[10px] text-fog">Posizione</div>
+          <div className="text-[calc(10px*var(--fs))] text-fog">Posizione</div>
           <div className="font-mono text-xs text-paper">{menu.lat.toFixed(4)}, {menu.lon.toFixed(4)}</div>
           {infoRow}
-          <div className="mt-1 text-[10px] text-fog">
+          <div className="mt-1 text-[calc(10px*var(--fs))] text-fog">
             Profondità{' '}
             {depth === undefined ? (
               '…'
@@ -244,21 +244,21 @@ export default function MapContextMenu({
               href={o.url || undefined}
               target="_blank"
               rel="noopener noreferrer"
-              className={`mt-1 block text-[10px] leading-tight ${isMilitary(o) ? 'text-danger' : 'text-warn'}`}
+              className={`mt-1 block text-[calc(10px*var(--fs))] leading-tight ${isMilitary(o) ? 'text-danger' : 'text-warn'}`}
             >
               Ord. {o.n} · {o.title.length > 70 ? `${o.title.slice(0, 70)}…` : o.title}
-              <span className="block text-[9px] text-fog-dim">
+              <span className="block text-[calc(9px*var(--fs))] text-fog-dim">
                 {o.office} · {Math.round(o.distanceM)} m
               </span>
             </a>
           ))}
           {band === undefined ? (
-            <div className="mt-1 text-[10px] text-fog">Fascia dalla costa…</div>
+            <div className="mt-1 text-[calc(10px*var(--fs))] text-fog">Fascia dalla costa…</div>
           ) : (
             band && (
-              <div className={`mt-1 text-[10px] ${bandText(band).warn ? 'text-danger' : 'text-fog'}`}>
+              <div className={`mt-1 text-[calc(10px*var(--fs))] ${bandText(band).warn ? 'text-danger' : 'text-fog'}`}>
                 {bandText(band).text}
-                <div className="text-[9px] text-fog-dim">{bandText(band).detail}</div>
+                <div className="text-[calc(9px*var(--fs))] text-fog-dim">{bandText(band).detail}</div>
               </div>
             )
           )}
@@ -279,14 +279,14 @@ export default function MapContextMenu({
             )
           })
         ) : (
-          <div className="px-3 py-3 text-[10px] text-fog-dim text-center">
+          <div className="px-3 py-3 text-[calc(10px*var(--fs))] text-fog-dim text-center">
             Nessuna azione disponibile
           </div>
         )}
         <button
           type="button"
           onClick={close}
-          className="flex w-full items-center justify-center gap-1 rounded-md px-3 py-2 text-[10px] text-fog hover:text-paper touch"
+          className="flex w-full items-center justify-center gap-1 rounded-md px-3 py-2 text-[calc(10px*var(--fs))] text-fog hover:text-paper touch"
         >
           <X size={12} />
           Chiudi
