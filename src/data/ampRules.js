@@ -1,5 +1,6 @@
 /*
- * Regole per zona delle aree marine protette italiane, per chi va in barca:
+ * Regole per zona delle aree marine protette italiane (e regole delle aree
+ * francesi e corse), per chi va in barca:
  * navigazione, velocità, ancoraggio, ormeggio, balneazione. Sintesi dei
  * regolamenti ufficiali pubblicati dal Ministero dell'Ambiente (MASE,
  * mase.gov.it → Aree marine istituite), letti articolo per articolo.
@@ -541,6 +542,399 @@ export const AMP_RULES = [
       D: { short: 'accesso libero; ancoraggio su sabbia', rules: ['Accesso consentito alle unità da diporto', 'Ancoraggio su fondali sabbiosi, fuori dalle aree sensibili'] },
     },
   },
+
+  // ---------------------------------------------------------------- Sicilia (2)
+  {
+    id: 'plemmirio',
+    match: /plemmirio/i,
+    name: 'AMP Plemmirio',
+    manager: 'Consorzio Plemmirio (Comune di Siracusa)',
+    source: `${MASE}/plemmirio_dm_15-09-2004-pdf`,
+    edition: 'Decreto istitutivo 15/9/2004 (GU 32/2005)',
+    general: ['Vietati moto d’acqua e sci nautico', 'Vietate le attività non elencate per ciascuna zona'],
+    zones: {
+      A: { short: 'vietati navigazione, ancoraggio, ormeggio e balneazione', rules: ['Consentiti solo soccorso, sorveglianza, ricerca e visite guidate subacquee autorizzate: vietati navigazione, ancoraggio, ormeggio e balneazione'] },
+      B: {
+        short: 'motore max 5 nodi; ancoraggio vietato; ormeggio ai campi boe',
+        rules: ['Vela e remi consentiti', 'Motore: natanti e imbarcazioni max 5 nodi', 'Ancoraggio non consentito', 'Ormeggio solo nei campi boe autorizzati', 'Balneazione consentita'],
+      },
+      C: {
+        short: 'motore max 10 nodi; ancoraggio nelle zone individuate',
+        rules: ['Motore: natanti e imbarcazioni max 10 nodi', 'Ancoraggio nelle zone individuate dall’ente gestore', 'Ormeggio nei campi boe', 'Balneazione consentita'],
+      },
+    },
+  },
+  {
+    id: 'ciclopi',
+    match: /ciclopi|lachea/i,
+    name: 'AMP Isole Ciclopi',
+    manager: 'Consorzio AMP Isole Ciclopi',
+    source: `${MASE}/ciclopi_dm_9-11-2004-pdf`,
+    edition: 'Decreto 9/11/2004 (GU 16/2005)',
+    general: ['Vietati moto d’acqua e sci nautico', 'Vietate le attività non elencate per ciascuna zona'],
+    zones: {
+      A: {
+        short: 'vietata la navigazione (solo remi per le aree di balneazione)',
+        rules: ['Navigazione vietata, salvo natanti a remi per raggiungere le aree di balneazione', 'Balneazione solo nelle aree segnalate (Lachea lato ovest, Punta Cornera, entro 30 m dalla scogliera)', 'Vietati ancoraggio e ormeggio'],
+      },
+      B: {
+        short: 'motore max 5 nodi; ancoraggio vietato; ormeggio ai campi boe',
+        rules: ['Vela e remi consentiti', 'Motore: natanti e imbarcazioni max 5 nodi', 'Ancoraggio non consentito', 'Ormeggio nei campi boe autorizzati', 'Balneazione consentita'],
+      },
+      C: {
+        short: 'motore max 10 nodi; ancoraggio nelle zone individuate',
+        rules: ['Motore: natanti e imbarcazioni max 10 nodi', 'Ancoraggio nelle zone individuate dall’ente gestore', 'Balneazione consentita'],
+      },
+    },
+  },
+  {
+    id: 'ustica',
+    match: /area marina protetta isola di ustica|riserva marina isola di ustica|\bamp\b.*ustica/i,
+    name: 'AMP Isola di Ustica',
+    manager: 'Comune di Ustica',
+    source: `${MASE}/ustica_dm_12-11-1986-pdf`,
+    edition: 'Decreto istitutivo 12/11/1986',
+    general: ['Le regole di ormeggio e ancoraggio sono fissate dai disciplinari annuali dell’ente gestore'],
+    zones: {
+      A: {
+        short: 'vietati navigazione, accesso, sosta e balneazione',
+        rules: ['Vietati navigazione, accesso e sosta di qualsiasi unità', 'Vietata la balneazione (ammessa controllata a Cala Sidoti e alla Caletta)', 'Ammesso solo il transito delle imbarcazioni di servizio autorizzate'],
+      },
+      B: { short: 'navigazione non limitata dal decreto; pesca subacquea vietata', rules: ['Il decreto vieta la pesca subacquea e la pesca non autorizzata; navigazione e ancoraggio secondo i disciplinari dell’ente gestore'] },
+      C: { short: 'navigazione non limitata dal decreto', rules: ['Vietata la pesca professionale non autorizzata; pesca sportiva consentita'] },
+    },
+  },
+  {
+    id: 'capo-milazzo',
+    match: /milazzo/i,
+    name: 'AMP Capo Milazzo',
+    manager: 'Comune di Milazzo',
+    source: 'https://www.comune.milazzo.me.it/media/zmsmgavn/amp-disciplinare-provvisorio-attivit%C3%A0-consentite-area-marina-protetta-capo-milazzo-proroga.pdf',
+    edition: 'Disciplinare provvisorio (DM 17/5/2018, regolamento DM 153/2018)',
+    general: ['Vietati moto d’acqua e sci nautico', 'Avvicinamento alle zone di ancoraggio max 3 nodi, rotta perpendicolare'],
+    zones: {
+      A: { short: 'vietati navigazione e ancoraggio', rules: ['Navigazione vietata a qualsiasi unità', 'Ancoraggio vietato'] },
+      B: {
+        short: 'motore max 5 nodi entro 300 m; ancoraggio solo nell’area indicata (Bs: vietato)',
+        rules: [
+          'Vela e remi consentiti',
+          'Motore: natanti e imbarcazioni in dislocamento, max 5 nodi entro 300 m dalla costa',
+          'Ancoraggio solo per natanti e imbarcazioni su fondali inerti nell’area indicata a Capo Milazzo; nella sottozona Bs vietato',
+        ],
+      },
+      C: {
+        short: 'come zona B, anche navi da diporto; ancoraggio solo a Covo degli Dei',
+        rules: ['Navigazione come zona B, ammesse anche le navi da diporto conformi MARPOL', 'Ancoraggio solo su sabbia o ciottoli nell’area di Covo degli Dei'],
+      },
+    },
+  },
+
+  // ---------------------------------------------------------------- Sardegna (2)
+  {
+    id: 'capo-testa',
+    match: /capo testa|punta falcone/i,
+    name: 'AMP Capo Testa – Punta Falcone',
+    manager: 'Comune di Santa Teresa Gallura',
+    source: `${MASE}/c_testa_dm_17-5-2018-pdf`,
+    edition: 'Regolamento di disciplina DM 102 del 17/5/2018',
+    general: ['Vietati moto d’acqua e sci nautico'],
+    zones: {
+      A: { short: 'vietati navigazione, ancoraggio, ormeggio e balneazione', rules: ['Consentiti solo soccorso, sorveglianza e ricerca'] },
+      B: {
+        short: 'max 5 nodi entro 300 m, 10 fino a 600 m; ancoraggio fuori dalle aree sensibili',
+        rules: [
+          'Vela, remi, elettrico; natanti e imbarcazioni eco-compatibili',
+          'Velocità max 5 nodi entro 300 m dalla costa, 10 nodi tra 300 e 600 m, in dislocamento',
+          'Ancoraggio per natanti e imbarcazioni fuori dalle aree sensibili segnalate',
+          'Ormeggio ai campi boe',
+          'Balneazione consentita',
+        ],
+      },
+      C: {
+        short: 'come zona B, anche navi da diporto eco-compatibili',
+        rules: ['Regole della zona B, ammesse anche le navi da diporto eco-compatibili', 'Ormeggio ai campi boe'],
+      },
+    },
+  },
+
+  // ---------------------------------------------------------------- Calabria e Puglia
+  {
+    id: 'capo-rizzuto',
+    match: /capo rizzuto/i,
+    name: 'AMP Capo Rizzuto',
+    manager: 'Provincia di Crotone',
+    source: `${MASE}/capo_rizzuto_dm_26-5-2009-pdf`,
+    edition: 'Regolamento DM 26/5/2009',
+    general: ['Vietati moto d’acqua e sci nautico', 'Vietata la navigazione alle navi da diporto'],
+    zones: {
+      A: { short: 'vietati navigazione e ancoraggio', rules: ['Navigazione vietata', 'Ancoraggio vietato'] },
+      B: {
+        short: 'motore solo eco-compatibili, max 5 nodi; ancoraggio su fondali inerti',
+        rules: ['Vela, remi, elettrico liberi', 'Motore: natanti e imbarcazioni eco-compatibili max 5 nodi (gli altri solo per raggiungere gli ormeggi)', 'Ancoraggio su fondali inerti, fuori da posidonia e campi boe, per unità eco-compatibili'],
+      },
+      C: {
+        short: 'max 5 nodi entro 300 m, 10 oltre; ancoraggio su sabbia di giorno',
+        rules: ['Motore: max 5 nodi entro 300 m dalla costa, 10 nodi oltre, in dislocamento', 'Ancoraggio su sabbia, fuori dalle aree sensibili, solo nella fascia diurna (dalle 8)'],
+      },
+    },
+  },
+  {
+    id: 'tremiti',
+    match: /tremiti/i,
+    name: 'AMP Isole Tremiti',
+    manager: 'Parco Nazionale del Gargano',
+    source: `${MASE}/tremiti_dm_14-07-1989-pdf`,
+    edition: 'Decreto istitutivo 14/7/1989',
+    general: [],
+    zones: {
+      A: { short: 'vietati navigazione, accesso, sosta e balneazione (Pianosa)', rules: ['Isola di Pianosa: vietati navigazione, accesso, sosta e balneazione'] },
+      B: { short: 'navigazione solo autorizzata', rules: ['Vietata la navigazione non autorizzata dall’ente gestore', 'Vietata la pesca non autorizzata'] },
+      C: { short: 'navigazione libera; pesca professionale solo autorizzata', rules: ['Il decreto limita solo la pesca'] },
+    },
+  },
+
+  // ---------------------------------------------------------------- Campania (2)
+  {
+    id: 'infreschi',
+    match: /infreschi|masseta/i,
+    name: 'AMP Costa degli Infreschi e della Masseta',
+    manager: 'Parco Nazionale del Cilento',
+    source: `${MASE}/infreschi_dm_9-4-2015-pdf`,
+    edition: 'Regolamento DM 9/4/2015 (GU 98/2015)',
+    general: ['Vietati moto d’acqua e sci nautico', 'Vietato l’accesso alle grotte', 'Avvicinamento ai gavitelli max 3 nodi'],
+    zones: {
+      A: { short: 'vietati navigazione, ancoraggio e ormeggio', rules: ['Navigazione vietata', 'Ancoraggio e ormeggio vietati (gavitelli solo per i diving alla Grotta dell’Alabastro)'] },
+      B: {
+        short: 'max 5 nodi entro 300 m, 10 fino a 600 m; sottozona B solo vela/remi',
+        rules: [
+          'Sottozona B: solo vela, remi, pedali, elettrico; vietati ancoraggio e ormeggio',
+          'Zona B: motore per natanti e imbarcazioni eco-compatibili, max 5 nodi entro 300 m e 10 nodi tra 300 e 600 m',
+          'Ancoraggio fuori da posidonia, coralligeno e campi boe',
+          'Ormeggio con autorizzazione ai siti attrezzati',
+        ],
+      },
+      C: {
+        short: 'max 5 nodi entro 300 m, 10 fino a 600 m',
+        rules: ['Motore: natanti, imbarcazioni e navi da diporto MARPOL, max 5 nodi entro 300 m e 10 nodi tra 300 e 600 m', 'Ancoraggio fuori da posidonia, coralligeno e campi boe', 'Ormeggio ai siti attrezzati'],
+      },
+    },
+  },
+  {
+    id: 'gaiola',
+    match: /gaiola/i,
+    name: 'Parco sommerso di Gaiola',
+    manager: 'Ente gestore Parco sommerso di Gaiola',
+    source: 'https://www.mase.gov.it/portale/web/guest/parco-sommerso-di-gaiola',
+    edition: 'Decreto istitutivo 7/8/2002',
+    general: [],
+    zones: {
+      A: { short: 'vietati navigazione, ancoraggio, ormeggio e balneazione', rules: ['Vietati navigazione, accesso e sosta', 'Vietati ancoraggio e ormeggio', 'Vietata la balneazione'] },
+      B: {
+        short: 'motore solo autorizzato, max 5 nodi; ancoraggio nelle zone individuate',
+        rules: ['Vela e remi consentiti', 'Motore: natanti e imbarcazioni autorizzati, max 5 nodi', 'Ancoraggio nelle zone individuate dall’ente gestore', 'Ormeggio ai gavitelli predisposti'],
+      },
+    },
+  },
+  {
+    id: 'baia',
+    match: /parco sommerso di baia|\bbaia sommersa/i,
+    name: 'Parco sommerso di Baia',
+    manager: 'Parco archeologico dei Campi Flegrei',
+    source: 'https://www.mase.gov.it/portale/web/guest/parco-sommerso-di-baia',
+    edition: 'Decreto istitutivo 7/8/2002',
+    general: [],
+    zones: {
+      A: { short: 'vietati navigazione, ancoraggio, ormeggio e balneazione', rules: ['Vietati navigazione, accesso e sosta', 'Vietati ancoraggio e ormeggio', 'Vietata la balneazione'] },
+      B: { short: 'motore solo autorizzato, max 5 nodi; ancoraggio vietato', rules: ['Remi consentiti', 'Motore: natanti e imbarcazioni autorizzati, max 5 nodi', 'Ancoraggio e ormeggio vietati'] },
+      C: { short: 'ancoraggio e ormeggio nelle zone individuate', rules: ['Vietata la navigazione libera', 'Ancoraggio e ormeggio solo nelle zone individuate dall’ente gestore'] },
+    },
+  },
+
+  {
+    id: 'castellabate',
+    match: /castellabate/i,
+    name: 'AMP Santa Maria di Castellabate',
+    manager: 'Parco Nazionale del Cilento',
+    source: `${MASE}/dm_09_04_2015_amp_castellabate-pdf`,
+    edition: 'Regolamento DM 9/4/2015 (GU 99/2015)',
+    general: ['Vietati moto d’acqua e sci nautico', 'Ancoraggio vietato alle navi da diporto', 'Avvicinamento ai gavitelli max 3 nodi, rotta perpendicolare'],
+    zones: {
+      A: { short: 'vietati navigazione, ancoraggio, ormeggio e balneazione', rules: ['Navigazione vietata', 'Ancoraggio e ormeggio vietati (anche nelle sottozone B e Bs)', 'Balneazione vietata (anche nella sottozona Bs)'] },
+      B: {
+        short: 'max 5 nodi entro 300 m, 10 fino a 600 m (eco-compatibili); ancoraggio fuori da posidonia',
+        rules: [
+          'Vela, remi, pedali, elettrico consentiti',
+          'Motore: natanti e imbarcazioni eco-compatibili, max 5 nodi entro 300 m e 10 nodi tra 300 e 600 m, in dislocamento',
+          'Ancoraggio per natanti e imbarcazioni fuori da posidonia, coralligeno e campi boe (sottozone B e Bs: vietato)',
+          'Ormeggio con autorizzazione ai siti attrezzati',
+        ],
+      },
+      C: {
+        short: 'max 5 nodi entro 300 m, 10 oltre; ancoraggio fuori da posidonia',
+        rules: [
+          'Motore: natanti, imbarcazioni e navi da diporto MARPOL, max 5 nodi entro 300 m, 10 nodi oltre',
+          'Corridoio di attraversamento delle zone B e C: max 10 nodi',
+          'Ancoraggio per natanti e imbarcazioni fuori da posidonia, coralligeno e campi boe',
+          'Ormeggio ai siti attrezzati',
+        ],
+      },
+    },
+  },
+  {
+    id: 'porto-cesareo',
+    match: /porto cesareo/i,
+    name: 'AMP Porto Cesareo',
+    manager: 'Consorzio AMP Porto Cesareo',
+    source: 'https://www.mase.gov.it/portale/web/guest/area-marina-protetta-porto-cesareo',
+    edition: 'Decreto istitutivo 12/12/1997',
+    general: [],
+    zones: {
+      A: { short: 'vietati navigazione, accesso e sosta', rules: ['Vietati navigazione, accesso e sosta di qualsiasi unità (Torre S. Isidoro–Casa Giorgella e Penisola della Strega)'] },
+      B: { short: 'navigazione max 10 nodi', rules: ['Accesso e navigazione max 10 nodi', 'Balneazione consentita'] },
+      C: { short: 'max 10 nodi per raggiungere gli ormeggi', rules: ['Accesso e transito max 10 nodi per raggiungere le zone di ormeggio regolamentato'] },
+    },
+  },
+  {
+    id: 'torre-guaceto',
+    match: /guaceto/i,
+    name: 'AMP Torre Guaceto',
+    manager: 'Consorzio di gestione di Torre Guaceto',
+    source: 'https://www.mase.gov.it/portale/web/guest/area-marina-protetta-torre-guaceto',
+    edition: 'Decreto istitutivo 4/12/1991',
+    general: ['Navigazione a motore vietata in tutta la riserva (salvo servizio, vigilanza e pescatori autorizzati)'],
+    zones: {
+      A: { short: 'vietati navigazione, accesso, sosta e approdo', rules: ['Vietati navigazione, accesso, sosta e approdo di qualsiasi unità'] },
+      B: { short: 'motore vietato', rules: ['Navigazione a motore vietata (solo pescatori professionisti autorizzati)'] },
+      C: { short: 'motore vietato', rules: ['Navigazione a motore vietata'] },
+    },
+  },
+
+  // ---------------------------------------------------------------- Friuli
+  {
+    id: 'miramare',
+    match: /miramare/i,
+    name: 'AMP Miramare',
+    manager: 'WWF Area Marina Protetta Miramare',
+    source: `${MASE}/miramare_dm_26-05-2009-pdf`,
+    edition: 'Regolamento DM 26/5/2009',
+    general: ['Vietati transito e navigazione da diporto in tutta l’area (solo unità autorizzate)', 'Ancoraggio vietato'],
+    zones: {},
+  },
+
+  // ---------------------------------------------------------------- Francia e Corsica
+  // Niente zone A/B/C: regole dell'area intera da parchi e Préfecture maritime
+  {
+    id: 'port-cros-ama',
+    match: /port-cros.*(aire maritime|adjacente)/i,
+    name: 'Parc national de Port-Cros · area marina adiacente',
+    manager: 'Parc national de Port-Cros',
+    source: 'https://portcros-parcnational.fr/sites/portcros-parcnational.fr/files/2026-05/2026_FR_PORQUEROLLES_%20REGLEMENTATION%20MARINE_KM_web.pdf',
+    edition: 'Réglementation marine Porquerolles 2026',
+    general: [
+      'Nessun divieto di navigazione specifico (fuori dai cuori marini dei 600 m)',
+      'Rada di Hyères: ancoraggio vietato alle navi di 24 m e oltre',
+      'Bande des 300 m: max 5 nodi',
+    ],
+    zones: {},
+  },
+  {
+    id: 'port-cros',
+    match: /port-cros|porquerolles/i,
+    name: 'Parc national de Port-Cros · cuore marino',
+    manager: 'Parc national de Port-Cros',
+    source: 'https://portcros-parcnational.fr/sites/portcros-parcnational.fr/files/2025-05/2025_DEPLIANT%20PORT-CROS_REGLEMENTATION%20MARINE_FRANCAIS.pdf',
+    edition: 'Réglementation marine Port-Cros 2025 e Porquerolles 2026 (AP 116 e 117/2023)',
+    general: [
+      'Max 12 nodi tra 300 e 600 m dalla costa, 5 nodi entro 300 m e nella ZMEL, 3 nodi in porto',
+      'Vietati moto d’acqua, scooter e mezzi trainati nel cuore marino (600 m)',
+      'Ancoraggio vietato alle navi di 24 m e oltre; a Port-Cros ancoraggio solo per unità con cassa delle acque nere',
+      'Zone segnate sulla carta del parco: ancoraggio vietato, vietato oltre 12 m, o solo ai dispositivi per le immersioni',
+      'ZMEL di Bagaud (15 aprile–15 ottobre): vietato ancorare, solo boe, una persona sempre a bordo',
+      'Vietato ormeggiarsi alle boe di balisage; niente sbarchi sugli isolotti tranne al molo',
+      'Porquerolles: vietato ancorare entro 100 m dai siti di immersione; ormeggio vietato oltre 15 m',
+      'Vietato qualsiasi scarico in mare',
+    ],
+    zones: {},
+  },
+  {
+    id: 'calanques',
+    match: /calanques/i,
+    name: 'Parc national des Calanques · cuore marino',
+    manager: 'Parc national des Calanques',
+    source: 'https://www.calanques-parcnational.fr/fr/plaisance-naviguer-dans-les-calanques-de-marseille-cassis-la-ciotat',
+    edition: 'Regole di navigazione del Parco e AP 099/2021',
+    general: [
+      'Max 5 nodi nella fascia dei 300 m',
+      'Ancoraggio vietato nelle zone segnate sulla carta del parco (boe gialle); vietato sempre a En-Vau e Port-Pin',
+      'Navi di 24 m e oltre: ancoraggio solo al largo, oltre la posidonia (AP 099/2021)',
+      'Zone di non prelievo (ZNP): vietata ogni pesca',
+      'Ancoraggio preferibilmente su sabbia, mai su posidonia',
+    ],
+    zones: {},
+  },
+  {
+    id: 'cote-bleue',
+    match: /carry-le-rouet|cap couronne|c[ôo]te bleue/i,
+    name: 'Parc marin de la Côte Bleue · riserva',
+    manager: 'Parc marin de la Côte Bleue',
+    source: 'https://provence-alpes-cotedazur.com/decouvrir/espaces-naturels/patrimoine-naturel/parc-marin-de-la-cote-bleue-carry-le-rouet-fr-3261601/',
+    edition: 'Riserve di Carry-le-Rouet e Cap Couronne',
+    general: ['Vietati ancoraggio, pesca e immersioni con autorespiratore', 'Fuori dalle riserve ancoraggio regolato da AP 159/2016 e 123/2019'],
+    zones: {},
+  },
+  {
+    id: 'scandola',
+    match: /scandola/i,
+    name: 'Réserve naturelle de Scandola',
+    manager: 'Parc naturel régional de Corse',
+    source: 'https://www.pnr.corsica/fr/patrimoine-naturel-culturel/gestion-des-sites/scandola',
+    edition: 'Arrêté préfectoral 17/2000 (mouillage)',
+    general: [
+      'Ancoraggio consentito solo dall’alba al tramonto; vietato di notte in tutta la riserva',
+      'Riserva integrale (isola di Gargalu–Punta Palazzu): ancoraggio vietato giorno e notte',
+      'Possibili divieti stagionali di navigazione e ancoraggio in zone segnalate (es. 1° maggio–31 luglio, arrêtés della Préfecture maritime)',
+      'Pesca vietata; vietato lo sbarco nella riserva integrale',
+    ],
+    zones: {},
+  },
+  {
+    id: 'bonifacio',
+    match: /bouches de bonifacio|lavezzi/i,
+    name: 'Réserve naturelle des Bouches de Bonifacio',
+    manager: 'Office de l’Environnement de la Corse',
+    source: 'https://www.premar-mediterranee.gouv.fr/communiques-presse/le-prefet-maritime-de-la-mediterranee-reglemente-la-frequentation-autour-des-iles-lavezzi-en-corse-du-sud-afin-de-preserver-plusieurs-especes-d-oiseaux-protegees',
+    edition: 'AP 235/2023 (Lavezzi), AP 206/2020 (navi ≥ 24 m)',
+    general: [
+      'Lavezzi: vietati navigazione, ancoraggio e sosta in 4 zone (nord di Lavezzi, isolotti di Ratino, Porraggia e Perduto) per gli uccelli marini',
+      'Navi di 24 m e oltre: ancoraggio e sosta regolati (AP 206/2020)',
+      'Bande des 300 m: max 5 nodi',
+    ],
+    zones: {},
+  },
+  {
+    id: 'cerbicale',
+    match: /cerbicale/i,
+    name: 'Réserve naturelle des îles Cerbicale',
+    manager: 'Office de l’Environnement de la Corse',
+    source: 'https://aida.ineris.fr/reglementation/decret-ndeg81-205-030381-portant-creation-reserve-naturelle-iles-cerbicale-corse-sud',
+    edition: 'Decreto 81-205 del 3/3/1981',
+    general: ['Il decreto tutela soprattutto flora e fauna degli isolotti: rispetta i divieti di sbarco segnalati', 'Bande des 300 m: max 5 nodi; ancoraggio mai su posidonia'],
+    zones: {},
+  },
+  {
+    id: 'cap-corse',
+    match: /cap corse|agriate/i,
+    name: 'Parc naturel marin du Cap Corse et de l’Agriate',
+    manager: 'Office français de la biodiversité',
+    source: 'https://ofb.gouv.fr/le-parc-naturel-marin-du-cap-corse-et-de-agriate',
+    edition: 'AP 95/2021 modificato da AP 131/2022 (navi ≥ 24 m)',
+    general: [
+      'Ancoraggio vietato sulla posidonia',
+      'Navi di 24 m e oltre: ancoraggio e sosta regolati (AP 95/2021 e 131/2022)',
+      'Bande des 300 m: max 5 nodi',
+    ],
+    zones: {},
+  },
 ]
 
 /*
@@ -548,19 +942,5 @@ export const AMP_RULES = [
  * la scheda rimanda alla pagina del Ministero con decreti e regolamento.
  */
 export const AMP_PAGES = [
-  [/ustica/i, 'area-marina-protetta-isola-di-ustica'],
-  [/plemmirio/i, 'area-marina-protetta-plemmirio'],
-  [/ciclopi|lachea/i, 'area-marina-protetta-isole-ciclopi'],
-  [/milazzo/i, 'area-marina-protetta-capo-milazzo'],
-  [/capo testa|punta falcone/i, 'area-marina-protetta-capo-testa-punta-falcone'],
-  [/tremiti/i, 'area-marina-protetta-isole-tremiti'],
-  [/porto cesareo/i, 'area-marina-protetta-porto-cesareo'],
-  [/guaceto/i, 'area-marina-protetta-torre-guaceto'],
-  [/castellabate/i, 'area-marina-protetta-santa-maria-di-castellabate'],
-  [/infreschi|masseta/i, 'area-marina-protetta-costa-degli-infreschi-e-della-masseta'],
-  [/capo rizzuto/i, 'area-marina-protetta-capo-rizzuto'],
-  [/gaiola/i, 'parco-sommerso-di-gaiola'],
-  [/\bbaia\b/i, 'parco-sommerso-di-baia'],
-  [/miramare/i, 'area-marina-protetta-miramare'],
   [/spartivento/i, 'area-marina-protetta-capo-spartivento'],
 ].map(([match, page]) => ({ match, url: `https://www.mase.gov.it/portale/web/guest/${page}` }))
