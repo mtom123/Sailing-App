@@ -385,6 +385,7 @@ export default function App() {
             weather={weather}
             windField={windField}
             currentField={currentField}
+            rainTileUrl={rainTileUrl}
             vessels={vessels}
             depthLive={depthLive}
             anchorages={anchorages}

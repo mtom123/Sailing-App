@@ -217,6 +217,7 @@ export default function MapView({
   weather,
   windField,
   currentField,
+  rainTileUrl = null, // radar pioggia RainViewer (ultimo fotogramma)
   vessels,
   anchorages,
   route,
@@ -583,6 +584,23 @@ export default function MapView({
       map.getContainer().style.background = ''
     }
   }, [baseStyle, mapReady])
+
+  // === Radar pioggia (RainViewer) ===
+  // Il servizio gratuito dà immagini solo fino allo zoom 7: più vicino si
+  // ingrandiscono quelle (sfocate ma visibili) invece del riquadro d'errore
+  useEffect(() => {
+    const map = mapRef.current
+    if (!mapReady || !map || !rainTileUrl) return undefined
+    if (!map.getPane('rainPane')) map.createPane('rainPane').style.zIndex = 380 // sopra carte e isobate, sotto le rotte
+    const layer = L.tileLayer(rainTileUrl, {
+      pane: 'rainPane',
+      maxNativeZoom: 7,
+      maxZoom: 20,
+      opacity: 0.6,
+      attribution: '© RainViewer',
+    }).addTo(map)
+    return () => map.removeLayer(layer)
+  }, [rainTileUrl, mapReady])
 
   // === Zone già scaricate per l'offline, velate di verde ===
   useEffect(() => {
