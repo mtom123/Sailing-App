@@ -159,6 +159,20 @@ function makeBaseLayer(style) {
 // ============================================================
 // MapView main — Leaflet based
 // ============================================================
+// Scala in miglia nautiche sopra quella in metri: 1 nm = 1852 m
+const NauticalScale = L.Control.Scale.extend({
+  _addScales(options, className, container) {
+    this._nmScale = L.DomUtil.create('div', className, container)
+    L.Control.Scale.prototype._addScales.call(this, options, className, container)
+  },
+  _updateScales(maxMeters) {
+    L.Control.Scale.prototype._updateScales.call(this, maxMeters)
+    const maxNm = maxMeters / 1852
+    const nm = maxNm >= 1 ? this._getRoundNum(maxNm) : [0.5, 0.2, 0.1, 0.05, 0.02].find((n) => n <= maxNm) || 0.01
+    this._updateScale(this._nmScale, `${String(nm).replace('.', ',')} nm`, nm / maxNm)
+  },
+})
+
 export default function MapView({
   geo,
   weather,
@@ -275,7 +289,7 @@ export default function MapView({
       })
 
       L.control.zoom({ position: 'bottomright' }).addTo(map)
-      L.control.scale({ metric: true, imperial: false, position: 'bottomleft', maxWidth: 200 }).addTo(map)
+      new NauticalScale({ metric: true, imperial: false, position: 'bottomleft', maxWidth: 200 }).addTo(map)
 
       // Tile layers — zIndex fisso: l'ordine resta giusto anche
       // quando un livello viene spento e riacceso
@@ -505,7 +519,7 @@ export default function MapView({
     el.classList.toggle('cursor-crosshair', !!route.editing)
   }, [route.editing, mapReady])
 
-  // === All'apertura: barca al centro, 2 nm attorno (sul lato corto dello schermo) ===
+  // === All'apertura: barca al centro, mezzo miglio attorno (sul lato corto dello schermo) ===
   const openedOnBoat = useRef(false)
   useEffect(() => {
     if (openedOnBoat.current || !mapReady || geo.lat == null) return
@@ -514,7 +528,7 @@ export default function MapView({
     openedOnBoat.current = true
     // Zoom intero più vicino (getBoundsZoom arrotonda per difetto: fino al doppio)
     const size = map.getSize()
-    const metersPerPx = (2 * 2 * 1852) / Math.min(size.x, size.y)
+    const metersPerPx = (2 * 0.5 * 1852) / Math.min(size.x, size.y)
     const zoom = Math.round(Math.log2((156543.03 * Math.cos((geo.lat * Math.PI) / 180)) / metersPerPx))
     map.setView([geo.lat, geo.lon], Math.min(zoom, map.getMaxZoom()), { animate: false })
     setFollow(true)
