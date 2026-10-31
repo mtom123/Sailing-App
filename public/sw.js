@@ -12,7 +12,7 @@
  * - Meteo Open-Meteo: prima la rete, l'ultima previsione resta per l'offline.
  */
 
-const VERSION = 'v4'
+const VERSION = 'v5'
 const SHELL_CACHE = `timone-shell-${VERSION}`
 const TILE_CACHE = 'timone-tiles'
 const GEO_CACHE = 'timone-geo'
@@ -58,10 +58,22 @@ self.addEventListener('activate', (event) => {
   )
 })
 
+// Rete con tempo massimo. La richiesta passa a fetch così com'è: su iPad
+// (WebKit) ricostruirla con altre opzioni fa fallire le pagine ("navigate")
 function fetchWithTimeout(request, ms) {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), ms)
-  return fetch(request, { signal: controller.signal }).finally(() => clearTimeout(timer))
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), ms)
+    fetch(request).then(
+      (r) => {
+        clearTimeout(timer)
+        resolve(r)
+      },
+      (err) => {
+        clearTimeout(timer)
+        reject(err)
+      }
+    )
+  })
 }
 
 const trimming = {}
@@ -82,7 +94,11 @@ const usable = (r) => r && (r.ok || r.type === 'opaque')
 async function networkFirst(request, cacheName, { timeout, max, fallbackShell = false }) {
   const cache = await caches.open(cacheName)
   try {
-    const response = await fetchWithTimeout(request, timeout)
+    let response = await fetchWithTimeout(request, timeout)
+    // Safari rifiuta le pagine arrivate dopo un reindirizzamento: copia pulita
+    if (response.redirected) {
+      response = new Response(await response.blob(), { status: response.status, statusText: response.statusText, headers: response.headers })
+    }
     if (usable(response)) {
       cache.put(request, response.clone())
       if (max) trimCache(cacheName, max)
@@ -92,8 +108,10 @@ async function networkFirst(request, cacheName, { timeout, max, fallbackShell = 
     const cached = await caches.match(request, { ignoreVary: true })
     if (cached) return cached
     if (fallbackShell) {
-      const shell = await caches.match(BASE)
+      const shell = (await caches.match(BASE)) || (await caches.match(`${BASE}index.html`))
       if (shell) return shell
+      // Niente copia: ultima prova in rete senza tempo massimo
+      return fetch(request)
     }
     throw err
   }
@@ -113,6 +131,10 @@ async function cacheFirst(request, cacheName, { max, url = request.url } = {}) {
   return response
 }
 
+// Qualunque errore del service worker: la richiesta va in rete come se non
+// ci fosse, così l'app non resta mai bloccata
+const safely = (event, promise) => event.respondWith(promise.catch(() => fetch(event.request)))
+
 self.addEventListener('fetch', (event) => {
   const { request } = event
   if (request.method !== 'GET') return
@@ -120,30 +142,30 @@ self.addEventListener('fetch', (event) => {
 
   if (url.origin === self.location.origin) {
     if (request.mode === 'navigate' || url.pathname === BASE || url.pathname.endsWith('/index.html')) {
-      event.respondWith(networkFirst(request, SHELL_CACHE, { timeout: 6000, fallbackShell: true }))
+      safely(event, networkFirst(request, SHELL_CACHE, { timeout: 6000, fallbackShell: true }))
     } else if (url.pathname.startsWith(`${BASE}assets/`) || url.pathname.startsWith(`${BASE}isobaths-hd/`)) {
-      event.respondWith(cacheFirst(request, url.pathname.includes('/assets/') ? SHELL_CACHE : GEO_CACHE))
+      safely(event, cacheFirst(request, url.pathname.includes('/assets/') ? SHELL_CACHE : GEO_CACHE))
     } else if (url.pathname.endsWith('.json') || url.pathname.endsWith('.webmanifest')) {
       // Aree protette e ordinanze si aggiornano: rete, poi copia
-      event.respondWith(networkFirst(request, GEO_CACHE, { timeout: 6000 }))
+      safely(event, networkFirst(request, GEO_CACHE, { timeout: 6000 }))
     }
     return
   }
 
   if (TILE_HOSTS.includes(url.hostname) || (GEO_HOSTS.includes(url.hostname) && isWmsImage(url))) {
-    event.respondWith(cacheFirst(request, TILE_CACHE, { max: TILE_MAX }))
+    safely(event, cacheFirst(request, TILE_CACHE, { max: TILE_MAX }))
     return
   }
   if (GEO_HOSTS.includes(url.hostname)) {
     // Il TileJSON di OpenFreeMap porta la versione dei dati: rete, poi copia
     if (url.hostname === 'tiles.openfreemap.org' && url.pathname === '/planet') {
-      event.respondWith(networkFirst(request, GEO_CACHE, { timeout: 5000 }))
+      safely(event, networkFirst(request, GEO_CACHE, { timeout: 5000 }))
     } else {
-      event.respondWith(cacheFirst(request, GEO_CACHE))
+      safely(event, cacheFirst(request, GEO_CACHE))
     }
     return
   }
   if (METEO_HOSTS.includes(url.hostname)) {
-    event.respondWith(networkFirst(request, METEO_CACHE, { timeout: 8000, max: METEO_MAX }))
+    safely(event, networkFirst(request, METEO_CACHE, { timeout: 8000, max: METEO_MAX }))
   }
 })
