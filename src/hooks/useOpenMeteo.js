@@ -14,8 +14,8 @@ function buildForecastUrl(lat, lon) {
   const p = new URLSearchParams({
     latitude: lat.toFixed(3),
     longitude: lon.toFixed(3),
-    current: 'wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure',
-    hourly: 'wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure',
+    current: 'wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl',
+    hourly: 'wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl',
     wind_speed_unit: 'kn',
     forecast_days: '3',
     timezone: 'auto',
@@ -100,12 +100,13 @@ export default function useOpenMeteo(lat, lon) {
           }
         : null
 
-      // Barometro: valore attuale + tendenza sulle ultime 3 ore
+      // Barometro: pressione al livello del mare (come a bordo, non quella al
+      // suolo del punto di griglia, più bassa se cade in collina) + tendenza 3 ore
       let pressure = null
-      if (forecast?.current?.surface_pressure != null) {
-        const value = forecast.current.surface_pressure
+      if (forecast?.current?.pressure_msl != null) {
+        const value = forecast.current.pressure_msl
         let trend3h = null
-        const ph = forecast.hourly?.surface_pressure
+        const ph = forecast.hourly?.pressure_msl
         const times = forecast.hourly?.time
         if (ph && times) {
           let nowIdx = 0

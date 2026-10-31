@@ -108,7 +108,7 @@ export default function InstrumentPanel({ geo, weather, sun, moon }) {
           />
           <DataCell
             label="Dir onda"
-            value={wave && wave.dir != null ? `${formatDeg(wave.dir)}°` : '--'}
+            value={wave && wave.dir != null ? cardinal(wave.dir) : '--'}
           />
           <div className="border border-line bg-panel px-2 py-1">
             <div className="label">Barometro</div>
