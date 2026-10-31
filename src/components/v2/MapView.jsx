@@ -34,6 +34,7 @@ import {
   ChevronRight,
   Waves,
   Sun,
+  Menu,
 } from 'lucide-react'
 
 // ============================================================
@@ -217,6 +218,13 @@ export default function MapView({
     activeRouteOption,
     coastBand,
   } = useAppStore()
+
+  // Ultima scheda aperta del pannello (rotta, ancore, meteo, registro): la
+  // linguetta MENU riapre quella
+  const lastDrawerRef = useRef('route')
+  useEffect(() => {
+    if (['route', 'anchors', 'weather', 'log'].includes(activeDrawer)) lastDrawerRef.current = activeDrawer
+  }, [activeDrawer])
 
   // Actions via store (per click handler)
   const addWaypoint = (lat, lon) =>
@@ -898,26 +906,15 @@ export default function MapView({
         </MapButton>
         </div>
         {!activeDrawer && (
-          <div className="mt-2 flex flex-col gap-1.5">
-            {[
-              { id: 'route', label: 'ROTTA', icon: Navigation2 },
-              { id: 'anchors', label: 'ANCORE', icon: Anchor },
-              { id: 'weather', label: 'METEO', icon: Waves },
-            ].map((t) => {
-              const Icon = t.icon
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setActiveDrawer(t.id)}
-                  className="glass flex h-14 w-[calc(48px*var(--fs))] flex-col items-center justify-center gap-0.5 rounded-l-lg text-fog hover:text-paper transition-colors"
-                >
-                  <Icon size={16} />
-                  <span className="text-[calc(7px*var(--fs))] font-bold tracking-wider">{t.label}</span>
-                </button>
-              )
-            })}
-          </div>
+          <button
+            type="button"
+            title="Rotta, ancore, meteo e registro"
+            onClick={() => setActiveDrawer(lastDrawerRef.current)}
+            className="glass mt-2 flex h-14 w-[calc(48px*var(--fs))] flex-col items-center justify-center gap-0.5 rounded-l-lg text-fog hover:text-paper transition-colors"
+          >
+            <Menu size={18} />
+            <span className="text-[calc(7px*var(--fs))] font-bold tracking-wider">MENU</span>
+          </button>
         )}
       </div>
 
