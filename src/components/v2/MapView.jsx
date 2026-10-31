@@ -22,6 +22,7 @@ import MapContextMenu from './MapContextMenu.jsx'
 import DepthHover from './DepthHover.jsx'
 import MeteogramPopup from './MeteogramPopup.jsx'
 import WaypointPopup from './WaypointPopup.jsx'
+import { LandTintLayer } from '../../lib/landTintLayer.js'
 import {
   Anchor,
   Crosshair,
@@ -514,6 +515,14 @@ export default function MapView({
     setVis(refs.seamarks, layers.seamarks)
     setVis(refs.coastBand, layers.coastBand)
   }, [baseStyle, layers.bathy, layers.posidonia, layers.shomRelief, layers.isobaths, layers.seamarks, layers.coastBand, mapReady])
+
+  // === Carta CHIARA: terra più scura, staccata dal mare ===
+  useEffect(() => {
+    const map = mapRef.current
+    if (!mapReady || !map || baseStyle !== 'chart') return undefined
+    const layer = new LandTintLayer().addTo(map)
+    return () => map.removeLayer(layer)
+  }, [baseStyle, mapReady])
 
   // === Distanze della fascia costiera dalle impostazioni ===
   useEffect(() => {
