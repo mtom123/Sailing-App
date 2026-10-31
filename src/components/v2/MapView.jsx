@@ -851,11 +851,11 @@ export default function MapView({
         <CurrentCanvas map={mapRef.current} field={currentField} timeOffset={useAppStore.getState().timeOffset} />
       )}
 
-      {/* Floating instrument HUD */}
-      <FloatingHUD geo={geo} />
+      {/* SOG/COG sulla carta solo col pannello strumenti chiuso: aperto, li mostra già lui */}
+      {!leftPanelOpen && <FloatingHUD geo={geo} />}
 
       {/* Connectivity indicator */}
-      <div className="absolute left-3 top-16 z-[900] fade-in">
+      <div className={`absolute left-3 z-[900] fade-in ${leftPanelOpen || geo.lat == null ? 'top-3' : 'top-16'}`}>
         <ConnectivityIndicator
           gribAvailable={!!currentField}
           weatherAvailable={true}
@@ -872,8 +872,9 @@ export default function MapView({
         )}
       </div>
 
-      {/* Top-right controls */}
-      <div className="absolute right-3 top-3 z-[1000] flex flex-col gap-2">
+      {/* Top-right controls; sotto, le linguette dei pannelli (non si sovrappongono) */}
+      <div className="absolute right-0 top-3 z-[1000] flex flex-col items-end gap-2">
+        <div className="mr-3 flex flex-col gap-2">
         <MapButton title="Layer" onClick={() => setActiveDrawer('layers')}>
           <Layers size={18} />
         </MapButton>
@@ -895,6 +896,29 @@ export default function MapView({
         <MapButton title="Impostazioni" onClick={() => setSettingsOpen(true)}>
           <Settings size={18} />
         </MapButton>
+        </div>
+        {!activeDrawer && (
+          <div className="mt-2 flex flex-col gap-1.5">
+            {[
+              { id: 'route', label: 'ROTTA', icon: Navigation2 },
+              { id: 'anchors', label: 'ANCORE', icon: Anchor },
+              { id: 'weather', label: 'METEO', icon: Waves },
+            ].map((t) => {
+              const Icon = t.icon
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setActiveDrawer(t.id)}
+                  className="glass flex h-14 w-[calc(48px*var(--fs))] flex-col items-center justify-center gap-0.5 rounded-l-lg text-fog hover:text-paper transition-colors"
+                >
+                  <Icon size={16} />
+                  <span className="text-[calc(7px*var(--fs))] font-bold tracking-wider">{t.label}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* Left panel toggle */}
@@ -945,30 +969,6 @@ export default function MapView({
               minute: '2-digit',
             })}
           </span>
-        </div>
-      )}
-
-      {/* Drawer rails */}
-      {!activeDrawer && (
-        <div className="absolute right-0 top-1/2 z-[950] flex -translate-y-1/2 flex-col gap-1.5">
-          {[
-            { id: 'route', label: 'ROTTA', icon: Navigation2 },
-            { id: 'anchors', label: 'ANCORE', icon: Anchor },
-            { id: 'weather', label: 'METEO', icon: Waves },
-          ].map((t) => {
-            const Icon = t.icon
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setActiveDrawer(t.id)}
-                className="glass flex h-14 w-[calc(48px*var(--fs))] flex-col items-center justify-center gap-0.5 rounded-l-lg text-fog hover:text-paper transition-colors"
-              >
-                <Icon size={16} />
-                <span className="text-[calc(7px*var(--fs))] font-bold tracking-wider">{t.label}</span>
-              </button>
-            )
-          })}
         </div>
       )}
 
