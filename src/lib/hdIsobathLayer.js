@@ -69,7 +69,7 @@ function loadTile(name) {
 // Fonte predefinita: i tasselli Shom pubblicati con l'app. Altre fonti
 // (es. le isobate multibeam della Regione Liguria) danno gli stessi
 // { lines, cov } con names(vista) → nomi dei tasselli e load(nome)
-const SHOM_SOURCE = {
+export const SHOM_SOURCE = {
   names: (view) => loadIndex().then((index) => index.list.filter((t) => t.bounds.intersects(view)).map((t) => t.name)),
   load: loadTile,
 }

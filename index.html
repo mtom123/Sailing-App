@@ -111,19 +111,6 @@
         }).catch(function(e) {
           console.warn('[BOOT] SW unregister error:', e)
         })
-        // Also clear ALL caches on first load dopo update
-        if (window.location.search.indexOf('v=') !== -1) {
-          if ('caches' in window) {
-            caches.keys().then(function(keys) {
-              keys.forEach(function(k) {
-                if (k.indexOf('v3.0') === -1) {
-                  console.log('[BOOT] Deleting old cache:', k)
-                  caches.delete(k)
-                }
-              })
-            })
-          }
-        }
       }
     </script>
 

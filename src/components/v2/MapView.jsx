@@ -25,6 +25,7 @@ import MeteogramPopup from './MeteogramPopup.jsx'
 import WaypointPopup from './WaypointPopup.jsx'
 import { LandTintLayer } from '../../lib/landTintLayer.js'
 import RulerTool from './RulerTool.jsx'
+import { setOfflineLayers } from '../../lib/offlinePack.js'
 import {
   Anchor,
   Crosshair,
@@ -39,6 +40,7 @@ import {
   Sun,
   Menu,
   Ruler,
+  CloudDownload,
 } from 'lucide-react'
 
 // ============================================================
@@ -215,6 +217,7 @@ export default function MapView({
   parks,
   trackSegments = [],
   trackRec = null, // { paused, distanceNm } mentre si registra
+  offlineDl = null, // % della carta offline in scaricamento
   shownTracks = [],
   mob,
   routeOptions,
@@ -428,6 +431,12 @@ export default function MapView({
       if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobathHd)
       if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobathLiguria)
       if (layers.seamarks) map.addLayer(tileLayerRefs.current.seamarks)
+      // Stessi strati (e URL) per scaricare la carta lungo le rotte
+      setOfflineLayers({
+        seamarks: tileLayerRefs.current.seamarks,
+        bathy: tileLayerRefs.current.bathy,
+        isobathsWms: tileLayerRefs.current.isobaths,
+      })
       if (layers.coastBand) map.addLayer(tileLayerRefs.current.coastBand)
 
       // Layer groups for routes, tracks, parks
@@ -546,7 +555,15 @@ export default function MapView({
     const map = mapRef.current
     if (!mapReady || !map || baseStyle !== 'chart') return undefined
     const layer = new LandTintLayer().addTo(map)
-    return () => map.removeLayer(layer)
+    // Carta di riserva sotto i tasselli: dove la carta Esri manca (offline)
+    // terra dalla costa OSM su sfondo mare
+    const base = new LandTintLayer({ pane: 'offlineBasePane', zIndex: 150, blend: false, color: '#efe9dc' }).addTo(map)
+    map.getContainer().style.background = '#c4dbe9'
+    return () => {
+      map.removeLayer(layer)
+      map.removeLayer(base)
+      map.getContainer().style.background = ''
+    }
   }, [baseStyle, mapReady])
 
   // === Distanze della fascia costiera dalle impostazioni ===
@@ -979,6 +996,15 @@ export default function MapView({
           >
             <span className={`inline-block h-2 w-2 rounded-full ${trackRec.paused ? 'bg-warn' : 'bg-danger animate-pulse'}`} />
             {trackRec.paused ? 'PAUSA' : 'REC'} {trackRec.distanceNm.toFixed(1)} nm
+          </button>
+        )}
+        {offlineDl != null && (
+          <button
+            type="button"
+            onClick={() => setActiveDrawer('route')}
+            className="glass mt-1.5 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[calc(10px*var(--fs))] font-bold tracking-widest text-phos"
+          >
+            <CloudDownload size={12} /> CARTA OFFLINE {offlineDl}%
           </button>
         )}
       </div>

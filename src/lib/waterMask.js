@@ -25,7 +25,8 @@ function tileTemplate() {
   return templatePromise
 }
 
-function loadTile(z, x, y) {
+// Anche per scaricare la costa lungo una rotta (offlinePack.js)
+export function loadTile(z, x, y) {
   const key = `${z}/${x}/${y}`
   if (!tiles.has(key)) {
     const p = tileTemplate()

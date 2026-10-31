@@ -104,9 +104,15 @@ try {
   failStep('React render', err)
 }
 
-// SERVICE WORKER DISABILITATO — causa troppi problemi cache su iPad Safari 15
-// L'app funziona perfettamente senza SW (cache browser nativa basta per tiles)
-logStep('Service worker disabled (no SW)')
+// Service worker: app e carta anche senza rete (public/sw.js). Solo nella
+// versione pubblicata; la pagina arriva sempre prima dalla rete, così gli
+// aggiornamenti non restano bloccati come succedeva su Safari 15
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  navigator.serviceWorker
+    .register(`${import.meta.env.BASE_URL}sw.js`, { updateViaCache: 'none' })
+    .then(() => logStep('Service worker registered', 'ok'))
+    .catch((err) => failStep('Service worker', err))
+}
 
 // Capture global errors (outside React)
 window.addEventListener('error', (e) => {

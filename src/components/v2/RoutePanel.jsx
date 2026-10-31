@@ -16,6 +16,8 @@ import {
   AlertTriangle,
   Anchor,
   Route,
+  CloudDownload,
+  X,
 } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore.js'
 import { formatDeg, metersToNm } from '../../lib/geo.js'
@@ -190,6 +192,56 @@ function LegHazard({ result, minDepth, onFix }) {
 }
 
 // Riepilogo dei pericoli della rotta con "aggira tutto"
+const fmtMb = (bytes) => `${(bytes / 1e6).toLocaleString('it-IT', { maximumFractionDigits: bytes < 1e7 ? 1 : 0 })} MB`
+
+// Carta per l'offline lungo la rotta: stato, avanzamento, scarica/aggiorna
+function OfflineBox({ offline }) {
+  if (!offline?.available) return null
+  const { status, progress, info, error } = offline
+  const btn = 'flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-[calc(10px*var(--fs))] font-semibold tracking-widest'
+  return (
+    <div className="border-b border-line px-3 py-2">
+      <div className="flex items-center gap-2">
+        <CloudDownload size={14} className={status === 'done' || info ? 'text-phos' : 'text-fog'} />
+        <span className="label">Carta offline</span>
+        <span className="ml-auto flex gap-1.5">
+          {status === 'running' ? (
+            <button type="button" onClick={offline.cancel} className={`${btn} border-line text-fog`}>
+              <X size={12} /> ANNULLA
+            </button>
+          ) : (
+            <button type="button" onClick={offline.start} className={`${btn} border-phos bg-phos/10 text-phos`}>
+              {info ? 'AGGIORNA' : 'SCARICA'}
+            </button>
+          )}
+        </span>
+      </div>
+      {status === 'running' && progress && (
+        <div className="pt-1.5">
+          <div className="h-1.5 overflow-hidden rounded-full bg-line">
+            <div className="h-full bg-phos transition-all" style={{ width: `${progress.total ? (100 * progress.done) / progress.total : 0}%` }} />
+          </div>
+          <div className="pt-1 text-[calc(10px*var(--fs))] text-fog tabular-nums">
+            {progress.total ? `${Math.round((100 * progress.done) / progress.total)}%` : 'preparo…'} · {fmtMb(progress.bytes)} · un miglio per lato
+          </div>
+        </div>
+      )}
+      {status !== 'running' && info && (
+        <div className="pt-1 text-[calc(10px*var(--fs))] leading-relaxed text-fog">
+          Scaricata il {new Date(info.at).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · {fmtMb(info.bytes)}
+          {info.failed > 0 && <span className="text-warn"> · {info.failed} pezzi non scaricati: riprova con AGGIORNA</span>}
+        </div>
+      )}
+      {status === 'error' && <div className="pt-1 text-[calc(10px*var(--fs))] text-danger">Errore: {error}</div>}
+      {status === 'idle' && !info && (
+        <div className="pt-1 text-[calc(10px*var(--fs))] leading-relaxed text-fog">
+          Si scarica da sola con la rete: segnalamenti, isobate, profondità e costa per un miglio attorno alla rotta.
+        </div>
+      )}
+    </div>
+  )
+}
+
 function RouteHazards({ route }) {
   const [busy, setBusy] = useState(null) // testo dell'avanzamento mentre calcola
   const [failed, setFailed] = useState(0) // tratte senza passaggio all'ultimo tentativo
@@ -336,7 +388,7 @@ function SavedRoutes() {
   )
 }
 
-export default function RoutePanel({ route, routeWx, routeOptions, computing, gpsOk, bridgeConfigured, autopilot, duration }) {
+export default function RoutePanel({ route, routeWx, routeOptions, computing, gpsOk, bridgeConfigured, autopilot, duration, offline }) {
   const [nameInput, setNameInput] = useState('')
   const {
     activeRouteOption,
@@ -520,6 +572,7 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
       </div>
 
       <RouteHazards route={route} />
+      <OfflineBox offline={offline} />
 
       {/* Live NAV */}
       {nav && (

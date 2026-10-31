@@ -37,6 +37,7 @@ import { sunTimes, moonPhase } from './lib/sun.js'
 import { routeLegs, routeTotalNm, crossTrackError } from './lib/route.js'
 import { detourLegRefined } from './lib/routeHazards.js'
 import { bandText } from './lib/coastBand.js'
+import useOfflineRoute from './hooks/useOfflineRoute.js'
 import { ampRuleFor, zoneLetter, zoneSummary } from './lib/ampRules.js'
 
 // Adaptive hooks: gli hook leggono dallo store
@@ -222,6 +223,8 @@ export default function App() {
 
   // Route + routing
   const route = useRouteAdapter(geo)
+  // Carta offline lungo la rotta (si scarica da sola con la rete)
+  const offline = useOfflineRoute(route.waypoints, { editing: route.editing })
   const autopilot = useAutopilot({ wsUrl, nav: route.nav, waypoints: route.waypoints, geo })
   const track = useTrack(geo)
 
@@ -369,6 +372,7 @@ export default function App() {
             parks={parks}
             trackSegments={track.current?.segments || []}
             trackRec={track.current && track.stats ? { paused: track.status !== 'recording', distanceNm: track.stats.distanceNm } : null}
+            offlineDl={offline.status === 'running' && offline.progress?.total ? Math.round((100 * offline.progress.done) / offline.progress.total) : null}
             shownTracks={track.shown}
             mob={mob}
             routeOptions={routeOptions}
@@ -528,6 +532,7 @@ export default function App() {
                   gpsOk={gpsOk}
                   bridgeConfigured={Boolean(wsUrl)}
                   autopilot={autopilot}
+                  offline={offline}
                 />
               )}
               {activeDrawer === 'anchors' && (
