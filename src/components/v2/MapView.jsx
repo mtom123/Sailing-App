@@ -24,6 +24,7 @@ import { depthAt } from '../../lib/depthAt.js'
 import MeteogramPopup from './MeteogramPopup.jsx'
 import WaypointPopup from './WaypointPopup.jsx'
 import { LandTintLayer } from '../../lib/landTintLayer.js'
+import RulerTool from './RulerTool.jsx'
 import {
   Anchor,
   Crosshair,
@@ -37,21 +38,25 @@ import {
   Waves,
   Sun,
   Menu,
+  Ruler,
 } from 'lucide-react'
 
 // ============================================================
 // Marker HTML helpers — Leaflet divIcon
 // ============================================================
 // Profondità a centrobarca, accanto alla freccia (non ruota con la rotta).
-// Rossa sotto pescaggio + margine; "≈" quando viene dal modello EMODnet
+// Shom (griglia 10 m): valore e rosso sotto pescaggio + margine. EMODnet
+// (~115 m): "≈" solo al largo, mai rosso; vicino alla costa e in porto "— m"
+// grigio, perché il dato non vale per la barca
 function boatDepthEl(info, warnBelowM) {
-  const shallow = info && info.depth < warnBelowM
+  const shown = info && info.reliable
+  const shallow = shown && info.source === 'Shom' && info.depth < warnBelowM
   const bg = shallow ? '#FF5252' : 'rgb(var(--rgb-abyss) / 0.9)'
-  const fg = shallow ? '#0a1620' : 'var(--color-paper)'
-  const value = info ? `${info.source === 'Shom' ? '' : '≈'}${formatDepth(info.depth)} m` : '— m'
+  const fg = shallow ? '#0a1620' : shown ? 'var(--color-paper)' : 'var(--color-fog)'
+  const value = shown ? `${info.source === 'Shom' ? '' : '≈'}${formatDepth(info.depth)} m` : '— m'
   return L.divIcon({
     className: 'timone-marker',
-    html: `<div style="white-space:nowrap;background:${bg};color:${fg};border:1.5px solid ${shallow ? '#0a1620' : 'var(--color-paper)'};border-radius:6px;padding:1px 7px;font:700 calc(15px * var(--fs)) var(--font-mono);box-shadow:0 2px 6px rgba(0,0,0,0.5)">${value}</div>`,
+    html: `<div style="white-space:nowrap;background:${bg};color:${fg};border:1.5px solid ${shallow ? '#0a1620' : fg};border-radius:6px;padding:1px 7px;font:700 calc(15px * var(--fs)) var(--font-mono);box-shadow:0 2px 6px rgba(0,0,0,0.5)">${value}</div>`,
     iconSize: null,
     iconAnchor: [-20, 14], // a destra della freccia
   })
@@ -906,12 +911,19 @@ export default function MapView({
     if (!layers.ordinances && map.hasLayer(layer)) map.removeLayer(layer)
   }, [layers.ordinances, mapReady, route.editing])
 
+  const [rulerOn, setRulerOn] = useState(false)
+  const toggleRuler = () => {
+    if (!rulerOn) setRouteEditing(false) // un solo strumento alla volta sui tap
+    setRulerOn(!rulerOn)
+  }
+
   const toggleRouteEditing = () => {
     const st = useAppStore.getState()
     if (st.routeEditing) {
       setRouteEditing(false)
       return
     }
+    setRulerOn(false)
     if (st.routeDraft.waypoints.length === 0) {
       useAppStore.setState({
         routeDraft: { name: '', waypoints: [] },
@@ -982,6 +994,9 @@ export default function MapView({
         <MapButton title="Modifica rotta" active={route.editing} onClick={toggleRouteEditing}>
           <Navigation2 size={18} />
         </MapButton>
+        <MapButton title="Righello" active={rulerOn} onClick={toggleRuler}>
+          <Ruler size={18} />
+        </MapButton>
         <MapButton title="Tema giorno (sole)" active={dayTheme} onClick={() => setDayTheme(!dayTheme)}>
           <Sun size={18} />
         </MapButton>
@@ -1042,8 +1057,16 @@ export default function MapView({
         </div>
       )}
 
+      {rulerOn && (
+        <RulerTool
+          map={mapRef.current}
+          boatPosition={geo.lat != null ? { lat: geo.lat, lon: geo.lon } : null}
+          onClose={() => setRulerOn(false)}
+        />
+      )}
+
       {/* NAV banner */}
-      {route.nav && !route.editing && !mob && (
+      {route.nav && !route.editing && !rulerOn && !mob && (
         <div className="glass absolute left-1/2 top-3 z-[900] flex -translate-x-1/2 items-center gap-2 rounded-lg px-4 py-2 slide-up">
           <span className="text-xs font-semibold text-phos">→ {route.nav.dest.name}</span>
           <span className="text-xs text-paper tabular">
@@ -1066,7 +1089,7 @@ export default function MapView({
       <MapContextMenu
         map={mapRef.current}
         mapReady={mapReady}
-        enabled={!route.editing}
+        enabled={!route.editing && !rulerOn}
         onAddWaypoint={(lat, lon) => addWaypoint(lat, lon)}
         onSetDestination={(lat, lon) => {
           useAppStore.setState((s) => ({

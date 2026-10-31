@@ -99,6 +99,31 @@ function emodnetValue(blocks, lat, lon) {
   return bilinear(get, c, r)
 }
 
+// EMODnet vicino alla costa e nei porti non vale per la barca: le celle da
+// ~115 m mescolano mare, moli e banchine (in porto a 9 m dava 0,3 m). È
+// affidabile solo se tutte le celle attorno (±2, circa 230 m) sono mare
+// più profondo di RELIABLE_MIN_M.
+const RELIABLE_RADIUS = 2
+const RELIABLE_MIN_M = 5
+
+function emodnetCell(blocks, lat, lon) {
+  const block = blocks.get(`${blockIndex(lon)},${blockIndex(lat)}`)
+  if (!block) return null
+  const c = Math.round(lon * CELLS_PER_DEGREE - 0.5 - block.i0)
+  const r = Math.round(block.jTop + 0.5 - lat * CELLS_PER_DEGREE)
+  return c < 0 || r < 0 || c >= block.width || r >= block.height ? null : block.values[r * block.width + c]
+}
+
+function emodnetReliable(blocks, lat, lon) {
+  for (let dy = -RELIABLE_RADIUS; dy <= RELIABLE_RADIUS; dy++) {
+    for (let dx = -RELIABLE_RADIUS; dx <= RELIABLE_RADIUS; dx++) {
+      const v = emodnetCell(blocks, lat + dy / CELLS_PER_DEGREE, lon + dx / CELLS_PER_DEGREE)
+      if (v == null || v > -RELIABLE_MIN_M) return false
+    }
+  }
+  return true
+}
+
 /**
  * Carica i dati che coprono i punti dati ([lat, lon][]) e restituisce un
  * campionatore sincrono (lat, lon) → { depth, source } | null, per controllare
@@ -135,15 +160,18 @@ export async function prepareDepth(points) {
       source = 'EMODnet'
     }
     if (v == null || v >= 0) return null
-    return { depth: -v, source }
+    return { depth: -v, source, reliable: source === 'Shom' || emodnetReliable(blocks, lat, lon) }
   }
 }
 
 /**
- * { depth: metri sotto il livello del mare, source: 'Shom' | 'EMODnet' },
- * oppure null a terra o senza dati.
+ * { depth: metri sotto il livello del mare, source: 'Shom' | 'EMODnet',
+ * reliable: false per EMODnet vicino alla costa o in porto }, oppure null a
+ * terra o senza dati.
  */
 export async function depthAt(lat, lon) {
-  const sample = await prepareDepth([[lat, lon]])
+  // Anche i blocchi vicini, per giudicare le celle attorno
+  const d = (RELIABLE_RADIUS + 1) / CELLS_PER_DEGREE
+  const sample = await prepareDepth([[lat, lon], [lat - d, lon - d], [lat - d, lon + d], [lat + d, lon - d], [lat + d, lon + d]])
   return sample(lat, lon)
 }
