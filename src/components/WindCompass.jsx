@@ -43,10 +43,10 @@ export default function WindCompass({ wind, wave }) {
       <text
         key={txt}
         x={c + (rTick - 20) * Math.sin(rad)}
-        y={c - (rTick - 20) * Math.cos(rad) + 4}
+        y={c - (rTick - 20) * Math.cos(rad) + 6}
         textAnchor="middle"
-        fontSize="12"
-        fill="#9BA0A6"
+        fontSize="17"
+        fill="#B8BDC2"
         fontWeight="bold"
       >
         {txt}
@@ -82,20 +82,24 @@ export default function WindCompass({ wind, wave }) {
         </g>
       )}
 
-      <circle cx={c} cy={c} r={40} fill="#0D0D0D" stroke="#2A2A2A" strokeWidth="1.5" />
+      {/* Centro: velocità grande, poi "kn" e la provenienza su righe proprie */}
+      <circle cx={c} cy={c} r={47} fill="#0D0D0D" stroke="#2A2A2A" strokeWidth="1.5" />
       <text
         x={c}
-        y={c - 2}
+        y={c - 3}
         textAnchor="middle"
-        fontSize="26"
+        fontSize="34"
         fill="#F2F2F2"
         fontWeight="bold"
         className="tabular-nums"
       >
         {wind && wind.speed != null ? wind.speed.toFixed(0) : '--'}
       </text>
-      <text x={c} y={c + 14} textAnchor="middle" fontSize="9" fill="#9BA0A6">
-        kn · {wind && wind.dir != null ? `${formatDeg(wind.dir)}° ${cardinal(wind.dir)}` : '---'}
+      <text x={c} y={c + 12} textAnchor="middle" fontSize="12" fill="#9BA0A6" fontWeight="bold">
+        kn
+      </text>
+      <text x={c} y={c + 29} textAnchor="middle" fontSize="15" fill="#D8DCE0" fontWeight="bold" className="tabular-nums">
+        {wind && wind.dir != null ? `${formatDeg(wind.dir)}° ${cardinal(wind.dir)}` : '---'}
       </text>
     </svg>
   )
