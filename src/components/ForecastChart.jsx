@@ -11,6 +11,7 @@ const C_WIND = '#17A845'
 const C_GUST = '#CC6B27'
 const C_WAVE = '#3A86EA'
 const C_GRID = '#242424'
+
 const C_TEXT = '#9BA0A6'
 
 const W = 320
@@ -18,8 +19,8 @@ const PAD_L = 26
 const PAD_R = 6
 const PANEL_H = 74
 const GAP = 26
-const AXIS_H = 16
-const H = PANEL_H * 2 + GAP + AXIS_H + 8
+const AXIS_H = 34 // ore e, sotto, i giorni
+const H = PANEL_H * 2 + GAP + AXIS_H + 16
 
 function linePath(values, sx, sy) {
   let d = ''
@@ -109,10 +110,13 @@ export default function ForecastChart({ hourly }) {
     const windMax = Math.max(10, ...wind.filter((v) => v != null), ...gust.filter((v) => v != null))
     const waveMax = Math.max(0.5, ...wave.filter((v) => v != null))
     const days = []
+    const hours = [] // 06, 12, 18 di ogni giorno
     hourly.forEach((h, i) => {
       if (h.t.endsWith('T00:00') || i === 0) {
         days.push({ i, label: new Date(h.t).toLocaleDateString('it-IT', { weekday: 'short' }) })
       }
+      const hh = h.t.slice(11, 13)
+      if (h.t.endsWith(':00') && ['06', '12', '18'].includes(hh)) hours.push({ i, label: hh })
     })
     const nowIdx = (() => {
       const now = Date.now()
@@ -122,7 +126,7 @@ export default function ForecastChart({ hourly }) {
       })
       return best
     })()
-    return { wind, gust, wave, windMax: Math.ceil(windMax / 5) * 5, waveMax: Math.ceil(waveMax * 2) / 2, days, nowIdx, n: hourly.length }
+    return { wind, gust, wave, windMax: Math.ceil(windMax / 5) * 5, waveMax: Math.ceil(waveMax * 2) / 2, days, hours, nowIdx, n: hourly.length }
   }, [hourly])
 
   if (!data) {
@@ -201,20 +205,34 @@ export default function ForecastChart({ hourly }) {
           sx={sx}
           hoverIdx={hoverIdx}
         />
+        {data.hours.map((h) => (
+          <g key={`h${h.i}`}>
+            {/* Semitrasparenti: leggere sia sul tema scuro sia su quello giorno */}
+            <line x1={sx(h.i)} x2={sx(h.i)} y1={topWind} y2={topWave + PANEL_H} stroke={C_TEXT} strokeOpacity="0.18" strokeWidth="1" />
+            {[topWind + PANEL_H, topWave + PANEL_H].map((y) => (
+              <line key={y} x1={sx(h.i)} x2={sx(h.i)} y1={y} y2={y + 3} stroke={C_TEXT} strokeWidth="1" />
+            ))}
+            <text x={sx(h.i)} y={topWave + PANEL_H + 14} textAnchor="middle" fontSize="10.5" fill={C_TEXT}>
+              {h.label}
+            </text>
+          </g>
+        ))}
         {data.days.map((d) => (
           <g key={d.i}>
             <line
               x1={sx(d.i)}
               x2={sx(d.i)}
               y1={topWind}
-              y2={topWave + PANEL_H}
-              stroke={C_GRID}
+              y2={topWave + PANEL_H + 18}
+              stroke={C_TEXT}
+              strokeOpacity="0.45"
               strokeWidth="1"
             />
             <text
-              x={sx(d.i) + 2}
-              y={topWave + PANEL_H + 12}
-              fontSize="8"
+              x={sx(d.i) + 3}
+              y={topWave + PANEL_H + 31}
+              fontSize="11.5"
+              fontWeight="bold"
               fill={C_TEXT}
               style={{ textTransform: 'uppercase' }}
             >
