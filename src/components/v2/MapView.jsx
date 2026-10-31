@@ -159,8 +159,8 @@ function makeBaseLayer(style) {
 // ============================================================
 // MapView main — Leaflet based
 // ============================================================
-// Zoom all'apertura: scala da circa 0,03 nm / 50 m (il massimo è 20)
-const OPEN_ZOOM = 19
+// Zoom all'apertura: scala da 100 m / 0,06 nm alle latitudini italiane (il massimo è 20)
+const OPEN_ZOOM = 17.5
 
 // Scala in miglia nautiche sopra quella in metri: 1 nm = 1852 m
 const NauticalScale = L.Control.Scale.extend({

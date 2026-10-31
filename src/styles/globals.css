@@ -151,12 +151,18 @@ body,
   margin: 0 0 40px 10px;
 }
 .leaflet-control-scale-line {
-  background: rgb(var(--rgb-abyss) / 0.8) !important;
+  background: rgb(var(--rgb-abyss) / 0.95) !important; /* pieno: niente carta che traspare sotto le cifre */
   color: var(--color-paper) !important;
-  border-color: var(--color-paper) !important;
-  font: bold calc(11px * var(--fs)) var(--font-mono) !important;
-  line-height: 1.3 !important;
-  padding: 1px 6px !important;
+  border: 2px solid var(--color-paper) !important;
+  border-top: none !important;
+  font: 700 calc(13px * var(--fs)) var(--font-ui) !important;
+  letter-spacing: 0.04em;
+  line-height: 1.35 !important;
+  padding: 2px 8px !important;
+  -webkit-font-smoothing: antialiased;
+}
+.leaflet-control-scale-line:not(:first-child) {
+  margin-top: 4px !important; /* barre staccate: le due scritte non si toccano */
 }
 .leaflet-control-attribution a {
   color: var(--color-phos-dim) !important;
