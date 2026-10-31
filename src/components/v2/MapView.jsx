@@ -233,6 +233,7 @@ export default function MapView({
   const containerRef = useRef(null)
   const mapRef = useRef(null)
   const tileLayerRefs = useRef({})
+  const toolsRef = useRef({}) // strumenti aperti (righello, zona offline)
   const markersRef = useRef({
     boat: null,
     mob: null,
@@ -491,6 +492,9 @@ export default function MapView({
         const st = useAppStore.getState()
         if (st.routeEditing) {
           addWaypoint(e.latlng.lat, e.latlng.lng)
+        } else if (st.activeDrawer && st.activeDrawer !== 'layers' && !toolsRef.current.rulerOn && !toolsRef.current.areaOn) {
+          // Tap sulla carta fuori dal menu (rotta, ancore, meteo, log): si chiude
+          st.setActiveDrawer(null)
         }
       })
 
@@ -981,6 +985,7 @@ export default function MapView({
 
   const [rulerOn, setRulerOn] = useState(false)
   const [areaOn, setAreaOn] = useState(false) // rettangolo per la zona offline
+  toolsRef.current = { rulerOn, areaOn } // per il tap sulla carta (gestore creato una volta)
   const toggleRuler = () => {
     if (!rulerOn) {
       setRouteEditing(false) // un solo strumento alla volta sui tap
