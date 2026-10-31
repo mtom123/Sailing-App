@@ -1,4 +1,5 @@
-import { Satellite } from 'lucide-react'
+import { useState } from 'react'
+import { Copy, Satellite } from 'lucide-react'
 import WindCompass from './WindCompass.jsx'
 import ForecastChart from './ForecastChart.jsx'
 import TideChart from './TideChart.jsx'
@@ -44,6 +45,50 @@ function pressureTrendGlyph(trend) {
 const fmtClock = (d) =>
   d ? d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '--'
 
+// Posizione grande e leggibile, con COPIA per comunicarla in fretta (VHF,
+// telefono): gradi e primi, come si legge in radio
+function Position({ geo, gpsOk }) {
+  const [copied, setCopied] = useState(false)
+  if (!gpsOk) {
+    return <div className="px-3 pb-1 text-[calc(10px*var(--fs))] text-fog">{geo.error || 'In attesa del segnale GPS…'}</div>
+  }
+  const lat = formatCoord(geo.lat, true)
+  const lon = formatCoord(geo.lon, false)
+  const copy = async () => {
+    const text = `${lat} ${lon}`
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      // Senza permesso agli appunti: copia da un campo di testo selezionato
+      const field = document.createElement('textarea')
+      field.value = text
+      document.body.appendChild(field)
+      field.select()
+      document.execCommand('copy')
+      field.remove()
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+  return (
+    <div className="flex items-stretch gap-1.5 px-1.5 pb-1.5">
+      <div className="min-w-0 flex-1 border border-line bg-panel px-2 py-1 font-mono text-[calc(20px*var(--fs))] font-bold leading-tight text-paper tabular-nums">
+        <div>{lat}</div>
+        <div>{lon}</div>
+      </div>
+      <button
+        type="button"
+        onClick={copy}
+        title="Copia la posizione"
+        className="flex w-[calc(54px*var(--fs))] flex-none flex-col items-center justify-center gap-1 border border-phos bg-phos/10 text-phos active:bg-phos/25"
+      >
+        <Copy size={18} />
+        <span className="text-[calc(9px*var(--fs))] font-bold tracking-wider">{copied ? 'COPIATO' : 'COPIA'}</span>
+      </button>
+    </div>
+  )
+}
+
 export default function InstrumentPanel({ geo, weather, sun, moon }) {
   const gpsOk = geo.lat != null && !geo.error
   const { wind, wave, hourly, pressure } = weather
@@ -74,11 +119,7 @@ export default function InstrumentPanel({ geo, weather, sun, moon }) {
         />
       </div>
 
-      <div className="px-3 pb-1 text-[calc(10px*var(--fs))] text-fog tabular-nums">
-        {gpsOk
-          ? `${formatCoord(geo.lat, true)}  ${formatCoord(geo.lon, false)}`
-          : geo.error || 'In attesa del segnale GPS…'}
-      </div>
+      <Position geo={geo} gpsOk={gpsOk} />
 
       <div className="panel-scroll min-h-0 flex-1">
         <div className="px-3 py-2">

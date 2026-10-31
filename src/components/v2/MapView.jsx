@@ -505,6 +505,21 @@ export default function MapView({
     el.classList.toggle('cursor-crosshair', !!route.editing)
   }, [route.editing, mapReady])
 
+  // === All'apertura: barca al centro, 2 nm attorno (sul lato corto dello schermo) ===
+  const openedOnBoat = useRef(false)
+  useEffect(() => {
+    if (openedOnBoat.current || !mapReady || geo.lat == null) return
+    const map = mapRef.current
+    if (!map) return
+    openedOnBoat.current = true
+    // Zoom intero più vicino (getBoundsZoom arrotonda per difetto: fino al doppio)
+    const size = map.getSize()
+    const metersPerPx = (2 * 2 * 1852) / Math.min(size.x, size.y)
+    const zoom = Math.round(Math.log2((156543.03 * Math.cos((geo.lat * Math.PI) / 180)) / metersPerPx))
+    map.setView([geo.lat, geo.lon], Math.min(zoom, map.getMaxZoom()), { animate: false })
+    setFollow(true)
+  }, [geo.lat, geo.lon, mapReady, setFollow])
+
   // === Follow boat ===
   useEffect(() => {
     if (!mapReady || !follow || geo.lat == null) return
