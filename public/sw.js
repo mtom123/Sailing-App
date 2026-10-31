@@ -12,7 +12,7 @@
  * - Meteo Open-Meteo: prima la rete, l'ultima previsione resta per l'offline.
  */
 
-const VERSION = 'v5'
+const VERSION = 'v6'
 const SHELL_CACHE = `timone-shell-${VERSION}`
 const TILE_CACHE = 'timone-tiles'
 const GEO_CACHE = 'timone-geo'
@@ -76,23 +76,28 @@ function fetchWithTimeout(request, ms) {
   })
 }
 
-const trimming = {}
+// Cache aperte una volta sola (riaprirle a ogni tassello costa su iPad).
+// Non quella delle rotte scaricate: la scrive la pagina e la si rilegge
+const opened = {}
+const openCache = (name) => (name === OFFLINE_CACHE ? caches.open(name) : (opened[name] ||= caches.open(name)))
+
+// Tetto di voci: l'elenco completo (migliaia) si rilegge al massimo ogni
+// due minuti, non a ogni tassello nuovo
+const TRIM_EVERY_MS = 120000
+const lastTrim = {}
 async function trimCache(name, max) {
-  if (trimming[name]) return
-  trimming[name] = true
-  try {
-    const cache = await caches.open(name)
-    const keys = await cache.keys()
-    for (let i = 0; i < keys.length - max; i++) await cache.delete(keys[i])
-  } finally {
-    trimming[name] = false
-  }
+  const now = Date.now()
+  if (now - (lastTrim[name] || 0) < TRIM_EVERY_MS) return
+  lastTrim[name] = now
+  const cache = await openCache(name)
+  const keys = await cache.keys()
+  for (let i = 0; i < keys.length - max; i++) await cache.delete(keys[i])
 }
 
 const usable = (r) => r && (r.ok || r.type === 'opaque')
 
 async function networkFirst(request, cacheName, { timeout, max, fallbackShell = false }) {
-  const cache = await caches.open(cacheName)
+  const cache = await openCache(cacheName)
   try {
     let response = await fetchWithTimeout(request, timeout)
     // Safari rifiuta le pagine arrivate dopo un reindirizzamento: copia pulita
@@ -117,14 +122,18 @@ async function networkFirst(request, cacheName, { timeout, max, fallbackShell = 
   }
 }
 
-// Copia se c'è (in qualunque cache, comprese le rotte scaricate), sennò rete
+// Copia se c'è (prima tra le carte scaricate per le rotte, poi nella cache
+// propria), sennò rete
 async function cacheFirst(request, cacheName, { max, url = request.url } = {}) {
-  const cached = await caches.match(url, { ignoreVary: true, ignoreSearch: false })
-  if (cached) return cached
+  const lookIn = cacheName === TILE_CACHE || cacheName === GEO_CACHE ? [OFFLINE_CACHE, cacheName] : [cacheName]
+  for (const name of lookIn) {
+    const cached = await (await openCache(name)).match(url, { ignoreVary: true })
+    if (cached) return cached
+  }
   // Carte richieste da <img>: si riscaricano in CORS per salvarle leggibili
   const response = await fetch(url, { mode: 'cors', credentials: 'omit' }).catch(() => fetch(request))
   if (usable(response)) {
-    const cache = await caches.open(cacheName)
+    const cache = await openCache(cacheName)
     cache.put(url, response.clone())
     if (max) trimCache(cacheName, max)
   }
