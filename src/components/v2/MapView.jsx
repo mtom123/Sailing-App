@@ -163,20 +163,23 @@ function makeBaseLayer(style) {
 // Zoom all'apertura: scala da 100 m / 0,06 nm alle latitudini italiane (il massimo è 20)
 const OPEN_ZOOM = 17.5
 
-// Scala in miglia nautiche sopra quella in metri: 1 nm = 1852 m
+// Scala in miglia nautiche e, sotto, la stessa lunghezza in metri (1 nm =
+// 1852 m): una sola barra, così miglia e metri corrispondono sempre
 const NauticalScale = L.Control.Scale.extend({
   _addScales(options, className, container) {
     this._nmScale = L.DomUtil.create('div', className, container)
     L.Control.Scale.prototype._addScales.call(this, options, className, container)
   },
   _updateScales(maxMeters) {
-    L.Control.Scale.prototype._updateScales.call(this, maxMeters)
     const maxNm = maxMeters / 1852
     // Sotto il miglio a due decimali (0,15 nm): passi di 0,05, sotto 0,1 di 0,01
     const step = maxNm >= 0.1 ? 0.05 : 0.01
     const nm = maxNm >= 1 ? this._getRoundNum(maxNm) : Math.max(step, Math.floor(maxNm / step + 1e-9) * step)
     const label = maxNm >= 1 ? String(nm) : nm.toFixed(2).replace('.', ',')
+    const meters = nm * 1852
+    const metric = meters < 1000 ? `${Math.round(meters)} m` : `${(meters / 1000).toFixed(meters < 10000 ? 1 : 0).replace('.', ',')} km`
     this._updateScale(this._nmScale, `${label} nm`, nm / maxNm)
+    this._updateScale(this._mScale, metric, nm / maxNm)
   },
 })
 
