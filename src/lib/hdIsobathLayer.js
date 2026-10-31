@@ -6,6 +6,8 @@
  * a `onCoverage`: lì le isobate EMODnet, meno precise, si nascondono.
  *
  * Profondità riferite al livello medio del mare (IGN69). Non per la navigazione.
+ * Con l'opzione `source` lo stesso livello disegna altre isobate di dettaglio
+ * (liguriaIsobaths.js).
  */
 import L from 'leaflet'
 import { CHART_COLORS, IMAGERY_COLORS } from './isobaths.js'
@@ -64,6 +66,14 @@ function loadTile(name) {
   return tiles.get(name)
 }
 
+// Fonte predefinita: i tasselli Shom pubblicati con l'app. Altre fonti
+// (es. le isobate multibeam della Regione Liguria) danno gli stessi
+// { lines, cov } con names(vista) → nomi dei tasselli e load(nome)
+const SHOM_SOURCE = {
+  names: (view) => loadIndex().then((index) => index.list.filter((t) => t.bounds.intersects(view)).map((t) => t.name)),
+  load: loadTile,
+}
+
 // Ogni 5 m (e i bassi fondali) linea marcata con etichetta, gli altri metri
 // sottili e solo da vicino: sulle coste ripide si accavallerebbero
 const major = (depth) => depth <= 3 || depth % 5 === 0
@@ -74,6 +84,7 @@ export const HdIsobathLayer = L.Layer.extend({
     minZoom: 13,
     imagery: false,
     onCoverage: () => {},
+    source: SHOM_SOURCE,
     attribution: '© Shom – Litto3D® (isobate HD)',
   },
 
@@ -112,7 +123,7 @@ export const HdIsobathLayer = L.Layer.extend({
     this._group.clearLayers()
     this._minor.clearLayers()
     this._shown.clear()
-    names.forEach((name) => loadTile(name).then((t) => this._show(name, t)))
+    names.forEach((name) => this.options.source.load(name).then((t) => this._show(name, t)))
   },
 
   _update() {
@@ -131,11 +142,13 @@ export const HdIsobathLayer = L.Layer.extend({
     else this._minor.remove()
     this.options.onCoverage([...this._shown.values()].flatMap((t) => t.cov))
     const view = map.getBounds().pad(0.3)
-    loadIndex().then((index) => {
+    const { source } = this.options
+    source.names(view).then((names) => {
       if (!this._map) return
-      for (const { name, bounds } of index.list) {
-        if (!bounds.intersects(view) || this._shown.has(name)) continue
-        loadTile(name)
+      for (const name of names) {
+        if (this._shown.has(name)) continue
+        source
+          .load(name)
           .then((t) => this._show(name, t))
           .catch((err) => console.warn('Isobate HD non disponibili', err))
       }

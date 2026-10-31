@@ -9,6 +9,7 @@ import { SEAGRASS_WMS_URL, SEAGRASS_LAYER, seagrassSld } from '../../lib/seagras
 import { IsobathLayer } from '../../lib/isobathLayer.js'
 import { ShomReliefLayer } from '../../lib/shomRelief.js'
 import { HdIsobathLayer } from '../../lib/hdIsobathLayer.js'
+import { LIGURIA_ISOBATH_SOURCE } from '../../lib/liguriaIsobaths.js'
 import { CoastBandLayer } from '../../lib/coastBandLayer.js'
 import { ProtectedAreasLayer } from '../../lib/protectedAreasLayer.js'
 import { OrdinancesLayer } from '../../lib/ordinancesLayer.js'
@@ -323,9 +324,23 @@ export default function MapView({
       })
       // Isobate ogni metro dai rilievi Shom, dove ci sono (public/isobaths-hd):
       // nella loro area le EMODnet si nascondono
+      // Copertura delle isobate di dettaglio (Shom e Regione Liguria) unita
+      const coverage = { shom: null, liguria: null }
+      const setCoverage = (source, rings) => {
+        coverage[source] = rings
+        const all = [...(coverage.shom || []), ...(coverage.liguria || [])]
+        tileLayerRefs.current.isobathVector.setHdCoverage(all.length ? all : null)
+      }
       tileLayerRefs.current.isobathHd = new HdIsobathLayer({
         imagery,
-        onCoverage: (rings) => tileLayerRefs.current.isobathVector.setHdCoverage(rings),
+        onCoverage: (rings) => setCoverage('shom', rings),
+      })
+      // Isobate multibeam della Regione Liguria: sotto costa molto più fedeli di EMODnet
+      tileLayerRefs.current.isobathLiguria = new HdIsobathLayer({
+        imagery,
+        source: LIGURIA_ISOBATH_SOURCE,
+        attribution: '© Regione Liguria – isobate di dettaglio (rilievi multibeam)',
+        onCoverage: (rings) => setCoverage('liguria', rings),
       })
       // Rilievo HD del Shom (Corsica, Costa Azzurra): sopra le carte, sotto le isobate
       map.createPane('reliefPane').style.zIndex = 240
@@ -352,6 +367,7 @@ export default function MapView({
       if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobaths)
       if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobathVector)
       if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobathHd)
+      if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobathLiguria)
       if (layers.seamarks) map.addLayer(tileLayerRefs.current.seamarks)
       if (layers.coastBand) map.addLayer(tileLayerRefs.current.coastBand)
 
@@ -447,6 +463,7 @@ export default function MapView({
     }
     refs.isobathVector?.setImagery(imagery)
     refs.isobathHd?.setImagery(imagery)
+    refs.isobathLiguria?.setImagery(imagery)
 
     const setVis = (layer, visible) => {
       if (!layer) return
@@ -459,6 +476,7 @@ export default function MapView({
     setVis(refs.isobaths, layers.isobaths)
     setVis(refs.isobathVector, layers.isobaths)
     setVis(refs.isobathHd, layers.isobaths)
+    setVis(refs.isobathLiguria, layers.isobaths)
     setVis(refs.seamarks, layers.seamarks)
     setVis(refs.coastBand, layers.coastBand)
   }, [baseStyle, layers.bathy, layers.posidonia, layers.shomRelief, layers.isobaths, layers.seamarks, layers.coastBand, mapReady])
