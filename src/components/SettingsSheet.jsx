@@ -378,7 +378,7 @@ export default function SettingsSheet({
             <div className="mt-1.5 flex gap-1.5">
               <button
                 type="button"
-                onClick={() => onSignalKChange({ url: SK_DEMO, enabled: true })}
+                onClick={() => onSignalKChange({ url: SK_DEMO, enabled: true, useGps: false })}
                 className="rounded-md border border-line bg-surface px-2.5 py-1.5 text-[calc(10px*var(--fs))] font-semibold tracking-widest text-fog hover:text-paper"
               >
                 PROVA CON LA DEMO
@@ -390,7 +390,7 @@ export default function SettingsSheet({
                   signalK.useGps ? 'border-phos bg-phos/10 text-phos' : 'border-line bg-surface text-fog'
                 }`}
               >
-                {signalK.useGps ? '✓ ' : ''}USA GPS DI BORDO
+                {signalK.useGps ? '✓ ' : ''}POSIZIONE DA SIGNAL K
               </button>
             </div>
             <div
@@ -404,8 +404,9 @@ export default function SettingsSheet({
             </div>
             <div className="mt-1 text-[calc(9px*var(--fs))] leading-relaxed text-fog">
               Raspberry Pi con Signal K (o OpenPlotter) collegato al Wi-Fi del Quark-elec A027+ (TCP 192.168.1.100:2000).
-              Sull'iPad apri una volta l'indirizzo https del Raspberry in Safari e accetta il certificato. La demo è una barca in Finlandia:
-              con "Usa GPS di bordo" la carta ci salta.
+              Sull'iPad apri una volta l'indirizzo https del Raspberry in Safari e accetta il certificato.
+              "Posizione da Signal K" usa il GPS dell'A027+ al posto di quello dell'iPad; spento (o con il collegamento spento) torna quello dell'iPad.
+              La demo è una barca in Finlandia: per provarla tieni spenta la posizione da Signal K.
             </div>
           </Section>
 

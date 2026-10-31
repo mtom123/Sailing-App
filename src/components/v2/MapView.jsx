@@ -612,6 +612,16 @@ export default function MapView({
     setFollow(true)
   }, [geo.lat, geo.lon, mapReady, setFollow])
 
+  // === Cambio di sorgente GPS (iPad ⇄ Signal K): si torna sulla barca ===
+  const gpsSource = useRef(geo.source)
+  useEffect(() => {
+    if (geo.source === gpsSource.current) return
+    gpsSource.current = geo.source
+    setFollow(true)
+    const map = mapRef.current
+    if (mapReady && map && geo.lat != null) map.setView([geo.lat, geo.lon], map.getZoom(), { animate: false })
+  }, [geo.source, geo.lat, geo.lon, mapReady, setFollow])
+
   // === Follow boat ===
   useEffect(() => {
     if (!mapReady || !follow || geo.lat == null) return
