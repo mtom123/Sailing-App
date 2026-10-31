@@ -325,6 +325,9 @@ export default function MapView({
 
     try {
       logStep('Creating Leaflet map')
+      // Un tap col dito si muove di qualche pixel: oltre 3 (il valore di
+      // Leaflet) diventava un trascinamento e il tap si perdeva (waypoint)
+      L.Draggable.prototype.options.clickTolerance = 10
       const map = L.map(containerRef.current, {
         center: [view.center.lat, view.center.lon],
         zoom: view.zoom || 11,
@@ -492,9 +495,6 @@ export default function MapView({
         const st = useAppStore.getState()
         if (st.routeEditing) {
           addWaypoint(e.latlng.lat, e.latlng.lng)
-        } else if (st.activeDrawer && st.activeDrawer !== 'layers' && !toolsRef.current.rulerOn && !toolsRef.current.areaOn) {
-          // Tap sulla carta fuori dal menu (rotta, ancore, meteo, log): si chiude
-          st.setActiveDrawer(null)
         }
       })
 
@@ -615,6 +615,40 @@ export default function MapView({
     map.setView([geo.lat, geo.lon], Math.min(OPEN_ZOOM, map.getMaxZoom()), { animate: false })
     setFollow(true)
   }, [geo.lat, geo.lon, mapReady, setFollow])
+
+  // === Tap sulla carta fuori dal menu (rotta, ancore, meteo, log): si chiude ===
+  // Riconosciuto qui (dito giù e su, poco spostamento) e non con il click di
+  // Leaflet: sull'iPad il dito si muove di qualche pixel e Leaflet lo prende
+  // per un trascinamento. Non in modifica rotta, righello o zona offline
+  useEffect(() => {
+    const map = mapRef.current
+    if (!mapReady || !map) return undefined
+    const el = map.getContainer()
+    let start = null
+    const down = (e) => {
+      start = e.isPrimary ? { x: e.clientX, y: e.clientY, t: Date.now() } : null
+    }
+    const cancel = () => {
+      start = null
+    }
+    const up = (e) => {
+      const s = start
+      start = null
+      if (!s || !e.isPrimary || Date.now() - s.t > 500 || Math.hypot(e.clientX - s.x, e.clientY - s.y) > 12) return
+      if (e.target.closest?.('.leaflet-control, .leaflet-marker-icon, .leaflet-popup')) return
+      const st = useAppStore.getState()
+      if (st.routeEditing || toolsRef.current.rulerOn || toolsRef.current.areaOn) return
+      if (st.activeDrawer && st.activeDrawer !== 'layers') st.setActiveDrawer(null)
+    }
+    el.addEventListener('pointerdown', down)
+    el.addEventListener('pointerup', up)
+    el.addEventListener('pointercancel', cancel)
+    return () => {
+      el.removeEventListener('pointerdown', down)
+      el.removeEventListener('pointerup', up)
+      el.removeEventListener('pointercancel', cancel)
+    }
+  }, [mapReady])
 
   // === Cambio di sorgente GPS (iPad ⇄ Signal K): si torna sulla barca ===
   const gpsSource = useRef(geo.source)
