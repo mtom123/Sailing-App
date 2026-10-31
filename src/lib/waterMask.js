@@ -67,6 +67,8 @@ function loadTile(z, x, y) {
   return tiles.get(key)
 }
 
+const ringCache = new Map() // ultimi insiemi di anelli, per chiave di tasselli
+
 const tileX = (lon, n) => Math.floor(((lon + 180) / 360) * n)
 const tileY = (lat, n) => {
   const r = (lat * Math.PI) / 180
@@ -89,12 +91,19 @@ export async function waterRings(bounds, mapZoom, { oceanOnly = false } = {}) {
   const y0 = tileY(bounds.getNorth(), n)
   const y1 = tileY(bounds.getSouth(), n)
   if ((x1 - x0 + 1) * (y1 - y0 + 1) > MAX_TILES) return null
+  // Stessi tasselli → stesso array: chi disegna può saltare il ridisegno
+  const key = `${z}/${x0}-${x1}/${y0}-${y1}/${oceanOnly ? 'o' : 'a'}`
+  const hit = ringCache.get(key)
+  if (hit) return hit
   const jobs = []
   for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) jobs.push(loadTile(z, x, y))
-  return (await Promise.all(jobs))
+  const rings = (await Promise.all(jobs))
     .flatMap((t) => t.water)
     .filter((r) => !oceanOnly || r.ocean)
     .map((r) => r.ring)
+  ringCache.set(key, rings)
+  if (ringCache.size > 8) ringCache.delete(ringCache.keys().next().value)
+  return rings
 }
 
 /**

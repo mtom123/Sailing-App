@@ -20,6 +20,8 @@ import { waterRings } from './waterMask.js'
 const CANVAS_PAD = 0.25
 
 export const PANE = 'isobathPane'
+
+const builtCache = new Map() // blocchi "bx0,bx1,by0,by1" -> isobate calcolate (ultime 4)
 export const LABEL_PANE = 'isobathLabelPane'
 const MAX_BLOCKS = 30 // ~15 × 11 km l'uno: oltre, zoom troppo lontano
 const LABEL_SPACING = 280 // px tra due etichette sulla stessa linea
@@ -52,8 +54,17 @@ export const MaskedCanvas = L.Canvas.extend({
  * Test "il punto (in pixel layer) sta dentro questi anelli?" — anelli [lat, lon][].
  * Senza anelli: `fallback` per ogni punto.
  */
+// Sagoma in pixel per anelli: si ricalcola solo se cambiano gli anelli o
+// lo zoom/origine dei pixel (non a ogni spostamento)
+const ringPaths = new WeakMap() // rings -> { key, test }
+const testCtx = document.createElement('canvas').getContext('2d')
+
 export function ringsTest(map, rings, fallback) {
   if (!rings) return () => fallback
+  const origin = map.getPixelOrigin()
+  const key = `${map.getZoom()}/${origin.x}/${origin.y}`
+  const hit = ringPaths.get(rings)
+  if (hit && hit.key === key) return hit.test
   const path = new Path2D()
   for (const ring of rings) {
     ring.forEach((ll, i) => {
@@ -63,8 +74,9 @@ export function ringsTest(map, rings, fallback) {
     })
     path.closePath()
   }
-  const ctx = document.createElement('canvas').getContext('2d')
-  return (p) => ctx.isPointInPath(path, p.x, p.y, 'nonzero')
+  const test = (p) => testCtx.isPointInPath(path, p.x, p.y, 'nonzero')
+  ringPaths.set(rings, { key, test })
+  return test
 }
 
 /**
@@ -115,6 +127,7 @@ export const IsobathLayer = L.Layer.extend({
   initialize(options) {
     L.setOptions(this, options)
     this._key = null
+    this._range = null
     this._data = null
     this._lines = []
     this._waterRings = null
@@ -133,6 +146,7 @@ export const IsobathLayer = L.Layer.extend({
     this._labels = L.layerGroup().addTo(map)
     map.on('moveend', this._update, this)
     this._key = null
+    this._range = null
     this._update()
   },
 
@@ -165,6 +179,7 @@ export const IsobathLayer = L.Layer.extend({
       this._group.clearLayers()
       this._labels.clearLayers()
       this._key = null
+      this._range = null
       return
     }
     // Maschera larga quanto il canvas, griglia un po' meno
@@ -178,7 +193,12 @@ export const IsobathLayer = L.Layer.extend({
     if ((bx1 - bx0 + 1) * (by1 - by0 + 1) > MAX_BLOCKS) return
 
     const key = `${bx0},${bx1},${by0},${by1}`
-    if (key === this._key) {
+    // Zoomando avanti la griglia già calcolata copre la vista: si tiene,
+    // purché non sia molto più grande del necessario (più linee da disegnare)
+    const cur = this._range
+    const area = (bx1 - bx0 + 1) * (by1 - by0 + 1)
+    const covered = cur && bx0 >= cur[0] && bx1 <= cur[1] && by0 >= cur[2] && by1 <= cur[3]
+    if (key === this._key || (covered && (cur[1] - cur[0] + 1) * (cur[3] - cur[2] + 1) <= 4 * area)) {
       this._drawLabels()
       return
     }
@@ -188,9 +208,17 @@ export const IsobathLayer = L.Layer.extend({
     Promise.all(jobs)
       .then((list) => {
         if (req !== this._req || !this._map) return
-        const grid = mergeBlocks(list, bx0 * BLOCK, (bx1 + 1) * BLOCK - 1, by0 * BLOCK, (by1 + 1) * BLOCK - 1)
-        this._data = buildIsobaths(grid)
+        // Isobate già calcolate per questi blocchi (si torna indietro con lo zoom)
+        let data = builtCache.get(key)
+        if (!data) {
+          const grid = mergeBlocks(list, bx0 * BLOCK, (bx1 + 1) * BLOCK - 1, by0 * BLOCK, (by1 + 1) * BLOCK - 1)
+          data = buildIsobaths(grid)
+          builtCache.set(key, data)
+          if (builtCache.size > 4) builtCache.delete(builtCache.keys().next().value)
+        }
+        this._data = data
         this._key = key
+        this._range = [bx0, bx1, by0, by1]
         this._draw()
       })
       .catch((err) => console.warn('Isobate EMODnet non disponibili', err))
@@ -202,8 +230,10 @@ export const IsobathLayer = L.Layer.extend({
     waterRings(bounds, zoom)
       .then((rings) => {
         if (req !== this._maskReq || !this._map || !rings) return
-        this._waterRings = rings
-        this._setMask()
+        if (rings !== this._waterRings) {
+          this._waterRings = rings
+          this._setMask()
+        }
         this._drawLabels()
       })
       .catch((err) => console.warn('Costa OpenStreetMap non disponibile', err))
@@ -272,7 +302,17 @@ export const IsobathLayer = L.Layer.extend({
   },
 
   // Etichette solo in acqua e fuori dalle aree Shom
+  // Più richieste nello stesso spostamento (griglia, costa): un solo calcolo
   _drawLabels() {
+    if (this._labelsQueued) return
+    this._labelsQueued = true
+    requestAnimationFrame(() => {
+      this._labelsQueued = false
+      this._placeLabels()
+    })
+  },
+
+  _placeLabels() {
     const map = this._map
     if (!map) return
     const inWater = ringsTest(map, this._waterRings, true)

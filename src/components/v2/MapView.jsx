@@ -385,6 +385,7 @@ export default function MapView({
       // Copertura delle isobate di dettaglio (Shom e Regione Liguria) unita
       const coverage = { shom: null, liguria: null }
       const setCoverage = (source, rings) => {
+        if (coverage[source] === rings) return
         coverage[source] = rings
         const all = [...(coverage.shom || []), ...(coverage.liguria || [])]
         tileLayerRefs.current.isobathVector.setHdCoverage(all.length ? all : null)

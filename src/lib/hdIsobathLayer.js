@@ -92,6 +92,8 @@ export const HdIsobathLayer = L.Layer.extend({
     L.setOptions(this, options)
     this._shown = new Map() // nome tassello -> { layers, lines, cov }
     this._lines = []
+    this._cov = [] // anelli di copertura dei tasselli mostrati
+    this._sentCov = undefined
   },
 
   onAdd(map) {
@@ -113,7 +115,16 @@ export const HdIsobathLayer = L.Layer.extend({
     this._group.clearLayers()
     this._minor.clearLayers()
     this._shown.clear()
-    this.options.onCoverage(null)
+    this._cov = []
+    this._sendCoverage(null)
+  },
+
+  // Copertura alle isobate EMODnet solo quando cambia: ogni invio le fa
+  // ridisegnare, e a ogni spostamento sarebbe un ridisegno in più
+  _sendCoverage(cov) {
+    if (cov === this._sentCov) return
+    this._sentCov = cov
+    this.options.onCoverage(cov)
   },
 
   setImagery(imagery) {
@@ -134,13 +145,13 @@ export const HdIsobathLayer = L.Layer.extend({
       this._group.remove()
       this._minor.remove()
       this._labels.clearLayers()
-      this.options.onCoverage(null)
+      this._sendCoverage(null)
       return
     }
     this._group.addTo(map)
     if (map.getZoom() >= MINOR_ZOOM) this._minor.addTo(map)
     else this._minor.remove()
-    this.options.onCoverage([...this._shown.values()].flatMap((t) => t.cov))
+    this._sendCoverage(this._cov)
     const view = map.getBounds().pad(0.3)
     const { source } = this.options
     source.names(view).then((names) => {
@@ -173,11 +184,22 @@ export const HdIsobathLayer = L.Layer.extend({
     })
     this._shown.set(name, { lines, cov: tile.cov })
     this._lines = [...this._shown.values()].flatMap((t) => t.lines.filter((l) => l.strong))
-    this.options.onCoverage([...this._shown.values()].flatMap((t) => t.cov))
+    this._cov = [...this._shown.values()].flatMap((t) => t.cov)
+    this._sendCoverage(this._cov)
     this._drawLabels()
   },
 
+  // Più tasselli in arrivo insieme: un solo calcolo delle etichette
   _drawLabels() {
+    if (this._labelsQueued) return
+    this._labelsQueued = true
+    requestAnimationFrame(() => {
+      this._labelsQueued = false
+      this._placeLabels()
+    })
+  },
+
+  _placeLabels() {
     if (!this._map || this._map.getZoom() < this.options.minZoom) return
     drawDepthLabels(this._map, this._labels, this._lines, {
       halo: this.options.imagery ? IMAGERY_COLORS[2] : CHART_COLORS[2],
