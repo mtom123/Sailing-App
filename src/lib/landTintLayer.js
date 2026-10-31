@@ -13,7 +13,7 @@ import { waterRings } from './waterMask.js'
  * la carta manca (offline, zona non scaricata); il mare è lo sfondo azzurro.
  */
 
-const PAD = 0.25
+const PAD = 0.1
 const MIN_ZOOM = 8 // sotto: troppi tasselli per la costa, niente velo
 
 export const LandTintLayer = L.Layer.extend({
@@ -28,7 +28,8 @@ export const LandTintLayer = L.Layer.extend({
     const { pane, zIndex, blend } = this.options
     ensurePane(map, pane, zIndex) // velo: sopra la carta, sotto rilievo e isobate
     if (blend) map.getPane(pane).style.mixBlendMode = 'multiply'
-    this._renderer = new MaskedCanvas({ pane, padding: PAD })
+    // Velo di colore: risoluzione normale e poco margine, per la memoria dell'iPad
+    this._renderer = new MaskedCanvas({ pane, padding: PAD, lowRes: true })
     this._group = L.layerGroup().addTo(map)
     map.on('moveend', this._update, this)
     this._update()

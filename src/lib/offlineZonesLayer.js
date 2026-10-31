@@ -7,7 +7,7 @@ import { OFFLINE_EVENT, offlineZones } from './offlinePack.js'
  * rotte, larghe un miglio per lato con i waypoint arrotondati, e rettangoli
  * a tutti gli zoom), azzurro la base larga (fino a zoom 14). Le forme sono
  * piene e la trasparenza è del piano intero: dove si sovrappongono il
- * colore resta uguale invece di scurirsi.
+ * colore resta uguale invece di scurirsi. In SVG: sono poche forme.
  */
 
 const STYLES = {
@@ -35,7 +35,8 @@ export const OfflineZonesLayer = L.Layer.extend({
     for (const [level, st] of Object.entries(STYLES)) {
       ensurePane(map, st.pane, st.zIndex)
       map.getPane(st.pane).style.opacity = st.opacity
-      this._renderers[level] = L.canvas({ pane: st.pane, padding: 0.25 })
+      // SVG: poche forme, niente memoria di canvas (preziosa su iPad)
+      this._renderers[level] = L.svg({ pane: st.pane, padding: 0.1 })
     }
     this._group = L.layerGroup().addTo(map)
     this._onChange = () => this._draw()

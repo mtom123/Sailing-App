@@ -37,7 +37,28 @@ export function ensurePane(map, name, zIndex) {
 // Canvas che sa applicare maschere, disegnate per ultime: un poligono con
 // `mask: true` cancella tutto ciò che sta fuori, uno con `cut: true` tutto
 // ciò che sta dentro
+//
+// Con `lowRes: true` disegna a risoluzione normale anche sugli schermi Retina:
+// per i veli di colore (terra) il dettaglio doppio non serve e su iPad la
+// memoria dei canvas è poca (zoom veloce col pizzico = app bloccata)
 export const MaskedCanvas = L.Canvas.extend({
+  _update() {
+    if (!this.options.lowRes) return L.Canvas.prototype._update.call(this)
+    if (this._map._animatingZoom && this._bounds) return undefined
+    L.Renderer.prototype._update.call(this)
+    const b = this._bounds
+    const container = this._container
+    const size = b.getSize()
+    L.DomUtil.setPosition(container, b.min)
+    container.width = size.x
+    container.height = size.y
+    container.style.width = `${size.x}px`
+    container.style.height = `${size.y}px`
+    this._ctx.translate(-b.min.x, -b.min.y)
+    this.fire('update')
+    return undefined
+  },
+
   _fillStroke(ctx, layer) {
     const { mask, cut } = layer.options
     if (!mask && !cut) return L.Canvas.prototype._fillStroke.call(this, ctx, layer)
