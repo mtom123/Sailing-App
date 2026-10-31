@@ -28,7 +28,7 @@ export default function DepthHover({ map, mapReady }) {
       const { clientX: x, clientY: y } = e.originalEvent
       depthAt(lat, lng).then((d) => {
         if (req !== reqRef.current) return
-        setInfo(d ? { x, y, ...d } : null)
+        setInfo(d && d.reliable ? { x, y, ...d } : null) // EMODnet vicino a costa: niente
       })
     }
 

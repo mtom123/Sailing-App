@@ -229,6 +229,8 @@ export default function MapContextMenu({
             Profondità{' '}
             {depth === undefined ? (
               '…'
+            ) : depth && !depth.reliable ? (
+              '— (vicino a costa o in porto: dato EMODnet non affidabile)'
             ) : depth ? (
               <>
                 <span className="font-mono text-xs font-semibold text-paper">{formatDepth(depth.depth)} m</span>{' '}
