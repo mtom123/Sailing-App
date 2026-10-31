@@ -14,6 +14,8 @@ import { logStep, failStep } from './lib/debugLogger.js'
 
 // Hooks riusabili
 import useGeolocation from './hooks/useGeolocation.js'
+import useSignalK from './hooks/useSignalK.js'
+import { boatGeo, liveDepth } from './lib/boatData.js'
 import useOpenMeteo from './hooks/useOpenMeteo.js'
 import useWindField from './hooks/useWindField.js'
 import useAIS from './hooks/useAIS.js'
@@ -148,7 +150,7 @@ function useRouteAdapter(geo) {
 
 export default function App() {
   logStep('App component mounting')
-  const geo = useGeolocation()
+  const phoneGeo = useGeolocation()
   const {
     view,
     leftPanelOpen,
@@ -161,6 +163,7 @@ export default function App() {
     layers: { wind: windLayerOn, ais: aisLayerOn, rain: rainLayerOn },
     aisMode,
     wsUrl,
+    signalK,
     aishubUser,
     windAlarm,
     anchorWatch,
@@ -175,6 +178,14 @@ export default function App() {
     routeOptions: storedRouteOptions,
     setRouteOptions,
   } = useAppStore()
+
+  // Strumenti di bordo (Signal K): GPS della barca al posto di quello
+  // dell'iPad, se scelto; profondità vera e vento per pannello e carta
+  const sk = useSignalK(signalK)
+  const geoKey = [phoneGeo.lat, phoneGeo.lon, phoneGeo.sog, phoneGeo.cog, phoneGeo.ts, phoneGeo.error, sk.data.lat, sk.data.lon, sk.data.sog, sk.data.cog, sk.data.posTs, signalK.useGps].join('|')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const geo = useMemo(() => boatGeo(phoneGeo, sk.data, signalK.useGps), [geoKey])
+  const depthLive = liveDepth(sk.data, boat)
 
   // Wake lock
   useEffect(() => {
@@ -213,13 +224,21 @@ export default function App() {
   const grib = gribData?.grib || null
   const currentField = gribData?.currentField || null
   const rainTileUrl = useRainRadar(rainLayerOn)
-  const { vessels, status: aisStatus } = useAIS({
+  const { vessels: aisVessels, status: aisOwnStatus } = useAIS({
     mode: aisMode,
     wsUrl,
     aishubUser,
     center: view.center,
     bounds: view.bounds,
   })
+  // AIS da Signal K (A027+): stesse navi, dal server di bordo
+  const vessels = aisMode === 'signalk' ? sk.vessels : aisVessels
+  const aisStatus =
+    aisMode === 'signalk'
+      ? sk.status.state === 'connected'
+        ? { state: 'connected', detail: `Signal K · ${Object.keys(sk.vessels).length} navi` }
+        : { state: sk.status.state === 'off' ? 'error' : sk.status.state, detail: sk.status.state === 'off' ? 'Attiva Signal K negli strumenti di bordo' : sk.status.detail }
+      : aisOwnStatus
 
   // Route + routing
   const route = useRouteAdapter(geo)
@@ -354,7 +373,7 @@ export default function App() {
       {/* LEFT panel (instruments) */}
       {leftPanelOpen && (
         <div className="h-full w-[calc(280px*var(--fs))] min-w-[200px] max-w-[45%] flex-none" style={{ minHeight: 0 }}>
-          <InstrumentPanel geo={geo} weather={weather} sun={sun} moon={moon} />
+          <InstrumentPanel geo={geo} weather={weather} sun={sun} moon={moon} boatData={sk.data} depthLive={depthLive} />
         </div>
       )}
 
@@ -367,6 +386,7 @@ export default function App() {
             windField={windField}
             currentField={currentField}
             vessels={vessels}
+            depthLive={depthLive}
             anchorages={anchorages}
             route={route}
             parks={parks}
@@ -575,6 +595,11 @@ export default function App() {
         aishubUser={aishubUser}
         onAishubUserChange={useAppStore.getState().setAishubUser}
         aisStatus={aisStatus}
+        signalK={signalK}
+        onSignalKChange={useAppStore.getState().setSignalK}
+        signalKStatus={sk.status}
+        signalKData={sk.data}
+        signalKVessels={Object.keys(sk.vessels).length}
         windAlarm={{
           on: windAlarm.on,
           setOn: (v) => useAppStore.getState().setWindAlarm({ on: v }),

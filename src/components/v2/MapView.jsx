@@ -49,15 +49,19 @@ import {
 // Marker HTML helpers — Leaflet divIcon
 // ============================================================
 // Profondità a centrobarca, accanto alla freccia (non ruota con la rotta).
-// Shom (griglia 10 m): valore e rosso sotto pescaggio + margine. EMODnet
-// (~115 m): "≈" solo al largo, mai rosso; vicino alla costa e in porto "— m"
-// grigio, perché il dato non vale per la barca
+// Ecoscandaglio (Signal K): valore vero, rosso sotto la soglia. Shom (griglia
+// 10 m): valore e rosso sotto pescaggio + margine. EMODnet (~115 m): "≈"
+// solo al largo, mai rosso; vicino alla costa e in porto "— m" grigio
 function boatDepthEl(info, warnBelowM) {
   const shown = info && info.reliable
-  const shallow = shown && info.source === 'Shom' && info.depth < warnBelowM
+  const shallow = shown && (info.source === 'Eco' ? info.shallow : info.source === 'Shom' && info.depth < warnBelowM)
   const bg = shallow ? '#FF5252' : 'rgb(var(--rgb-abyss) / 0.9)'
   const fg = shallow ? '#0a1620' : shown ? 'var(--color-paper)' : 'var(--color-fog)'
-  const value = shown ? `${info.source === 'Shom' ? '' : '≈'}${formatDepth(info.depth)} m` : '— m'
+  const value = !shown
+    ? '— m'
+    : info.source === 'Eco'
+      ? `${formatDepth(info.depth)} m<span style="font-size:0.6em;margin-left:5px;opacity:0.75">ECO</span>`
+      : `${info.source === 'Shom' ? '' : '≈'}${formatDepth(info.depth)} m`
   return L.divIcon({
     className: 'timone-marker',
     html: `<div style="white-space:nowrap;background:${bg};color:${fg};border:1.5px solid ${shallow ? '#0a1620' : fg};border-radius:6px;padding:1px 7px;font:700 calc(15px * var(--fs)) var(--font-mono);box-shadow:0 2px 6px rgba(0,0,0,0.5)">${value}</div>`,
@@ -220,6 +224,7 @@ export default function MapView({
   trackSegments = [],
   trackRec = null, // { paused, distanceNm } mentre si registra
   offlineDl = null, // % della carta offline in scaricamento
+  depthLive = null, // { depth, shallow } dall'ecoscandaglio (Signal K)
   shownTracks = [],
   mob,
   routeOptions,
@@ -652,15 +657,17 @@ export default function MapView({
 
   useEffect(() => {
     const map = mapRef.current
-    if (!mapReady || !map || geo.lat == null || boatDepth === undefined) return
-    const icon = boatDepthEl(boatDepth, boatCfg.draftM + boatCfg.safetyMarginM)
+    if (!mapReady || !map || geo.lat == null || (boatDepth === undefined && !depthLive)) return
+    // L'ecoscandaglio, quando c'è, vince sulla carta
+    const live = depthLive && { depth: depthLive.depth, source: 'Eco', reliable: true, shallow: depthLive.shallow }
+    const icon = boatDepthEl(live || boatDepth, boatCfg.draftM + boatCfg.safetyMarginM)
     if (!markersRef.current.depth) {
       markersRef.current.depth = L.marker([geo.lat, geo.lon], { icon, interactive: false, zIndexOffset: 990 }).addTo(map)
     } else {
       markersRef.current.depth.setLatLng([geo.lat, geo.lon])
       markersRef.current.depth.setIcon(icon)
     }
-  }, [geo.lat, geo.lon, boatDepth, boatCfg.draftM, boatCfg.safetyMarginM, mapReady])
+  }, [geo.lat, geo.lon, boatDepth, depthLive?.depth, depthLive?.shallow, boatCfg.draftM, boatCfg.safetyMarginM, mapReady])
 
   // === MOB marker ===
   useEffect(() => {

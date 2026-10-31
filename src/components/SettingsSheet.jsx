@@ -1,4 +1,4 @@
-import { Radio, Ship, Wifi, X, Sailboat, Gauge, Database, Activity, Upload, FileText, Trash, Type } from 'lucide-react'
+import { Radio, Ship, Wifi, X, Sailboat, Gauge, Database, Activity, Upload, FileText, Trash, Type, Cable } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { useAppStore } from '../store/useAppStore.js'
 import { BOAT_LIBRARY, registerCustomPolar, listAvailablePolars } from '../routing/polarSolver.js'
@@ -14,7 +14,22 @@ const AIS_MODES = [
   { id: 'sim', label: 'DEMO', icon: Ship, hint: 'Flotta simulata per provare l\'app' },
   { id: 'nmea', label: 'NMEA', icon: Wifi, hint: 'AIS reale via bridge WebSocket di bordo' },
   { id: 'aishub', label: 'AISHUB', icon: Radio, hint: 'Feed AISHub con username personale' },
+  { id: 'signalk', label: 'SIGNAL K', icon: Cable, hint: 'AIS dal server di bordo (A027+ via Raspberry)' },
 ]
+
+const SK_DEMO = 'wss://demo.signalk.org'
+
+// Cosa arriva dagli strumenti, in breve
+function signalKSummary(data, vessels) {
+  const parts = []
+  if (data.lat != null) parts.push('GPS')
+  if (data.depthKeel != null || data.depthTransducer != null || data.depthSurface != null) parts.push('profondità')
+  if (data.stw != null) parts.push('velocità')
+  if (data.aws != null) parts.push('vento')
+  if (data.hdg != null || data.hdgMag != null) parts.push('prua')
+  if (vessels) parts.push(`${vessels} navi AIS`)
+  return parts.length ? parts.join(' · ') : 'collegato, in attesa dei dati'
+}
 
 function Section({ title, icon: Icon, children }) {
   return (
@@ -46,6 +61,11 @@ export default function SettingsSheet({
   aishubUser,
   onAishubUserChange,
   aisStatus,
+  signalK,
+  onSignalKChange,
+  signalKStatus,
+  signalKData,
+  signalKVessels,
   windAlarm,
   weatherError,
   gribStatus,
@@ -324,6 +344,68 @@ export default function SettingsSheet({
               Dove l'app ha l'ordinanza balneare della Capitaneria (Liguria, Toscana, Sardegna, Catania, Eolie, Licata,
               Porto Empedocle, Lazio sud, Soverato) usa le sue distanze, stagione e orari; altrove queste. Francia e
               Corsica: 300 m, max 5 nodi.
+            </div>
+          </Section>
+
+          <Section title="Strumenti di bordo (Signal K)" icon={Cable}>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => onSignalKChange({ enabled: !signalK.enabled })}
+                className={`h-7 w-12 flex-none rounded-full border transition-colors ${
+                  signalK.enabled ? 'border-phos bg-phos/25' : 'border-line bg-surface'
+                }`}
+              >
+                <span
+                  className={`block h-5 w-5 rounded-full transition-transform ${
+                    signalK.enabled ? 'translate-x-6 bg-phos' : 'translate-x-1 bg-fog'
+                  }`}
+                />
+              </button>
+              <span className="text-[calc(11px*var(--fs))] text-paper">
+                {signalK.enabled ? 'Collegamento attivo' : 'Spento'}
+              </span>
+            </div>
+            <input
+              type="text"
+              value={signalK.url}
+              onChange={(e) => onSignalKChange({ url: e.target.value })}
+              placeholder="wss://openplotter.local:3443"
+              autoCapitalize="none"
+              autoCorrect="off"
+              className="mt-2 w-full rounded-md border border-line bg-surface px-2.5 py-2.5 text-xs text-paper outline-none focus:border-phos"
+            />
+            <div className="mt-1.5 flex gap-1.5">
+              <button
+                type="button"
+                onClick={() => onSignalKChange({ url: SK_DEMO, enabled: true })}
+                className="rounded-md border border-line bg-surface px-2.5 py-1.5 text-[calc(10px*var(--fs))] font-semibold tracking-widest text-fog hover:text-paper"
+              >
+                PROVA CON LA DEMO
+              </button>
+              <button
+                type="button"
+                onClick={() => onSignalKChange({ useGps: !signalK.useGps })}
+                className={`rounded-md border px-2.5 py-1.5 text-[calc(10px*var(--fs))] font-semibold tracking-widest ${
+                  signalK.useGps ? 'border-phos bg-phos/10 text-phos' : 'border-line bg-surface text-fog'
+                }`}
+              >
+                {signalK.useGps ? '✓ ' : ''}USA GPS DI BORDO
+              </button>
+            </div>
+            <div
+              className={`mt-2 text-[calc(10px*var(--fs))] leading-snug ${
+                signalKStatus.state === 'error' ? 'text-danger' : signalKStatus.state === 'connected' ? 'text-phos' : 'text-fog'
+              }`}
+            >
+              {signalKStatus.state === 'connected' && `Collegato: ${signalKSummary(signalKData, signalKVessels)}`}
+              {signalKStatus.state === 'connecting' && 'Connessione…'}
+              {signalKStatus.state === 'error' && signalKStatus.detail}
+            </div>
+            <div className="mt-1 text-[calc(9px*var(--fs))] leading-relaxed text-fog">
+              Raspberry Pi con Signal K (o OpenPlotter) collegato al Wi-Fi del Quark-elec A027+ (TCP 192.168.1.100:2000).
+              Sull'iPad apri una volta l'indirizzo https del Raspberry in Safari e accetta il certificato. La demo è una barca in Finlandia:
+              con "Usa GPS di bordo" la carta ci salta.
             </div>
           </Section>
 

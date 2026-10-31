@@ -4,6 +4,7 @@ import WindCompass from './WindCompass.jsx'
 import ForecastChart from './ForecastChart.jsx'
 import TideChart from './TideChart.jsx'
 import { cardinal, formatCoord, formatDeg } from '../lib/geo.js'
+import { trueWind } from '../lib/boatData.js'
 
 /*
  * Sidebar sinistra: strumenti di navigazione.
@@ -30,6 +31,47 @@ function DataCell({ label, value }) {
     <div className="border border-line bg-panel px-2 py-1">
       <div className="label">{label}</div>
       <div className="text-sm font-bold text-paper tabular-nums">{value}</div>
+    </div>
+  )
+}
+
+// Strumenti di bordo via Signal K (A027+ ← SeaTalk1): solo se arrivano dati
+function BoatInstruments({ data, depthLive }) {
+  if (!data) return null
+  const tw = trueWind(data)
+  const hasAny = depthLive || data.stw != null || data.aws != null
+  if (!hasAny) return null
+  const side = (a) => (a < 0 ? 'sn' : 'dr')
+  return (
+    <div className="px-1.5 pb-1.5">
+      <div className="label px-1.5 pb-1">Strumenti di bordo</div>
+      <div className="grid grid-cols-2 gap-1.5">
+        <div className={`border px-2 py-1 ${depthLive?.shallow ? 'border-danger bg-danger/15' : 'border-line bg-panel'}`}>
+          <div className="label">Profondità</div>
+          <div className={`text-[calc(22px*var(--fs))] font-bold leading-tight tabular-nums ${depthLive?.shallow ? 'text-danger' : 'text-phos'}`}>
+            {depthLive ? `${depthLive.depth.toFixed(1).replace('.', ',')} m` : '--'}
+          </div>
+          {depthLive && <div className="text-[calc(9px*var(--fs))] text-fog">sotto {depthLive.ref}</div>}
+        </div>
+        <div className="border border-line bg-panel px-2 py-1">
+          <div className="label">Vel. acqua</div>
+          <div className="text-[calc(22px*var(--fs))] font-bold leading-tight tabular-nums text-paper">
+            {data.stw != null ? `${data.stw.toFixed(1).replace('.', ',')} kn` : '--'}
+          </div>
+        </div>
+        <DataCell
+          label="Vento app."
+          value={data.aws != null && data.awa != null ? `${data.aws.toFixed(0)} kn · ${Math.abs(data.awa).toFixed(0)}° ${side(data.awa)}` : '--'}
+        />
+        <DataCell
+          label="Vento reale"
+          value={
+            tw
+              ? `${tw.tws.toFixed(0)} kn · ${tw.twd != null ? `${formatDeg(tw.twd)}° ${cardinal(tw.twd)}` : `${Math.abs(tw.twa).toFixed(0)}° ${side(tw.twa)}`}`
+              : '--'
+          }
+        />
+      </div>
     </div>
   )
 }
@@ -89,7 +131,7 @@ function Position({ geo, gpsOk }) {
   )
 }
 
-export default function InstrumentPanel({ geo, weather, sun, moon }) {
+export default function InstrumentPanel({ geo, weather, sun, moon, boatData, depthLive }) {
   const gpsOk = geo.lat != null && !geo.error
   const { wind, wave, hourly, pressure } = weather
   const trend = pressureTrendGlyph(pressure?.trend3h)
@@ -101,7 +143,7 @@ export default function InstrumentPanel({ geo, weather, sun, moon }) {
         <span className="flex items-center gap-1.5">
           <Satellite size={14} className={gpsOk ? 'text-phos' : 'text-danger'} />
           <span className={`label ${gpsOk ? '!text-phos' : '!text-danger'}`}>
-            {gpsOk ? 'GPS FIX' : 'NO GPS'}
+            {gpsOk ? (geo.source === 'boat' ? 'GPS BARCA' : 'GPS FIX') : 'NO GPS'}
           </span>
         </span>
       </div>
@@ -120,6 +162,7 @@ export default function InstrumentPanel({ geo, weather, sun, moon }) {
       </div>
 
       <Position geo={geo} gpsOk={gpsOk} />
+      <BoatInstruments data={boatData} depthLive={depthLive} />
 
       <div className="panel-scroll min-h-0 flex-1">
         <div className="px-3 py-2">

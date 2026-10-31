@@ -71,6 +71,9 @@ export const useAppStore = create(
       setAisMode: (aisMode) => set({ aisMode }),
       wsUrl: 'ws://192.168.4.1:8484',
       setWsUrl: (wsUrl) => set({ wsUrl }),
+      // Strumenti di bordo via Signal K (Raspberry + Quark-elec A027+)
+      signalK: { enabled: false, url: '', useGps: true },
+      setSignalK: (patch) => set((s) => ({ signalK: { ...s.signalK, ...patch } })),
       aishubUser: '',
       setAishubUser: (aishubUser) => set({ aishubUser }),
 
@@ -167,6 +170,7 @@ export const useAppStore = create(
         layers: { ...current.layers, ...persisted?.layers },
         boat: { ...current.boat, ...persisted?.boat },
         coastBand: { ...current.coastBand, ...persisted?.coastBand },
+        signalK: { ...current.signalK, ...persisted?.signalK },
       }),
       partialize: (s) => ({
         baseStyle: s.baseStyle,
@@ -177,6 +181,7 @@ export const useAppStore = create(
         planSpeed: s.planSpeed,
         aisMode: s.aisMode,
         wsUrl: s.wsUrl,
+        signalK: s.signalK,
         aishubUser: s.aishubUser,
         windAlarm: s.windAlarm,
         dayTheme: s.dayTheme,
