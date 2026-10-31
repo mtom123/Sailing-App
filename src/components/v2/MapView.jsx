@@ -1431,12 +1431,14 @@ function WindCanvas({ map, field }) {
     let raf = null
     let lastW = 0
     let lastH = 0
+    // Colori pieni per intensità, ben visibili sul mare chiaro (prima verdi
+    // chiari su verde-azzurro): blu, verde, arancio, rosso, viola oltre 28 kn
     const colorFor = (speed) => {
-      if (speed < 8) return '#5EE6C8'
-      if (speed < 14) return '#7FE0A8'
-      if (speed < 20) return '#F5A623'
-      if (speed < 28) return '#FF8A4A'
-      return '#FF5252'
+      if (speed < 8) return '#1F6FE0'
+      if (speed < 14) return '#0B9B4A'
+      if (speed < 20) return '#F08C00'
+      if (speed < 28) return '#E2361E'
+      return '#B5179E'
     }
     const draw = () => {
       raf = null
@@ -1473,19 +1475,35 @@ function WindCanvas({ map, field }) {
           ctx.save()
           ctx.translate(px, py)
           ctx.rotate(((best.dir + 180) * Math.PI) / 180)
+          // Prima un bordo scuro, poi il colore: si stacca da qualunque fondo
+          const shaft = () => {
+            ctx.beginPath()
+            ctx.moveTo(0, len / 2)
+            ctx.lineTo(0, -len / 2 + 8)
+          }
+          const head = () => {
+            ctx.beginPath()
+            ctx.moveTo(0, -len / 2 - 1)
+            ctx.lineTo(-6.5, -len / 2 + 10)
+            ctx.lineTo(6.5, -len / 2 + 10)
+            ctx.closePath()
+          }
+          ctx.globalAlpha = 0.95
+          ctx.lineJoin = 'round'
+          ctx.lineCap = 'round'
+          ctx.strokeStyle = 'rgba(10, 22, 32, 0.75)'
+          ctx.lineWidth = 5
+          shaft()
+          ctx.stroke()
+          head()
+          ctx.lineWidth = 3
+          ctx.stroke()
           ctx.strokeStyle = colorFor(best.speed)
           ctx.fillStyle = colorFor(best.speed)
-          ctx.globalAlpha = 0.8
-          ctx.lineWidth = 2
-          ctx.beginPath()
-          ctx.moveTo(0, len / 2)
-          ctx.lineTo(0, -len / 2 + 7)
+          ctx.lineWidth = 2.6
+          shaft()
           ctx.stroke()
-          ctx.beginPath()
-          ctx.moveTo(0, -len / 2)
-          ctx.lineTo(-5, -len / 2 + 9)
-          ctx.lineTo(5, -len / 2 + 9)
-          ctx.closePath()
+          head()
           ctx.fill()
           ctx.restore()
         }
