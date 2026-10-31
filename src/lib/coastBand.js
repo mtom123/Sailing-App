@@ -141,6 +141,7 @@ function loadDem(x, y) {
         const ctx = c.getContext('2d', { willReadFrequently: true })
         ctx.drawImage(img, 0, 0)
         const d = ctx.getImageData(0, 0, 256, 256).data
+        c.width = c.height = 0 // Safari iOS: libera subito la memoria dei canvas
         const h = new Float32Array(256 * 256)
         for (let i = 0; i < h.length; i++) h[i] = d[i * 4] * 256 + d[i * 4 + 1] + d[i * 4 + 2] / 256 - 32768
         resolve(h)
@@ -244,6 +245,8 @@ async function analyze(bounds, res, cfg, maxTiles) {
   ctx.lineWidth = (2 * BEACH_NEAR_M * m) / res
   ctx.stroke()
   const beachA = ctx.getImageData(0, 0, w, h).data
+  // Safari iOS ha un limite di memoria per i canvas: oltre, li disegna neri
+  canvas.width = canvas.height = 0
 
   const harbors = features.harbors.map(toPx)
   const harborR2 = ((HARBOR_FREE_M * m) / res) ** 2
@@ -391,6 +394,7 @@ export async function coastBandLines(bounds, res, cfg = BAND_DEFAULTS) {
       }
     }
   }
+  canvas.width = canvas.height = 0 // Safari iOS: libera la memoria dei canvas
   return lines
 }
 

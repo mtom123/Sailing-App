@@ -50,7 +50,7 @@ export const LiguriaHabitatLayer = L.Layer.extend({
       pane.style.zIndex = 245 // sopra il rilievo Shom, sotto le isobate
       pane.style.pointerEvents = 'none'
     }
-    this._renderer = L.canvas({ pane: PANE, padding: 0.5 })
+    this._renderer = L.canvas({ pane: PANE, padding: 0.25 })
     this._group = L.layerGroup()
     this._drawn = new Set() // id dei poligoni già sulla mappa
     map.on('moveend', this._update, this)

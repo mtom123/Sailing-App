@@ -21,7 +21,9 @@ export const OrdinancesLayer = L.Layer.extend({
   },
 
   onAdd(map) {
-    this._renderer = L.canvas({ padding: 0.2 })
+    // SVG, non canvas: su iPad i canvas grandi quanto la mappa esauriscono la
+    // memoria di Safari e la carta diventa nera
+    this._renderer = L.svg({ padding: 0.2 })
     this._group = L.layerGroup().addTo(map)
     map.on('moveend', this._update, this)
     this._update()

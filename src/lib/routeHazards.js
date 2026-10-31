@@ -66,6 +66,7 @@ async function waterRaster(box, res) {
   }
   ctx.fill('nonzero') // tasselli vicini si sovrappongono
   const alpha = ctx.getImageData(0, 0, w, h).data
+  canvas.width = canvas.height = 0 // Safari iOS: libera subito la memoria dei canvas
   return (x, y) => {
     const c = Math.floor((x - minX) / res)
     const r = Math.floor((maxY - y) / res)

@@ -49,7 +49,10 @@ export const useAppStore = create(
 
       // === Night mode ===
       nightMode: false,
-      setNightMode: (nightMode) => set({ nightMode }),
+      // Notte e tema giorno (alto contrasto al sole) si escludono
+      setNightMode: (nightMode) => set(nightMode ? { nightMode, dayTheme: false } : { nightMode }),
+      dayTheme: false,
+      setDayTheme: (dayTheme) => set(dayTheme ? { dayTheme, nightMode: false } : { dayTheme }),
 
       // === Time scrubber ===
       timeOffset: 0, // ms offset from now, -12h..+72h
@@ -172,6 +175,7 @@ export const useAppStore = create(
         wsUrl: s.wsUrl,
         aishubUser: s.aishubUser,
         windAlarm: s.windAlarm,
+        dayTheme: s.dayTheme,
         anchorRadius: s.anchorRadius,
       }),
     }

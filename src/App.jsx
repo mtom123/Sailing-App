@@ -324,6 +324,12 @@ export default function App() {
 
   const gpsOk = geo.lat != null
 
+  // Tema giorno ad alto contrasto: classe su <html>, cambia le variabili dei colori
+  const dayTheme = useAppStore((s) => s.dayTheme)
+  useEffect(() => {
+    document.documentElement.classList.toggle('theme-day', dayTheme)
+  }, [dayTheme])
+
   // Dove si è ora (GPS): zone vietate/militari/AMP e fascia dalla costa
   const gpsAlerts = useGpsAlerts(geo)
   // Fascia dalla costa dove si è ancorati (o dove si è ora)

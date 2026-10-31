@@ -6,6 +6,7 @@
  * a cui appartengono è quella col nome noto che le contiene.
  */
 import { AMP_PAGES, AMP_RULES } from '../data/ampRules.js'
+import { inArea } from './protectedAreas.js'
 
 export function ampRuleFor(name) {
   return (name && AMP_RULES.find((r) => r.match.test(name))) || null
@@ -19,24 +20,26 @@ export function zoneLetter(name) {
 
 const bboxArea = ([s, w, n, e]) => (n - s) * (e - w)
 
+// Punti campione dell'area: alcuni vertici del primo anello (le zone sono
+// spesso fasce strette lungo costa: il loro baricentro cade a terra)
+function samplePoints(area) {
+  const ring = area.rings[0]
+  const step = Math.max(1, Math.floor(ring.length / 15))
+  return ring.filter((_, i) => i % step === 0)
+}
+
 /** Regola e zona per un'area OSM, cercando l'area marina che la contiene */
 export function ampContext(area, areas = []) {
   const zone = zoneLetter(area.name)
   let rule = ampRuleFor(area.name)
   if (!rule) {
-    const [s, w, n, e] = area.bbox
-    const eps = 0.002
+    // L'area marina che contiene più vertici della zona (a parità, la più piccola)
+    const pts = samplePoints(area)
     const parent = areas
-      .filter(
-        (p) =>
-          p !== area &&
-          ampRuleFor(p.name) &&
-          p.bbox[0] <= s + eps &&
-          p.bbox[1] <= w + eps &&
-          p.bbox[2] >= n - eps &&
-          p.bbox[3] >= e - eps
-      )
-      .sort((x, y) => bboxArea(x.bbox) - bboxArea(y.bbox))[0]
+      .filter((p) => p !== area && ampRuleFor(p.name))
+      .map((p) => ({ p, n: pts.filter(([la, lo]) => inArea(p, la, lo)).length }))
+      .filter((x) => x.n > pts.length / 3)
+      .sort((x, y) => y.n - x.n || bboxArea(x.p.bbox) - bboxArea(y.p.bbox))[0]?.p
     rule = parent ? ampRuleFor(parent.name) : null
   }
   return { rule, zone }
@@ -60,7 +63,7 @@ export function zoneSummary(rule, zone) {
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
 
-const list = (items, color = '#C9D4DC') =>
+const list = (items, color = 'var(--color-paper)') =>
   `<ul style="margin:2px 0 0 14px;padding:0;font-size:11px;color:${color}">${items.map((i) => `<li style="margin:1px 0">${esc(i)}</li>`).join('')}</ul>`
 
 /**
@@ -76,18 +79,18 @@ export function ampPopupHTML(area, { rule, zone }) {
     const zr = rule.zones[z]
     if (!zr) continue
     sections.push(
-      `<div style="margin-top:5px;font-size:11px;font-weight:600;color:${z === 'A' ? '#E040FB' : '#F5A623'}">Zona ${z}${zr.label ? ` · ${esc(zr.label)}` : ''}</div>${list(zr.rules)}`
+      `<div style="margin-top:5px;font-size:11px;font-weight:600;color:${z === 'A' || z === 'MA' ? '#C026D3' : 'var(--color-warn)'}">Zona ${z}${zr.label ? ` · ${esc(zr.label)}` : ''}</div>${list(zr.rules)}`
     )
   }
   if (rule.general?.length) {
-    sections.push(`<div style="margin-top:5px;font-size:11px;font-weight:600;color:#8FA0AE">In tutta l'area</div>${list(rule.general, '#8FA0AE')}`)
+    sections.push(`<div style="margin-top:5px;font-size:11px;font-weight:600;color:var(--color-fog)">In tutta l'area</div>${list(rule.general, 'var(--color-fog)')}`)
   }
   const source = rule.source
-    ? `<a href="${esc(rule.source)}" target="_blank" rel="noopener" style="color:#5EE6C8">${esc(rule.edition)}</a>`
+    ? `<a href="${esc(rule.source)}" target="_blank" rel="noopener" style="color:var(--color-phos)">${esc(rule.edition)}</a>`
     : esc(rule.edition || '')
   return `<div style="min-width:220px;max-width:300px;max-height:340px;overflow-y:auto">
-    <div style="font-weight:600;color:#E8F0F5;font-size:13px">${esc(title)}</div>
+    <div style="font-weight:600;color:var(--color-paper);font-size:13px">${esc(title)}</div>
     ${sections.join('')}
-    <div style="margin-top:6px;font-size:10px;color:#5C6B78">Fonte: ${source}. Sintesi: fanno fede il testo, le ordinanze e i disciplinari dell'ente gestore${rule.manager ? ` (${esc(rule.manager)})` : ''}.</div>
+    <div style="margin-top:6px;font-size:10px;color:var(--color-fog-dim)">Fonte: ${source}. Sintesi: fanno fede il testo, le ordinanze e i disciplinari dell'ente gestore${rule.manager ? ` (${esc(rule.manager)})` : ''}.</div>
   </div>`
 }

@@ -64,19 +64,32 @@ body,
    Glassmorphism panels — pannelli galleggianti HUD
    ============================================================ */
 .glass {
-  background: rgba(18, 42, 58, 0.78);
+  background: rgb(var(--rgb-surface) / 0.78);
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
-  border: 1px solid rgba(46, 122, 158, 0.18);
+  border: 1px solid rgb(var(--rgb-line-bright) / 0.18);
   box-shadow: var(--shadow-panel);
 }
 
 .glass-strong {
-  background: rgba(10, 22, 32, 0.92);
+  background: rgb(var(--rgb-abyss) / 0.92);
   backdrop-filter: blur(24px) saturate(160%);
   -webkit-backdrop-filter: blur(24px) saturate(160%);
-  border: 1px solid rgba(46, 122, 158, 0.25);
+  border: 1px solid rgb(var(--rgb-line-bright) / 0.25);
   box-shadow: var(--shadow-panel);
+}
+
+/* Tema giorno (sole): pannelli quasi opachi e bordi netti, il contrasto
+   conta più della trasparenza */
+.theme-day .glass {
+  background: rgb(var(--rgb-surface) / 0.96);
+  border-color: rgb(var(--rgb-line-bright) / 0.7);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
+.theme-day .glass-strong {
+  background: rgb(var(--rgb-surface) / 0.98);
+  border-color: rgb(var(--rgb-line-bright) / 0.8);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
 
 /* ============================================================
@@ -119,7 +132,7 @@ body,
 }
 
 .leaflet-control-attribution {
-  background: rgba(10, 22, 32, 0.7) !important;
+  background: rgb(var(--rgb-abyss) / 0.7) !important;
   color: var(--color-fog-dim) !important;
   font-size: 9px !important;
   border-radius: 6px 0 0 0 !important;
@@ -130,8 +143,8 @@ body,
 }
 
 .leaflet-bar {
-  background: rgba(18, 42, 58, 0.92) !important;
-  border: 1px solid rgba(46, 122, 158, 0.2) !important;
+  background: rgb(var(--rgb-surface) / 0.92) !important;
+  border: 1px solid rgb(var(--rgb-line-bright) / 0.2) !important;
   border-radius: 10px !important;
   overflow: hidden;
   box-shadow: var(--shadow-hud) !important;
@@ -143,14 +156,14 @@ body,
   height: 40px !important;
   line-height: 40px !important;
   font-size: 20px !important;
-  border-bottom: 1px solid rgba(46, 122, 158, 0.2) !important;
+  border-bottom: 1px solid rgb(var(--rgb-line-bright) / 0.2) !important;
 }
 .leaflet-bar a:hover {
   background: rgba(94, 230, 200, 0.1) !important;
 }
 
 .leaflet-popup-content-wrapper {
-  background: rgba(10, 22, 32, 0.95) !important;
+  background: rgb(var(--rgb-abyss) / 0.95) !important;
   color: var(--color-paper) !important;
   border: 1px solid var(--color-line-bright);
   border-radius: var(--radius-md) !important;
@@ -163,7 +176,7 @@ body,
   line-height: 1.5;
 }
 .leaflet-popup-tip {
-  background: rgba(10, 22, 32, 0.95) !important;
+  background: rgb(var(--rgb-abyss) / 0.95) !important;
   border: 1px solid var(--color-line-bright);
 }
 .leaflet-popup-close-button {
@@ -180,7 +193,7 @@ body,
 
 /* Leg label (route distance + bearing) */
 .timone-leg-label {
-  background: rgba(10, 22, 32, 0.85) !important;
+  background: rgb(var(--rgb-abyss) / 0.85) !important;
   color: var(--color-phos) !important;
   border: 1px solid var(--color-line);
   border-radius: 4px;
@@ -195,7 +208,7 @@ body,
 .timone-band-label span {
   display: inline-block;
   transform: translate(-50%, -50%);
-  background: rgba(10, 22, 32, 0.8);
+  background: rgb(var(--rgb-abyss) / 0.8);
   border-radius: 3px;
   padding: 1px 4px;
   font: bold 9px ui-monospace, monospace;

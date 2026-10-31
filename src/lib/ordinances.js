@@ -68,9 +68,9 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 export function ordinanceHTML(o) {
   const date = new Date(o.date).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
   return `<div style="min-width:180px;max-width:260px">
-    <div style="font-weight:600;color:#E8F0F5;font-size:12px;margin-bottom:3px">${esc(o.title)}</div>
-    <div style="font-size:11px;color:#8FA0AE">${esc(o.office)}</div>
-    <div style="font-size:11px;color:#8FA0AE">Ord. ${esc(o.n)} · ${date}${o.types.length ? ` · ${esc(o.types.join(', '))}` : ''}</div>
-    ${o.url ? `<a href="${esc(o.url)}" target="_blank" rel="noopener" style="display:inline-block;margin-top:4px;font-size:11px;color:#5EE6C8">Apri l'ordinanza (PDF)</a>` : ''}
+    <div style="font-weight:600;color:var(--color-paper);font-size:12px;margin-bottom:3px">${esc(o.title)}</div>
+    <div style="font-size:11px;color:var(--color-fog)">${esc(o.office)}</div>
+    <div style="font-size:11px;color:var(--color-fog)">Ord. ${esc(o.n)} · ${date}${o.types.length ? ` · ${esc(o.types.join(', '))}` : ''}</div>
+    ${o.url ? `<a href="${esc(o.url)}" target="_blank" rel="noopener" style="display:inline-block;margin-top:4px;font-size:11px;color:var(--color-phos)">Apri l'ordinanza (PDF)</a>` : ''}
   </div>`
 }

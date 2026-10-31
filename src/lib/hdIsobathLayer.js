@@ -86,7 +86,7 @@ export const HdIsobathLayer = L.Layer.extend({
   onAdd(map) {
     ensurePane(map, PANE, 250)
     ensurePane(map, LABEL_PANE, 255)
-    this._renderer = L.canvas({ pane: PANE, padding: 0.5 })
+    this._renderer = L.canvas({ pane: PANE, padding: 0.25 })
     this._group = L.layerGroup().addTo(map)
     this._minor = L.layerGroup()
     this._labels = L.layerGroup().addTo(map)

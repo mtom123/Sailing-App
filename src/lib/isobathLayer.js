@@ -15,6 +15,10 @@ import { buildIsobaths } from './isobathVector.js'
 import { CHART_COLORS, IMAGERY_COLORS, SHALLOW_LIMIT } from './isobaths.js'
 import { waterRings } from './waterMask.js'
 
+// Margine dei canvas oltre la mappa: più grande = pan più fluido, ma su iPad
+// i canvas oltre il limite di memoria di Safari vengono disegnati neri
+const CANVAS_PAD = 0.25
+
 export const PANE = 'isobathPane'
 export const LABEL_PANE = 'isobathLabelPane'
 const MAX_BLOCKS = 30 // ~15 × 11 km l'uno: oltre, zoom troppo lontano
@@ -124,7 +128,7 @@ export const IsobathLayer = L.Layer.extend({
   onAdd(map) {
     ensurePane(map, PANE, 250) // sopra le carte, sotto fari/boe e rotte
     ensurePane(map, LABEL_PANE, 255)
-    this._renderer = new MaskedCanvas({ pane: PANE, padding: 0.5 })
+    this._renderer = new MaskedCanvas({ pane: PANE, padding: CANVAS_PAD })
     this._group = L.layerGroup().addTo(map)
     this._labels = L.layerGroup().addTo(map)
     map.on('moveend', this._update, this)
@@ -163,8 +167,8 @@ export const IsobathLayer = L.Layer.extend({
       this._key = null
       return
     }
-    // Maschera larga quanto il canvas (padding 0.5), griglia un po' meno
-    this._updateMask(map.getBounds().pad(0.5), map.getZoom())
+    // Maschera larga quanto il canvas, griglia un po' meno
+    this._updateMask(map.getBounds().pad(CANVAS_PAD), map.getZoom())
     const b = map.getBounds().pad(0.15)
 
     const bx0 = blockIndex(b.getWest())

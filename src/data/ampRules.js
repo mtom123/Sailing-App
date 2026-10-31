@@ -330,6 +330,39 @@ export const AMP_RULES = [
     },
   },
 
+  {
+    id: 'la-maddalena',
+    match: /maddalena/i,
+    name: 'Parco nazionale dell’Arcipelago di La Maddalena',
+    manager: 'Ente Parco Nazionale dell’Arcipelago di La Maddalena',
+    source: 'https://www.guardiacostiera.gov.it/portale/documents/126613/0/033-2026+ORD.+Disciplina+della+navigazione+-+ormeggi+e+attivita%27marittime+LMD.pdf/6d0ee26f-ea8a-51e6-cd1a-42f2',
+    edition: 'Ordinanza Capitaneria di La Maddalena 33/2026 (sperimentale 2026-2027) e Regolamento del Parco',
+    general: [
+      'Velocità max 7 nodi entro 500 m dalla costa e 10 nodi tra 500 e 1000 m',
+      'Ancoraggio vietato su posidonia e fondali sensibili mappati dal Parco: solo su sabbia o fango',
+      'Ancoraggio vietato nei corridoi e nelle fasce di rispetto segnalati (boe gialle) per i mezzi di soccorso e la balneazione',
+      'Accosti riservati alle unità di trasporto passeggeri (boe gialle): Cala Corsara, Cala Connari, Cala Alga (Spargi), Cala Santa Maria, Spiaggia dei Cavalieri e Cala Liò (Budelli), Cala Coticcio e Cala Garibaldi (Caprera); vietato sostare e ancorare durante le loro manovre',
+      'Spiaggia Rosa (Budelli): divieti permanenti del Parco',
+      'Dal 1° giugno al 30 settembre limiti di orario per ancoraggio e ormeggio fissati dal Parco',
+      'Navigazione notturna (22–6) solo nei tratti consentiti dal Parco',
+    ],
+    zones: {
+      MA: {
+        label: 'tutela integrale marina',
+        short: 'vietati navigazione, accesso, sosta, ormeggio e ancoraggio',
+        rules: ['Vietati navigazione, accesso, sosta, ormeggio e ancoraggio, salvo quanto previsto dal Regolamento del Parco'],
+      },
+      MB: {
+        label: 'tutela generale marina',
+        short: 'max 7 nodi entro 500 m; ancoraggio solo su sabbia, fuori dai corridoi',
+        rules: [
+          'Navigazione, ormeggio e ancoraggio consentiti alle condizioni dell’ordinanza e del Regolamento del Parco',
+          'Ancoraggio solo su fondali sabbiosi o fangosi, fuori da posidonia, corridoi e fasce di rispetto',
+        ],
+      },
+    },
+  },
+
   // ---------------------------------------------------------------- Sicilia
   {
     id: 'egadi',

@@ -32,6 +32,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Waves,
+  Sun,
 } from 'lucide-react'
 
 // ============================================================
@@ -93,11 +94,11 @@ function popupHTML(title, lines) {
   const rows = lines
     .map(
       (l) =>
-        `<div style="font-size:11px;color:${l.color || '#E8F0F5'};margin-top:2px">${l.label}: <b style="font-family:'JetBrains Mono',monospace">${l.value}</b></div>`
+        `<div style="font-size:11px;color:${l.color || 'var(--color-paper)'};margin-top:2px">${l.label}: <b style="font-family:'JetBrains Mono',monospace">${l.value}</b></div>`
     )
     .join('')
   return `<div style="min-width:160px">
-    <div style="font-weight:600;color:#E8F0F5;font-size:13px;margin-bottom:4px">${title}</div>
+    <div style="font-weight:600;color:var(--color-paper);font-size:13px;margin-bottom:4px">${title}</div>
     ${rows}
   </div>`
 }
@@ -207,6 +208,8 @@ export default function MapView({
     setSettingsOpen,
     nightMode,
     setNightMode,
+    dayTheme,
+    setDayTheme,
     setRouteEditing,
     activeRouteOption,
     coastBand,
@@ -539,7 +542,7 @@ export default function MapView({
       } else {
         const m = L.marker([v.lat, v.lon], { icon: vesselMarkerEl(rot) })
           .bindPopup(popupHTML(v.name || `MMSI ${v.mmsi}`, [
-            { label: 'MMSI', value: v.mmsi, color: '#8FA0AE' },
+            { label: 'MMSI', value: v.mmsi, color: 'var(--color-fog)' },
             { label: 'SOG', value: `${v.sog != null ? v.sog.toFixed(1) : '--'} kn` },
             { label: 'COG', value: `${v.cog != null ? formatDeg(v.cog) : '---'}°` },
           ]))
@@ -570,7 +573,7 @@ export default function MapView({
         if (existing._stateKey !== stateKey) {
           existing.setIcon(anchorageMarkerEl(color))
           existing.setPopupContent(popupHTML(a.name, [
-            { label: 'Regione', value: a.region, color: '#8FA0AE' },
+            { label: 'Regione', value: a.region, color: 'var(--color-fog)' },
             { label: 'Stato', value: a.safety.reason, color },
             { label: 'Fondale', value: `${a.depth[0]}–${a.depth[1]} m` },
             { label: 'Fondo', value: a.seabed },
@@ -580,7 +583,7 @@ export default function MapView({
       } else {
         const m = L.marker([a.lat, a.lon], { icon: anchorageMarkerEl(color) })
           .bindPopup(popupHTML(a.name, [
-            { label: 'Regione', value: a.region, color: '#8FA0AE' },
+            { label: 'Regione', value: a.region, color: 'var(--color-fog)' },
             { label: 'Stato', value: a.safety.reason, color },
             { label: 'Fondale', value: `${a.depth[0]}–${a.depth[1]} m` },
             { label: 'Fondo', value: a.seabed },
@@ -726,16 +729,16 @@ export default function MapView({
             const html = ctx.rule && ampPopupHTML(area, ctx)
             if (html) return html
           }
-          const lines = [{ label: 'Tipo', value: description, color: '#8FA0AE' }]
+          const lines = [{ label: 'Tipo', value: description, color: 'var(--color-fog)' }]
           const page = area.kind !== 'military' && ampPageFor(area, areas)
           if (page) {
             lines.push({
               label: 'Regole',
               value: `<a href="${page}" target="_blank" rel="noopener" style="color:#5EE6C8">decreti e regolamento (Ministero)</a>`,
-              color: '#8FA0AE',
+              color: 'var(--color-fog)',
             })
           }
-          lines.push({ label: 'Fonte', value: 'OpenStreetMap, indicativa: fanno fede decreti e ordinanze', color: '#5C6B78' })
+          lines.push({ label: 'Fonte', value: 'OpenStreetMap, indicativa: fanno fede decreti e ordinanze', color: 'var(--color-fog-dim)' })
           return popupHTML(area.name, lines)
         },
       })
@@ -821,6 +824,9 @@ export default function MapView({
         </MapButton>
         <MapButton title="Modifica rotta" active={route.editing} onClick={toggleRouteEditing}>
           <Navigation2 size={18} />
+        </MapButton>
+        <MapButton title="Tema giorno (sole)" active={dayTheme} onClick={() => setDayTheme(!dayTheme)}>
+          <Sun size={18} />
         </MapButton>
         <MapButton title="Modalità notte" active={nightMode} onClick={() => setNightMode(!nightMode)}>
           <Moon size={18} />
