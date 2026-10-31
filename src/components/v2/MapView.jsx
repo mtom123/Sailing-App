@@ -159,6 +159,9 @@ function makeBaseLayer(style) {
 // ============================================================
 // MapView main — Leaflet based
 // ============================================================
+// Zoom all'apertura: scala da circa 0,03 nm / 50 m (il massimo è 20)
+const OPEN_ZOOM = 19
+
 // Scala in miglia nautiche sopra quella in metri: 1 nm = 1852 m
 const NauticalScale = L.Control.Scale.extend({
   _addScales(options, className, container) {
@@ -168,8 +171,11 @@ const NauticalScale = L.Control.Scale.extend({
   _updateScales(maxMeters) {
     L.Control.Scale.prototype._updateScales.call(this, maxMeters)
     const maxNm = maxMeters / 1852
-    const nm = maxNm >= 1 ? this._getRoundNum(maxNm) : [0.5, 0.2, 0.1, 0.05, 0.02].find((n) => n <= maxNm) || 0.01
-    this._updateScale(this._nmScale, `${String(nm).replace('.', ',')} nm`, nm / maxNm)
+    // Sotto il miglio a due decimali (0,15 nm): passi di 0,05, sotto 0,1 di 0,01
+    const step = maxNm >= 0.1 ? 0.05 : 0.01
+    const nm = maxNm >= 1 ? this._getRoundNum(maxNm) : Math.max(step, Math.floor(maxNm / step + 1e-9) * step)
+    const label = maxNm >= 1 ? String(nm) : nm.toFixed(2).replace('.', ',')
+    this._updateScale(this._nmScale, `${label} nm`, nm / maxNm)
   },
 })
 
@@ -280,7 +286,10 @@ export default function MapView({
         center: [view.center.lat, view.center.lon],
         zoom: view.zoom || 11,
         minZoom: 3,
-        maxZoom: 19,
+        maxZoom: 20,
+        // Mezzi scatti (pulsanti +/− e pizzico): ingrandimento più graduale
+        zoomSnap: 0.5,
+        zoomDelta: 0.5,
         zoomControl: false,
         attributionControl: true,
         touchZoom: true,
@@ -315,7 +324,7 @@ export default function MapView({
         sld_body: seagrassSld(),
         tileSize: 512,
         minZoom: 10,
-        maxZoom: 19,
+        maxZoom: 20,
         updateWhenZooming: false,
         updateWhenIdle: true,
         attribution: '© EMODnet Seabed Habitats',
@@ -373,7 +382,7 @@ export default function MapView({
       map.createPane('seamarkPane').style.zIndex = 260
       tileLayerRefs.current.seamarks = L.tileLayer(TILES.seamarks.url, {
         attribution: TILES.seamarks.attribution,
-        maxZoom: 19,
+        maxZoom: 20,
         maxNativeZoom: 18,
         opacity: TILES.seamarks.opacity,
         pane: 'seamarkPane',
@@ -519,18 +528,14 @@ export default function MapView({
     el.classList.toggle('cursor-crosshair', !!route.editing)
   }, [route.editing, mapReady])
 
-  // === All'apertura: barca al centro, mezzo miglio attorno (sul lato corto dello schermo) ===
+  // === All'apertura: barca al centro, a zoom di dettaglio ===
   const openedOnBoat = useRef(false)
   useEffect(() => {
     if (openedOnBoat.current || !mapReady || geo.lat == null) return
     const map = mapRef.current
     if (!map) return
     openedOnBoat.current = true
-    // Zoom intero più vicino (getBoundsZoom arrotonda per difetto: fino al doppio)
-    const size = map.getSize()
-    const metersPerPx = (2 * 0.5 * 1852) / Math.min(size.x, size.y)
-    const zoom = Math.round(Math.log2((156543.03 * Math.cos((geo.lat * Math.PI) / 180)) / metersPerPx))
-    map.setView([geo.lat, geo.lon], Math.min(zoom, map.getMaxZoom()), { animate: false })
+    map.setView([geo.lat, geo.lon], Math.min(OPEN_ZOOM, map.getMaxZoom()), { animate: false })
     setFollow(true)
   }, [geo.lat, geo.lon, mapReady, setFollow])
 
