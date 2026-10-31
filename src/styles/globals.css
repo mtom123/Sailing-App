@@ -103,6 +103,14 @@ body,
   justify-content: center;
 }
 
+/* Pannelli (strumenti, ancore, rotta): la parte sotto l'intestazione scorre,
+   così in orizzontale previsioni e marea non finiscono fuori schermo */
+.panel-scroll {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
 /* ============================================================
    Scrollbar minimal
    ============================================================ */
