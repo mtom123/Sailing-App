@@ -25,6 +25,7 @@ import MeteogramPopup from './MeteogramPopup.jsx'
 import WaypointPopup from './WaypointPopup.jsx'
 import { LandTintLayer } from '../../lib/landTintLayer.js'
 import RulerTool from './RulerTool.jsx'
+import AreaDownloadTool from './AreaDownloadTool.jsx'
 import { setOfflineLayers } from '../../lib/offlinePack.js'
 import {
   Anchor,
@@ -953,9 +954,19 @@ export default function MapView({
   }, [layers.ordinances, mapReady, route.editing])
 
   const [rulerOn, setRulerOn] = useState(false)
+  const [areaOn, setAreaOn] = useState(false) // rettangolo per la zona offline
   const toggleRuler = () => {
-    if (!rulerOn) setRouteEditing(false) // un solo strumento alla volta sui tap
+    if (!rulerOn) {
+      setRouteEditing(false) // un solo strumento alla volta sui tap
+      setAreaOn(false)
+    }
     setRulerOn(!rulerOn)
+  }
+  const openAreaTool = () => {
+    setRouteEditing(false)
+    setRulerOn(false)
+    setActiveDrawer(null)
+    setAreaOn(true)
   }
 
   const toggleRouteEditing = () => {
@@ -965,6 +976,7 @@ export default function MapView({
       return
     }
     setRulerOn(false)
+    setAreaOn(false)
     if (st.routeDraft.waypoints.length === 0) {
       useAppStore.setState({
         routeDraft: { name: '', waypoints: [] },
@@ -1085,7 +1097,7 @@ export default function MapView({
 
       {/* Layer popover */}
       {activeDrawer === 'layers' && (
-        <LayerPopover onClose={() => setActiveDrawer(null)} />
+        <LayerPopover onClose={() => setActiveDrawer(null)} onDownloadArea={openAreaTool} />
       )}
 
       {/* Route editing banner */}
@@ -1107,6 +1119,8 @@ export default function MapView({
         </div>
       )}
 
+      {areaOn && <AreaDownloadTool map={mapRef.current} onClose={() => setAreaOn(false)} />}
+
       {rulerOn && (
         <RulerTool
           map={mapRef.current}
@@ -1116,7 +1130,7 @@ export default function MapView({
       )}
 
       {/* NAV banner */}
-      {route.nav && !route.editing && !rulerOn && !mob && (
+      {route.nav && !route.editing && !rulerOn && !areaOn && !mob && (
         <div className="glass absolute left-1/2 top-3 z-[900] flex -translate-x-1/2 items-center gap-2 rounded-lg px-4 py-2 slide-up">
           <span className="text-xs font-semibold text-phos">→ {route.nav.dest.name}</span>
           <span className="text-xs text-paper tabular">
@@ -1139,7 +1153,7 @@ export default function MapView({
       <MapContextMenu
         map={mapRef.current}
         mapReady={mapReady}
-        enabled={!route.editing && !rulerOn}
+        enabled={!route.editing && !rulerOn && !areaOn}
         onAddWaypoint={(lat, lon) => addWaypoint(lat, lon)}
         onSetDestination={(lat, lon) => {
           useAppStore.setState((s) => ({
@@ -1224,7 +1238,7 @@ function MapButton({ active, danger, onClick, title, children }) {
   )
 }
 
-function LayerPopover({ onClose }) {
+function LayerPopover({ onClose, onDownloadArea }) {
   const { layers, toggleLayer, baseStyle, setBaseStyle } = useAppStore()
   const LAYER_DEFS = [
     { key: 'bathy', label: 'Batimetria' },
@@ -1288,6 +1302,14 @@ function LayerPopover({ onClose }) {
             <span className={layers[l.key] ? 'text-paper' : 'text-fog'}>{l.label}</span>
           </button>
         ))}
+        <div className="label pb-2 pt-3">Offline</div>
+        <button
+          type="button"
+          onClick={onDownloadArea}
+          className="flex w-full items-center justify-center gap-1.5 rounded-md border border-phos bg-phos/10 py-2.5 text-[calc(10px*var(--fs))] font-semibold tracking-widest text-phos"
+        >
+          <CloudDownload size={13} /> SCARICA UNA ZONA
+        </button>
       </div>
     </>
   )

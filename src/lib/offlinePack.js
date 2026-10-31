@@ -6,7 +6,8 @@ import { LIGURIA_ISOBATH_SOURCE } from './liguriaIsobaths.js'
 import { loadTile as loadWaterTile } from './waterMask.js'
 
 /*
- * Carta per l'offline lungo una rotta: una fascia attorno ai tratti con
+ * Carta per l'offline lungo una rotta (una fascia attorno ai tratti) o in
+ * una zona disegnata col rettangolo, con
  * segnalamenti (OpenSeaMap), batimetria e isobate EMODnet, griglie di
  * profondità, costa OSM (che offline disegna anche la terra), isobate di
  * dettaglio Shom e Regione Liguria, aree protette e ordinanze.
@@ -72,7 +73,48 @@ export function corridorTiles(points, z, bufM, tileSize = 256) {
   return [...out.values()]
 }
 
+/** Tasselli {x, y, z} che coprono un rettangolo */
+function boundsTiles(b, z, tileSize = 256) {
+  const n = (2 ** z * 256) / tileSize
+  const out = []
+  for (let x = tileX(b.getWest(), n); x <= tileX(b.getEast(), n); x++) {
+    for (let y = tileY(b.getNorth(), n); y <= tileY(b.getSouth(), n); y++) out.push({ x, y, z })
+  }
+  return out
+}
+
+// Un rettangolo in pezzi da `step` gradi (le fonti a blocchi ne vogliono di piccoli)
+function splitBounds(b, step) {
+  const out = []
+  for (let lat = b.getSouth(); lat < b.getNorth(); lat += step) {
+    for (let lon = b.getWest(); lon < b.getEast(); lon += step) {
+      out.push(L.latLngBounds([lat, lon], [Math.min(lat + step, b.getNorth()), Math.min(lon + step, b.getEast())]))
+    }
+  }
+  return out
+}
+
 const routeKey = (points) => points.map((p) => `${p.lat.toFixed(4)},${p.lon.toFixed(4)}`).join(';')
+
+/*
+ * Piano di scaricamento: tiles(z, bufM, tileSize) → tasselli; views →
+ * riquadri piccoli per le fonti a blocchi (griglie, isobate di dettaglio).
+ */
+function routePlan(points) {
+  return {
+    key: routeKey(points),
+    tiles: (z, bufM, tileSize) => corridorTiles(points, z, bufM, tileSize),
+    views: samples(points, 1000).map((p) => around(p, BUFFER_M)),
+  }
+}
+
+function areaPlan(bounds) {
+  return {
+    key: `area:${bounds.toBBoxString()}`,
+    tiles: (z, bufM, tileSize) => boundsTiles(bounds, z, tileSize),
+    views: splitBounds(bounds, 0.05),
+  }
+}
 
 function readMeta() {
   try {
@@ -87,23 +129,23 @@ export function offlineInfo(points) {
   return points.length >= 2 ? readMeta()[routeKey(points)] || null : null
 }
 
-// URL dei tasselli raster nella fascia, per ogni strato presente sulla carta
-function rasterUrls(points) {
+// URL dei tasselli raster del piano, per ogni strato presente sulla carta
+function rasterUrls(plan) {
   const urls = []
   const { seamarks, bathy, isobathsWms } = mapLayers
   const template = (layer, t) => L.Util.template(layer._url, { ...layer.options, ...t, s: 'a', r: '' })
   if (seamarks) {
     for (let z = 10; z <= 16; z++) {
-      for (const t of corridorTiles(points, z, z === 16 ? NEAR_M : BUFFER_M)) urls.push(template(seamarks, t))
+      for (const t of plan.tiles(z, z === 16 ? NEAR_M : BUFFER_M)) urls.push(template(seamarks, t))
     }
   }
   if (bathy) {
-    for (let z = 8; z <= 13; z++) for (const t of corridorTiles(points, z, BUFFER_M)) urls.push(template(bathy, t))
+    for (let z = 8; z <= 13; z++) for (const t of plan.tiles(z, BUFFER_M)) urls.push(template(bathy, t))
   }
   // WMS: l'URL (con il riquadro) lo calcola lo strato, se è sulla carta
   if (isobathsWms?._map) {
     for (let z = 9; z <= 11; z++) {
-      for (const t of corridorTiles(points, z, BUFFER_M, 512)) {
+      for (const t of plan.tiles(z, BUFFER_M, 512)) {
         const c = L.point(t.x, t.y)
         c.z = z
         urls.push(isobathsWms.getTileUrl(c))
@@ -114,28 +156,26 @@ function rasterUrls(points) {
 }
 
 // Caricamenti dei dati: costa, griglie, isobate di dettaglio, aree e ordinanze
-async function dataJobs(points) {
+async function dataJobs(plan) {
   const jobs = []
   for (let z = 8; z <= 14; z++) {
-    for (const t of corridorTiles(points, z, BUFFER_M)) jobs.push(() => loadWaterTile(t.z, t.x, t.y))
+    for (const t of plan.tiles(z, BUFFER_M)) jobs.push(() => loadWaterTile(t.z, t.x, t.y))
   }
-  const pts = samples(points, 1000)
   const blocks = new Map()
-  for (const p of pts) {
-    const b = around(p, BUFFER_M)
-    for (let bx = blockIndex(b.getWest()); bx <= blockIndex(b.getEast()); bx++) {
-      for (let by = blockIndex(b.getSouth()); by <= blockIndex(b.getNorth()); by++) blocks.set(`${bx},${by}`, [bx, by])
-    }
-  }
-  for (const [bx, by] of blocks.values()) jobs.push(() => loadBlock(bx, by))
-
   const shom = new Set()
   const liguria = new Set()
-  for (const p of samples(points, 3000)) {
-    const view = around(p, BUFFER_M)
+  for (const view of plan.views) {
+    for (let bx = blockIndex(view.getWest()); bx <= blockIndex(view.getEast()); bx++) {
+      for (let by = blockIndex(view.getSouth()); by <= blockIndex(view.getNorth()); by++) blocks.set(`${bx},${by}`, [bx, by])
+    }
+  }
+  // Le isobate di dettaglio bastano a passi di ~3 km
+  for (let i = 0; i < plan.views.length; i += plan.views.length > 50 ? 3 : 1) {
+    const view = plan.views[i]
     for (const name of await SHOM_SOURCE.names(view)) shom.add(name)
     for (const name of await LIGURIA_ISOBATH_SOURCE.names(view)) liguria.add(name)
   }
+  for (const [bx, by] of blocks.values()) jobs.push(() => loadBlock(bx, by))
   for (const name of shom) {
     jobs.push(() => SHOM_SOURCE.load(name))
     jobs.push(() => fetch(`${HD_BASE}${name}.bin`).then((r) => r.arrayBuffer()))
@@ -148,15 +188,10 @@ async function dataJobs(points) {
   return jobs
 }
 
-/**
- * Scarica la fascia attorno alla rotta. onProgress({ done, total, bytes,
- * failed }); `signal` per annullare. Ritorna il riepilogo salvato.
- */
-export async function downloadCorridor(points, { onProgress = () => {}, signal } = {}) {
-  if (points.length < 2) throw new Error('Servono almeno 2 punti')
+async function downloadPlan(plan, { onProgress = () => {}, signal } = {}) {
   navigator.storage?.persist?.().catch(() => {}) // Safari: non cancellare i dati da solo
   const cache = await caches.open(OFFLINE_CACHE)
-  const urls = [...new Set(rasterUrls(points))]
+  const urls = [...new Set(rasterUrls(plan))]
   const jobs = [
     ...urls.map((url) => async () => {
       if (await caches.match(url)) return 0
@@ -166,7 +201,7 @@ export async function downloadCorridor(points, { onProgress = () => {}, signal }
       await cache.put(url, new Response(blob, { headers: { 'Content-Type': res.headers.get('Content-Type') || 'image/png' } }))
       return blob.size
     }),
-    ...(await dataJobs(points)),
+    ...(await dataJobs(plan)),
   ]
 
   const state = { done: 0, total: jobs.length, bytes: 0, failed: 0 }
@@ -192,13 +227,47 @@ export async function downloadCorridor(points, { onProgress = () => {}, signal }
 
   const summary = { at: Date.now(), bytes: state.bytes, items: state.total, failed: state.failed }
   const meta = readMeta()
-  meta[routeKey(points)] = summary
+  meta[plan.key] = summary
   try {
     localStorage.setItem(META_KEY, JSON.stringify(meta))
   } catch {
     // spazio pieno: il riepilogo si perde, i dati restano
   }
   return summary
+}
+
+/**
+ * Scarica la fascia attorno alla rotta. onProgress({ done, total, bytes,
+ * failed }); `signal` per annullare. Ritorna il riepilogo salvato.
+ */
+export function downloadCorridor(points, opts) {
+  if (points.length < 2) throw new Error('Servono almeno 2 punti')
+  return downloadPlan(routePlan(points), opts)
+}
+
+/** Scarica la zona del rettangolo (L.LatLngBounds), come la fascia di una rotta */
+export function downloadArea(bounds, opts) {
+  return downloadPlan(areaPlan(bounds), opts)
+}
+
+// Media vista sulle rotte scaricate: pochi KB a tassello, più i dati
+const AVG_TILE_BYTES = 4500
+const AVG_DATA_BYTES = 60000
+
+/**
+ * Quanto pesa una zona prima di scaricarla: { tiles, mb, tooBig }. Oltre
+ * MAX_TILES tasselli la zona è troppo grande per un iPad in mare.
+ */
+export const MAX_AREA_TILES = 12000
+export function estimateArea(bounds) {
+  const plan = areaPlan(bounds)
+  let tiles = 0
+  for (let z = 10; z <= 16; z++) tiles += plan.tiles(z, 0).length
+  for (let z = 8; z <= 13; z++) tiles += plan.tiles(z, 0).length
+  let data = 0
+  for (let z = 8; z <= 14; z++) data += plan.tiles(z, 0).length
+  const mb = (tiles * AVG_TILE_BYTES + data * AVG_DATA_BYTES) / 1e6
+  return { tiles, mb, tooBig: tiles > MAX_AREA_TILES }
 }
 
 /** Spazio usato dall'app (MB) e disponibile, se il browser lo dice */
