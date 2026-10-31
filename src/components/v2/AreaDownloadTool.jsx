@@ -6,8 +6,9 @@ import { downloadArea, estimateArea } from '../../lib/offlinePack.js'
 
 /**
  * Zona offline a rettangolo: tap su due angoli opposti (poi trascinabili),
- * dimensioni e peso stimato, SCARICA con avanzamento. Stessi dati della
- * carta offline delle rotte. I tap vanno solo qui finché è aperto.
+ * dimensioni e peso stimato, poi due scelte: BASE (zone grandi, fino a
+ * zoom 14) o DETTAGLIO (tutti gli zoom, zone più piccole, come le rotte).
+ * I tap vanno solo qui finché è aperto.
  */
 
 const COLOR = '#5EE6C8'
@@ -79,15 +80,15 @@ export default function AreaDownloadTool({ map, onClose }) {
   }, [corners])
 
   const bounds = corners.length === 2 ? L.latLngBounds([corners[0].lat, corners[0].lon], [corners[1].lat, corners[1].lon]) : null
-  const est = bounds ? estimateArea(bounds) : null
+  const est = bounds ? { wide: estimateArea(bounds, 'wide'), detail: estimateArea(bounds, 'detail') } : null
   const widthM = bounds ? haversine(bounds.getCenter().lat, bounds.getWest(), bounds.getCenter().lat, bounds.getEast()) : 0
   const heightM = bounds ? haversine(bounds.getSouth(), bounds.getWest(), bounds.getNorth(), bounds.getWest()) : 0
 
-  const start = async () => {
-    if (!bounds || est.tooBig) return
+  const start = async (level) => {
+    if (!bounds || est[level].tooBig) return
     const ctrl = new AbortController()
     ctrlRef.current = ctrl
-    setJob({ status: 'running', progress: { done: 0, total: 0, bytes: 0 } })
+    setJob({ status: 'running', level, progress: { done: 0, total: 0, bytes: 0 } })
     let last = 0
     try {
       const info = await downloadArea(bounds, {
@@ -96,10 +97,10 @@ export default function AreaDownloadTool({ map, onClose }) {
           const now = Date.now()
           if (now - last < 300 && progress.done < progress.total) return
           last = now
-          if (!ctrl.signal.aborted) setJob({ status: 'running', progress })
+          if (!ctrl.signal.aborted) setJob({ status: 'running', level, progress })
         },
-      })
-      if (!ctrl.signal.aborted) setJob({ status: 'done', info })
+      }, level)
+      if (!ctrl.signal.aborted) setJob({ status: 'done', level, info })
     } catch (err) {
       if (!ctrl.signal.aborted) setJob({ status: 'error', error: err.message || String(err) })
     }
@@ -119,11 +120,6 @@ export default function AreaDownloadTool({ map, onClose }) {
         <CloudDownload size={14} className="text-phos" />
         <span className="text-[calc(11px*var(--fs))] font-semibold tracking-wider text-phos">ZONA OFFLINE</span>
         <span className="ml-auto flex gap-1.5">
-          {bounds && !running && (
-            <button type="button" disabled={est.tooBig} onClick={start} className={`${btn} border-phos bg-phos/15 text-phos`}>
-              {job ? 'RISCARICA' : 'SCARICA'}
-            </button>
-          )}
           {running ? (
             <button type="button" onClick={cancel} className={`${btn} border-line text-fog`}>
               ANNULLA
@@ -140,15 +136,31 @@ export default function AreaDownloadTool({ map, onClose }) {
           {corners.length ? 'tocca l’angolo opposto' : 'tocca un angolo della zona da scaricare'}
         </div>
       )}
-      {bounds && !job && (
-        <div className="text-[calc(11px*var(--fs))] tabular-nums text-paper">
-          {fmtNm(widthM)} × {fmtNm(heightM)} nm · circa {fmtMb(est.mb)}
-          {est.tooBig ? (
-            <span className="text-warn"> · zona troppo grande, stringi il rettangolo</span>
-          ) : (
-            <span className="text-fog"> · trascina gli angoli per correggere</span>
-          )}
-        </div>
+      {bounds && !running && (
+        <>
+          <div className="text-[calc(11px*var(--fs))] tabular-nums text-paper">
+            {fmtNm(widthM)} × {fmtNm(heightM)} nm <span className="text-fog">· trascina gli angoli per correggere</span>
+          </div>
+          {[
+            ['wide', 'BASE', 'fino a zoom 14, per zone grandi', 'border-[#4A9EFF] bg-[#4A9EFF]/15 text-[#4A9EFF]'],
+            ['detail', 'DETTAGLIO', 'tutti gli zoom, porti e passaggi', 'border-phos bg-phos/15 text-phos'],
+          ].map(([level, label, hint, color]) => (
+            <div key={level} className="flex items-center gap-2 border-t border-line pt-1.5">
+              <div className="min-w-0 flex-1 text-[calc(10px*var(--fs))] leading-snug text-fog">
+                <span className="font-semibold text-paper">{label}</span> · {hint}
+                <br />
+                {est[level].tooBig ? (
+                  <span className="text-warn">zona troppo grande, stringi il rettangolo</span>
+                ) : (
+                  <span className="tabular-nums">circa {fmtMb(est[level].mb)}</span>
+                )}
+              </div>
+              <button type="button" disabled={est[level].tooBig} onClick={() => start(level)} className={`${btn} ${color}`}>
+                {job?.status === 'done' && job.level === level ? 'RISCARICA' : 'SCARICA'}
+              </button>
+            </div>
+          ))}
+        </>
       )}
       {running && (
         <div>
@@ -162,7 +174,7 @@ export default function AreaDownloadTool({ map, onClose }) {
       )}
       {job?.status === 'done' && (
         <div className="text-[calc(11px*var(--fs))] text-paper">
-          Zona scaricata · {fmtMb(job.info.bytes / 1e6)}
+          {job.level === 'wide' ? 'Base scaricata' : 'Dettaglio scaricato'} · {fmtMb(job.info.bytes / 1e6)}
           {job.info.failed > 0 && <span className="text-warn"> · {job.info.failed} pezzi non scaricati: riprova</span>}
         </div>
       )}

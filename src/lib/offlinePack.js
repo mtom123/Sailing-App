@@ -26,6 +26,16 @@ const NEAR_M = 926 // al massimo dettaglio dei segnalamenti, mezzo miglio
 const PARALLEL = 6
 const rad = Math.PI / 180
 
+/*
+ * Livelli di scaricamento. Dettaglio: tutti gli zoom (rotte e zone piccole).
+ * Base: zone grandi fino a zoom 14, senza isobate di dettaglio e con la
+ * costa meno fine; per gli zoom spinti si scarica poi il dettaglio dove serve.
+ */
+export const LEVELS = {
+  detail: { prefix: 'area:', seamarks: [10, 16], bathy: [8, 13], water: [8, 14], hd: true, maxTiles: 12000 },
+  wide: { prefix: 'wide:', seamarks: [10, 14], bathy: [8, 12], water: [8, 11], hd: false, maxTiles: 15000 },
+}
+
 // Tasselli raster dalla mappa (URL e parametri come quando si naviga)
 let mapLayers = {}
 export function setOfflineLayers(layers) {
@@ -103,14 +113,16 @@ const routeKey = (points) => points.map((p) => `${p.lat.toFixed(4)},${p.lon.toFi
 function routePlan(points) {
   return {
     key: routeKey(points),
+    level: LEVELS.detail,
     tiles: (z, bufM, tileSize) => corridorTiles(points, z, bufM, tileSize),
     views: samples(points, 1000).map((p) => around(p, BUFFER_M)),
   }
 }
 
-function areaPlan(bounds) {
+function areaPlan(bounds, level = LEVELS.detail) {
   return {
-    key: `area:${bounds.toBBoxString()}`,
+    key: `${level.prefix}${bounds.toBBoxString()}`,
+    level,
     tiles: (z, bufM, tileSize) => boundsTiles(bounds, z, tileSize),
     views: splitBounds(bounds, 0.05),
   }
@@ -128,21 +140,25 @@ export const OFFLINE_EVENT = 'timone-offline' // sulla window, a ogni nuovo scar
 
 /**
  * Zone già scaricate, per mostrarle sulla carta: { kind: 'route', points,
- * bufferM } (fascia attorno ai tratti) o { kind: 'area', bounds }
+ * bufferM } (fascia attorno ai tratti) o { kind: 'area', bounds }, con
+ * level 'detail' o 'wide'
  */
 export function offlineZones() {
   const zones = []
   for (const key of Object.keys(readMeta())) {
-    if (key.startsWith('area:')) {
+    const wide = key.startsWith(LEVELS.wide.prefix)
+    if (wide || key.startsWith(LEVELS.detail.prefix)) {
       const [w, so, e, n] = key.slice(5).split(',').map(Number)
-      if ([w, so, e, n].every(Number.isFinite)) zones.push({ kind: 'area', bounds: L.latLngBounds([so, w], [n, e]) })
+      if ([w, so, e, n].every(Number.isFinite)) {
+        zones.push({ kind: 'area', level: wide ? 'wide' : 'detail', bounds: L.latLngBounds([so, w], [n, e]) })
+      }
     } else {
       const points = key.split(';').map((p) => {
         const [lat, lon] = p.split(',').map(Number)
         return { lat, lon }
       })
       if (points.length >= 2 && points.every((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon))) {
-        zones.push({ kind: 'route', points, bufferM: BUFFER_M })
+        zones.push({ kind: 'route', level: 'detail', points, bufferM: BUFFER_M })
       }
     }
   }
@@ -160,12 +176,14 @@ function rasterUrls(plan) {
   const { seamarks, bathy, isobathsWms } = mapLayers
   const template = (layer, t) => L.Util.template(layer._url, { ...layer.options, ...t, s: 'a', r: '' })
   if (seamarks) {
-    for (let z = 10; z <= 16; z++) {
+    const [z0, z1] = plan.level.seamarks
+    for (let z = z0; z <= z1; z++) {
       for (const t of plan.tiles(z, z === 16 ? NEAR_M : BUFFER_M)) urls.push(template(seamarks, t))
     }
   }
   if (bathy) {
-    for (let z = 8; z <= 13; z++) for (const t of plan.tiles(z, BUFFER_M)) urls.push(template(bathy, t))
+    const [z0, z1] = plan.level.bathy
+    for (let z = z0; z <= z1; z++) for (const t of plan.tiles(z, BUFFER_M)) urls.push(template(bathy, t))
   }
   // WMS: l'URL (con il riquadro) lo calcola lo strato, se è sulla carta
   if (isobathsWms?._map) {
@@ -183,7 +201,8 @@ function rasterUrls(plan) {
 // Caricamenti dei dati: costa, griglie, isobate di dettaglio, aree e ordinanze
 async function dataJobs(plan) {
   const jobs = []
-  for (let z = 8; z <= 14; z++) {
+  const [w0, w1] = plan.level.water
+  for (let z = w0; z <= w1; z++) {
     for (const t of plan.tiles(z, BUFFER_M)) jobs.push(() => loadWaterTile(t.z, t.x, t.y))
   }
   const blocks = new Map()
@@ -194,8 +213,8 @@ async function dataJobs(plan) {
       for (let by = blockIndex(view.getSouth()); by <= blockIndex(view.getNorth()); by++) blocks.set(`${bx},${by}`, [bx, by])
     }
   }
-  // Le isobate di dettaglio bastano a passi di ~3 km
-  for (let i = 0; i < plan.views.length; i += plan.views.length > 50 ? 3 : 1) {
+  // Le isobate di dettaglio bastano a passi di ~3 km (non nella base larga)
+  for (let i = 0; plan.level.hd && i < plan.views.length; i += plan.views.length > 50 ? 3 : 1) {
     const view = plan.views[i]
     for (const name of await SHOM_SOURCE.names(view)) shom.add(name)
     for (const name of await LIGURIA_ISOBATH_SOURCE.names(view)) liguria.add(name)
@@ -271,29 +290,35 @@ export function downloadCorridor(points, opts) {
   return downloadPlan(routePlan(points), opts)
 }
 
-/** Scarica la zona del rettangolo (L.LatLngBounds), come la fascia di una rotta */
-export function downloadArea(bounds, opts) {
-  return downloadPlan(areaPlan(bounds), opts)
+/** Scarica la zona del rettangolo (L.LatLngBounds) al livello dato ('detail' | 'wide') */
+export function downloadArea(bounds, opts, level = 'detail') {
+  return downloadPlan(areaPlan(bounds, LEVELS[level]), opts)
 }
 
-// Media vista sulle rotte scaricate: pochi KB a tassello, più i dati
+// Medie viste sulle rotte scaricate: pochi KB a tassello raster, di più
+// per la costa OSM e per le griglie di profondità (blocchi da ~15 km)
 const AVG_TILE_BYTES = 4500
-const AVG_DATA_BYTES = 60000
+const AVG_WATER_BYTES = 60000
+const AVG_BLOCK_BYTES = 130000
 
 /**
- * Quanto pesa una zona prima di scaricarla: { tiles, mb, tooBig }. Oltre
- * MAX_TILES tasselli la zona è troppo grande per un iPad in mare.
+ * Quanto pesa una zona prima di scaricarla, al livello dato: { tiles, mb,
+ * tooBig }. Oltre il tetto di tasselli del livello è troppo grande.
  */
-export const MAX_AREA_TILES = 12000
-export function estimateArea(bounds) {
-  const plan = areaPlan(bounds)
-  let tiles = 0
-  for (let z = 10; z <= 16; z++) tiles += plan.tiles(z, 0).length
-  for (let z = 8; z <= 13; z++) tiles += plan.tiles(z, 0).length
-  let data = 0
-  for (let z = 8; z <= 14; z++) data += plan.tiles(z, 0).length
-  const mb = (tiles * AVG_TILE_BYTES + data * AVG_DATA_BYTES) / 1e6
-  return { tiles, mb, tooBig: tiles > MAX_AREA_TILES }
+export function estimateArea(bounds, level = 'detail') {
+  const lv = LEVELS[level]
+  const plan = areaPlan(bounds, lv)
+  const count = ([z0, z1]) => {
+    let n = 0
+    for (let z = z0; z <= z1; z++) n += plan.tiles(z, 0).length
+    return n
+  }
+  const tiles = count(lv.seamarks) + count(lv.bathy)
+  const water = count(lv.water)
+  const blocks =
+    (blockIndex(bounds.getEast()) - blockIndex(bounds.getWest()) + 1) * (blockIndex(bounds.getNorth()) - blockIndex(bounds.getSouth()) + 1)
+  const mb = (tiles * AVG_TILE_BYTES + water * AVG_WATER_BYTES + blocks * AVG_BLOCK_BYTES) / 1e6
+  return { tiles, mb, tooBig: tiles > lv.maxTiles }
 }
 
 /** Spazio usato dall'app (MB) e disponibile, se il browser lo dice */
