@@ -292,6 +292,13 @@ export default function MapView({
         waypoints: s.routeDraft.waypoints.filter((w) => w.id !== id),
       },
     }))
+  // Nuovo waypoint tra il waypoint `index` e il successivo (tap sulla linea)
+  const insertWaypoint = (index, lat, lon) =>
+    useAppStore.setState((s) => {
+      const wps = [...s.routeDraft.waypoints]
+      wps.splice(index + 1, 0, { id: `w${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`, lat, lon })
+      return { routeDraft: { ...s.routeDraft, waypoints: wps.map((w, i) => ({ ...w, name: `WP${i + 1}` })) } }
+    })
   const moveWaypoint = (id, lat, lon) =>
     useAppStore.setState((s) => ({
       routeDraft: {
@@ -760,6 +767,22 @@ export default function MapView({
         weight: 3,
         opacity: 0.95,
       }).addTo(group)
+      // In modifica: fascia invisibile larga sopra ogni tratto, facile da
+      // prendere col dito; il tap inserisce un waypoint lì (non in fondo)
+      if (route.editing) {
+        for (let i = 0; i < wps.length - 1; i++) {
+          L.polyline([[wps[i].lat, wps[i].lon], [wps[i + 1].lat, wps[i + 1].lon]], {
+            color: '#5EE6C8',
+            weight: 26,
+            opacity: 0.01,
+          })
+            .on('click', (e) => {
+              L.DomEvent.stopPropagation(e)
+              insertWaypoint(i, e.latlng.lat, e.latlng.lng)
+            })
+            .addTo(group)
+        }
+      }
       // Leg labels (distance + bearing at midpoint)
       for (let i = 0; i < wps.length - 1; i++) {
         const a = wps[i]

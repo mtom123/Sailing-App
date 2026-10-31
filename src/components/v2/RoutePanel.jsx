@@ -467,7 +467,7 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
             TOCCA IL MARE PER AGGIUNGERE WAYPOINT
           </div>
           <div className="pt-1 text-[calc(10px*var(--fs))] text-fog">
-            Trascina per spostare · tocca un waypoint per eliminarlo
+            Trascina per spostare · tocca un waypoint per eliminarlo · tocca la linea per inserirne uno in mezzo
           </div>
         </div>
 
