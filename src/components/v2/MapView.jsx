@@ -27,6 +27,7 @@ import { LandTintLayer } from '../../lib/landTintLayer.js'
 import RulerTool from './RulerTool.jsx'
 import AreaDownloadTool from './AreaDownloadTool.jsx'
 import { setOfflineLayers } from '../../lib/offlinePack.js'
+import { OfflineZonesLayer } from '../../lib/offlineZonesLayer.js'
 import {
   Anchor,
   Crosshair,
@@ -573,6 +574,14 @@ export default function MapView({
       map.getContainer().style.background = ''
     }
   }, [baseStyle, mapReady])
+
+  // === Zone già scaricate per l'offline, velate di verde ===
+  useEffect(() => {
+    const map = mapRef.current
+    if (!mapReady || !map || !layers.offlineZones) return undefined
+    const layer = new OfflineZonesLayer().addTo(map)
+    return () => map.removeLayer(layer)
+  }, [layers.offlineZones, mapReady])
 
   // === Distanze della fascia costiera dalle impostazioni ===
   useEffect(() => {
@@ -1253,6 +1262,7 @@ function LayerPopover({ onClose, onDownloadArea }) {
     { key: 'ordinances', label: 'Ordinanze Capitanerie (90 giorni)' },
     { key: 'rain', label: 'Radar pioggia' },
     { key: 'current', label: 'Correnti' },
+    { key: 'offlineZones', label: 'Zone scaricate offline' },
   ]
   return (
     <>

@@ -124,6 +124,31 @@ function readMeta() {
   }
 }
 
+export const OFFLINE_EVENT = 'timone-offline' // sulla window, a ogni nuovo scaricamento
+
+/**
+ * Zone già scaricate, per mostrarle sulla carta: { kind: 'route', points,
+ * bufferM } (fascia attorno ai tratti) o { kind: 'area', bounds }
+ */
+export function offlineZones() {
+  const zones = []
+  for (const key of Object.keys(readMeta())) {
+    if (key.startsWith('area:')) {
+      const [w, so, e, n] = key.slice(5).split(',').map(Number)
+      if ([w, so, e, n].every(Number.isFinite)) zones.push({ kind: 'area', bounds: L.latLngBounds([so, w], [n, e]) })
+    } else {
+      const points = key.split(';').map((p) => {
+        const [lat, lon] = p.split(',').map(Number)
+        return { lat, lon }
+      })
+      if (points.length >= 2 && points.every((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon))) {
+        zones.push({ kind: 'route', points, bufferM: BUFFER_M })
+      }
+    }
+  }
+  return zones
+}
+
 /** Scaricamento già fatto per questa rotta: { at, bytes, items, failed } o null */
 export function offlineInfo(points) {
   return points.length >= 2 ? readMeta()[routeKey(points)] || null : null
@@ -233,6 +258,7 @@ async function downloadPlan(plan, { onProgress = () => {}, signal } = {}) {
   } catch {
     // spazio pieno: il riepilogo si perde, i dati restano
   }
+  window.dispatchEvent(new Event(OFFLINE_EVENT))
   return summary
 }
 
@@ -280,4 +306,5 @@ export async function storageUsage() {
 export async function clearOffline() {
   await caches.delete(OFFLINE_CACHE)
   localStorage.removeItem(META_KEY)
+  window.dispatchEvent(new Event(OFFLINE_EVENT))
 }

@@ -34,6 +34,7 @@ export const useAppStore = create(
         ordinances: true,
         rain: false,
         current: false,
+        offlineZones: true,
       },
       toggleLayer: (key) =>
         set((s) => ({ layers: { ...s.layers, [key]: !s.layers[key] } })),
