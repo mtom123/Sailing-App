@@ -12,8 +12,7 @@ import { HdIsobathLayer } from '../../lib/hdIsobathLayer.js'
 import { CoastBandLayer } from '../../lib/coastBandLayer.js'
 import { ProtectedAreasLayer } from '../../lib/protectedAreasLayer.js'
 import { OrdinancesLayer } from '../../lib/ordinancesLayer.js'
-import { MARINE_PARKS } from '../../data/marineParks.js'
-import { fenceStatus } from '../../lib/geoFence.js'
+import { ampContext, ampPageFor, ampPopupHTML } from '../../lib/ampRules.js'
 import { LiguriaHabitatLayer } from '../../lib/liguriaHabitat.js'
 
 const ISOBATH_VECTOR_MIN_ZOOM = 12
@@ -720,16 +719,21 @@ export default function MapView({
     if (!tileLayerRefs.current.protectedAreas) {
       tileLayerRefs.current.protectedAreas = new ProtectedAreasLayer({
         interactive: true,
-        popup: (area, description) => {
-          // Regole sintetiche dalla scheda del parco che la contiene, se c'è
-          const [s, w, n, e] = area.bbox
-          const lat = (s + n) / 2
-          const lon = (w + e) / 2
-          const park = MARINE_PARKS.find((p) => fenceStatus(lat, lon, p.polygon) === 'inside')
+        popup: (area, description, areas) => {
+          // Regole per zona dal regolamento dell'area marina, se l'app le ha
+          if (area.kind !== 'military') {
+            const ctx = ampContext(area, areas)
+            const html = ctx.rule && ampPopupHTML(area, ctx)
+            if (html) return html
+          }
           const lines = [{ label: 'Tipo', value: description, color: '#8FA0AE' }]
-          if (park && area.kind !== 'military') {
-            lines.push({ label: 'Autorità', value: park.authority, color: '#8FA0AE' })
-            lines.push({ label: 'Regole', value: park.rules, color: '#8FA0AE' })
+          const page = area.kind !== 'military' && ampPageFor(area, areas)
+          if (page) {
+            lines.push({
+              label: 'Regole',
+              value: `<a href="${page}" target="_blank" rel="noopener" style="color:#5EE6C8">decreti e regolamento (Ministero)</a>`,
+              color: '#8FA0AE',
+            })
           }
           lines.push({ label: 'Fonte', value: 'OpenStreetMap, indicativa: fanno fede decreti e ordinanze', color: '#5C6B78' })
           return popupHTML(area.name, lines)

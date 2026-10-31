@@ -68,7 +68,7 @@ export const ProtectedAreasLayer = L.Layer.extend({
         // Tracciando la rotta il tocco deve aggiungere il waypoint
         interactive: !!this.options.interactive,
       })
-      if (this.options.interactive) poly.bindPopup(this.options.popup(area, DESCRIPTION[area.kind]))
+      if (this.options.interactive) poly.bindPopup(() => this.options.popup(area, DESCRIPTION[area.kind], areas), { maxWidth: 320 })
       poly.addTo(this._group)
     }
   },

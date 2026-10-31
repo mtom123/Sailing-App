@@ -37,6 +37,7 @@ import { sunTimes, moonPhase } from './lib/sun.js'
 import { routeLegs, routeTotalNm, crossTrackError } from './lib/route.js'
 import { detourLegRefined } from './lib/routeHazards.js'
 import { bandText } from './lib/coastBand.js'
+import { ampRuleFor, zoneLetter, zoneSummary } from './lib/ampRules.js'
 
 // Adaptive hooks: gli hook leggono dallo store
 function useRouteAdapter(geo) {
@@ -376,7 +377,9 @@ export default function App() {
                     {gpsAlerts.zone.name}
                   </b>
                   <span className="text-[10px] opacity-70">
-                    {gpsAlerts.zone.kind === 'military' ? 'Verifica gli avvisi ai naviganti' : "Tocca l'area per le regole"}
+                    {gpsAlerts.zone.kind === 'military'
+                      ? 'Verifica gli avvisi ai naviganti'
+                      : zoneSummary(ampRuleFor(gpsAlerts.zone.name), zoneLetter(gpsAlerts.zone.name)) || "Tocca l'area per le regole"}
                   </span>
                 </div>
               )}

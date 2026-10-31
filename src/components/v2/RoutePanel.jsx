@@ -21,6 +21,7 @@ import { useAppStore } from '../../store/useAppStore.js'
 import { formatDeg, metersToNm } from '../../lib/geo.js'
 import { downloadFile, etaTimes, routeToGPX } from '../../lib/route.js'
 import { formatDepth } from './DepthHover.jsx'
+import { ampRuleFor, zoneLetter, zoneSummary } from '../../lib/ampRules.js'
 
 const fmtTime = (ms) =>
   new Date(ms).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
@@ -52,16 +53,33 @@ const FIX_MESSAGES = {
   error: 'Costa o fondali non disponibili ora: riprova',
 }
 
-// Aree marine protette attraversate: "Portofino (Zona C, Zona B) · …"
-const parksText = (parks) => parks.map((p) => (p.zones.length ? `${p.name} (${p.zones.join(', ')})` : p.name)).join(' · ')
-
-// Si naviga con regole (velocità, ancoraggio, pesca): solo avviso
+// Si naviga con regole (velocità, ancoraggio, pesca): solo avviso, con la
+// sintesi del regolamento per ogni zona attraversata quando l'app ce l'ha
 function ParksNotice({ parks, className = '' }) {
   if (!parks?.length) return null
   return (
-    <div className={`flex items-center gap-2 px-3 text-[10px] text-info ${className}`}>
-      <Shield size={12} className="flex-none" />
-      <span className="min-w-0 flex-1">Area marina protetta: {parksText(parks)}. Verifica le regole</span>
+    <div className={`flex items-start gap-2 px-3 text-[10px] text-info ${className}`}>
+      <Shield size={12} className="mt-px flex-none" />
+      <span className="min-w-0 flex-1">
+        {parks.map((p) => {
+          const rule = ampRuleFor(p.name)
+          const zones = p.zones.map((z) => ({ z, summary: zoneSummary(rule, zoneLetter(z)) }))
+          return (
+            <span key={p.name} className="block">
+              {rule ? rule.name : p.name}
+              {zones.length > 0 && !zones.some((x) => x.summary) && ` (${p.zones.join(', ')})`}
+              {zones
+                .filter((x) => x.summary)
+                .map((x) => (
+                  <span key={x.z} className="block pl-2 text-fog">
+                    {x.z}: {x.summary}
+                  </span>
+                ))}
+              {!rule && <span className="text-fog"> · verifica le regole</span>}
+            </span>
+          )
+        })}
+      </span>
     </div>
   )
 }
