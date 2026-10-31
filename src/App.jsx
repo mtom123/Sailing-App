@@ -363,7 +363,9 @@ export default function App() {
             anchorages={anchorages}
             route={route}
             parks={parks}
-            trackPoints={track.points}
+            trackSegments={track.current?.segments || []}
+            trackRec={track.current && track.stats ? { paused: track.status !== 'recording', distanceNm: track.stats.distanceNm } : null}
+            shownTracks={track.shown}
             mob={mob}
             routeOptions={routeOptions}
             onDropMob={dropMob}

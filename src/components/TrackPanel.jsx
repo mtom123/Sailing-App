@@ -1,83 +1,175 @@
-import { Circle, Download, Trash2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Circle, Download, Eye, EyeOff, Pause, Play, Square, Trash2, X } from 'lucide-react'
 import { downloadFile, trackToGPX } from '../lib/route.js'
+import { fmtDuration } from '../lib/trackStats.js'
 
 /*
- * Registro di bordo: registrazione della traccia GPS con miglia percorse,
- * durata ed export GPX.
+ * Registro di bordo, come sui plotter: registra / pausa / riprendi / stop e
+ * salva, statistiche della traccia in corso e archivio delle tracce salvate
+ * (mostra sulla carta, GPX, elimina).
  */
 
-function fmtDuration(startTs) {
-  if (!startTs) return '--'
-  const mins = Math.floor((Date.now() - startTs) / 60000)
-  const h = Math.floor(mins / 60)
-  return `${h}h ${String(mins % 60).padStart(2, '0')}m`
+const fileName = (name) => `${name.replace(/[^\w\-àèéìòù ]+/gi, '').trim().replace(/\s+/g, '-') || 'traccia'}.gpx`
+
+function Stat({ label, value, unit, accent }) {
+  return (
+    <div className="border border-line bg-panel px-2 py-1.5">
+      <div className="label">{label}</div>
+      <div className={`text-xl font-bold tabular-nums ${accent ? 'text-phos' : 'text-paper'}`}>
+        {value}
+        {unit && <span className="text-[10px] text-fog"> {unit}</span>}
+      </div>
+    </div>
+  )
 }
 
+const btn = 'flex flex-1 items-center justify-center gap-1.5 border py-3 text-[11px] font-bold tracking-[0.15em] active:opacity-70 disabled:opacity-40'
+
 export default function TrackPanel({ track, gpsOk }) {
-  const { recording, setRecording, points, distanceNm, startedAt, clearTrack } = track
+  const { status, current, stats, wakeLock, saved, shownIds } = track
+  const [confirm, setConfirm] = useState(null) // id da eliminare o 'discard'
+  const [, tick] = useState(0)
+
+  // La durata scorre anche senza nuovi punti
+  useEffect(() => {
+    if (status !== 'recording') return undefined
+    const id = setInterval(() => tick((n) => n + 1), 15000)
+    return () => clearInterval(id)
+  }, [status])
+
+  const exportTrack = async (id) => {
+    const t = await track.getFull(id)
+    if (t) downloadFile(fileName(t.name), trackToGPX(t.segments, t.name))
+  }
 
   return (
     <div className="p-2">
       <div className="label pb-2">Registro di bordo</div>
 
-      <div className="grid grid-cols-2 gap-1.5">
-        <div className="border border-line bg-panel px-2 py-1.5">
-          <div className="label">Percorse</div>
-          <div className="text-xl font-bold text-phos tabular-nums">
-            {distanceNm.toFixed(1)}
-            <span className="text-[10px] text-fog"> nm</span>
+      {/* --- Traccia in corso --------------------------------------------- */}
+      {current && stats ? (
+        <>
+          <div className="flex items-center gap-1.5 pb-1.5 text-[11px] font-bold tracking-widest">
+            <Circle size={10} className={status === 'recording' ? 'text-danger' : 'text-warn'} fill="currentColor" />
+            <span className={status === 'recording' ? 'text-danger' : 'text-warn'}>{status === 'recording' ? 'REGISTRAZIONE' : 'IN PAUSA'}</span>
+            <span className="ml-auto truncate font-normal tracking-normal text-fog">{current.name}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            <Stat label="Percorse" value={stats.distanceNm.toFixed(2)} unit="nm" accent />
+            <Stat label="Durata" value={fmtDuration(stats.durationMs)} />
+            <Stat label="Media" value={stats.avgKn.toFixed(1)} unit="kn" />
+            <Stat label="Max" value={stats.maxKn.toFixed(1)} unit="kn" />
+          </div>
+          <div className="mt-2 flex gap-1.5">
+            {status === 'recording' ? (
+              <button type="button" onClick={track.pause} className={`${btn} border-warn bg-warn/10 text-warn`}>
+                <Pause size={14} /> PAUSA
+              </button>
+            ) : (
+              <button type="button" disabled={!gpsOk} onClick={track.resume} className={`${btn} border-phos bg-phos/10 text-phos`}>
+                <Play size={14} /> RIPRENDI
+              </button>
+            )}
+            <button type="button" onClick={track.stopAndSave} className={`${btn} border-danger bg-danger/10 text-danger`}>
+              <Square size={13} /> STOP E SALVA
+            </button>
+          </div>
+          {confirm === 'discard' ? (
+            <div className="mt-1.5 flex gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirm(null)
+                  track.discard()
+                }}
+                className={`${btn} border-danger text-danger`}
+              >
+                SCARTA DAVVERO
+              </button>
+              <button type="button" onClick={() => setConfirm(null)} className={`${btn} border-line text-fog`}>
+                ANNULLA
+              </button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setConfirm('discard')} className="mt-1.5 w-full py-1.5 text-[10px] tracking-widest text-fog">
+              SCARTA TRACCIA
+            </button>
+          )}
+          <div className="pt-1 text-[9px] leading-relaxed text-fog">
+            {stats.points} punti · {wakeLock === 'on' ? 'schermo tenuto acceso' : 'tieni lo schermo acceso: a schermo spento il GPS si ferma'}
+          </div>
+        </>
+      ) : (
+        <>
+          <button type="button" disabled={!gpsOk} onClick={track.start} className={`${btn} w-full border-phos bg-phos/10 text-phos`}>
+            <Circle size={12} /> REGISTRA TRACCIA
+          </button>
+          <div className="pt-1 text-[9px] leading-relaxed text-fog">
+            {gpsOk
+              ? 'Un punto ogni 10 m. La traccia si salva anche se chiudi l’app; mentre registri lo schermo resta acceso.'
+              : 'Richiede il fix GPS.'}
+          </div>
+        </>
+      )}
+
+      {/* --- Archivio ------------------------------------------------------ */}
+      <div className="label pb-1.5 pt-4">Tracce salvate</div>
+      {saved.length === 0 && <div className="text-[10px] text-fog">Nessuna traccia salvata.</div>}
+      {saved.map((t) => (
+        <div key={t.id} className="mb-1.5 border border-line bg-panel px-2 py-1.5">
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[12px] font-bold text-paper">{t.name}</div>
+              <div className="text-[10px] tabular-nums text-fog">
+                {t.stats ? `${t.stats.distanceNm.toFixed(1)} nm · ${fmtDuration(t.stats.durationMs)} · media ${t.stats.avgKn.toFixed(1)} kn · max ${t.stats.maxKn.toFixed(1)} kn` : ''}
+              </div>
+            </div>
+            <button
+              type="button"
+              title={shownIds[t.id] ? 'Nascondi dalla carta' : 'Mostra sulla carta'}
+              onClick={() => track.toggleShown(t.id)}
+              className={`flex h-9 w-9 flex-none items-center justify-center border ${shownIds[t.id] ? 'border-phos text-phos' : 'border-line text-fog'}`}
+            >
+              {shownIds[t.id] ? <Eye size={15} /> : <EyeOff size={15} />}
+            </button>
+            <button
+              type="button"
+              title="Esporta GPX"
+              onClick={() => exportTrack(t.id)}
+              className="flex h-9 w-9 flex-none items-center justify-center border border-line text-paper"
+            >
+              <Download size={15} />
+            </button>
+            {confirm === t.id ? (
+              <>
+                <button
+                  type="button"
+                  title="Conferma eliminazione"
+                  onClick={() => {
+                    setConfirm(null)
+                    track.remove(t.id)
+                  }}
+                  className="flex h-9 flex-none items-center justify-center border border-danger px-2 text-[10px] font-bold text-danger"
+                >
+                  ELIMINA
+                </button>
+                <button type="button" title="Annulla" onClick={() => setConfirm(null)} className="flex h-9 w-9 flex-none items-center justify-center border border-line text-fog">
+                  <X size={15} />
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                title="Elimina"
+                onClick={() => setConfirm(t.id)}
+                className="flex h-9 w-9 flex-none items-center justify-center border border-line text-danger"
+              >
+                <Trash2 size={15} />
+              </button>
+            )}
           </div>
         </div>
-        <div className="border border-line bg-panel px-2 py-1.5">
-          <div className="label">Durata</div>
-          <div className="text-xl font-bold text-paper tabular-nums">
-            {fmtDuration(startedAt)}
-          </div>
-        </div>
-      </div>
-
-      <button
-        type="button"
-        disabled={!gpsOk}
-        onClick={() => setRecording(!recording)}
-        className={`mt-2 flex w-full items-center justify-center gap-2 border py-3 text-[12px] font-bold tracking-[0.2em] ${
-          recording
-            ? 'border-danger bg-danger/15 text-danger'
-            : gpsOk
-              ? 'border-phos bg-phos/10 text-phos active:bg-phos/25'
-              : 'border-line text-fog opacity-50'
-        }`}
-      >
-        <Circle size={12} fill={recording ? 'currentColor' : 'none'} />
-        {recording ? 'STOP REGISTRAZIONE' : 'REGISTRA TRACCIA'}
-      </button>
-      {!gpsOk && <div className="pt-1 text-[9px] text-fog">Richiede il fix GPS</div>}
-
-      <div className="mt-2 flex gap-1.5">
-        <button
-          type="button"
-          disabled={points.length < 2}
-          onClick={() => downloadFile('traccia-timone.gpx', trackToGPX(points))}
-          className="flex flex-1 items-center justify-center gap-1 border border-line bg-panel py-2 text-[10px] font-bold tracking-widest text-paper active:bg-raised disabled:opacity-40"
-        >
-          <Download size={12} />
-          GPX
-        </button>
-        <button
-          type="button"
-          disabled={points.length === 0}
-          onClick={clearTrack}
-          className="flex flex-1 items-center justify-center gap-1 border border-line bg-panel py-2 text-[10px] font-bold tracking-widest text-danger active:bg-raised disabled:opacity-40"
-        >
-          <Trash2 size={12} />
-          AZZERA
-        </button>
-      </div>
-
-      <div className="pt-2 text-[9px] leading-relaxed text-fog">
-        {points.length} punti registrati (1 ogni 15 m). La traccia resta in
-        memoria finché l'app è aperta: esporta il GPX per archiviarla.
-      </div>
+      ))}
     </div>
   )
 }

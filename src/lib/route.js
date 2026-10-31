@@ -71,12 +71,17 @@ export function routeToGPX(waypoints, name = 'Rotta TIMONE') {
   return out + '</rte>\n</gpx>\n'
 }
 
-export function trackToGPX(points, name = 'Traccia TIMONE') {
-  let out = gpxHeader(name) + '<trk><trkseg>\n'
-  for (const p of points) {
-    out += `<trkpt lat="${p.lat.toFixed(6)}" lon="${p.lon.toFixed(6)}"><time>${new Date(p.ts).toISOString()}</time></trkpt>\n`
+// Traccia a tratti [[[lat, lon, ts, sog]]]: un <trkseg> per tratto (le pause)
+export function trackToGPX(segments, name = 'Traccia TIMONE') {
+  let out = gpxHeader(name) + `<trk><name>${name.replace(/[<&>]/g, '')}</name>\n`
+  for (const seg of segments) {
+    out += '<trkseg>\n'
+    for (const [lat, lon, ts] of seg) {
+      out += `<trkpt lat="${lat.toFixed(6)}" lon="${lon.toFixed(6)}"><time>${new Date(ts).toISOString()}</time></trkpt>\n`
+    }
+    out += '</trkseg>\n'
   }
-  return out + '</trkseg></trk>\n</gpx>\n'
+  return out + '</trk>\n</gpx>\n'
 }
 
 export function downloadFile(filename, content, mime = 'application/gpx+xml') {

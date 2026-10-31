@@ -167,7 +167,9 @@ export default function MapView({
   anchorages,
   route,
   parks,
-  trackPoints,
+  trackSegments = [],
+  trackRec = null, // { paused, distanceNm } mentre si registra
+  shownTracks = [],
   mob,
   routeOptions,
   onDropMob,
@@ -377,14 +379,15 @@ export default function MapView({
       layerGroupRefs.current.track = L.layerGroup().addTo(map)
       layerGroupRefs.current.parks = L.layerGroup().addTo(map)
 
-      // Track GPS
+      // Traccia in registrazione (a tratti: le pause non si uniscono)
       const trackLine = L.polyline([], {
-        color: '#5EE6C8',
-        weight: 2,
-        opacity: 0.65,
-        dashArray: '1 5',
+        color: '#FF3B30',
+        weight: 3,
+        opacity: 0.9,
       }).addTo(layerGroupRefs.current.track)
       markersRef.current.trackLine = trackLine
+      // Tracce salvate mostrate dall'archivio
+      layerGroupRefs.current.savedTracks = L.layerGroup().addTo(map)
 
       // Emit view changes
       const emitView = () => {
@@ -726,12 +729,39 @@ export default function MapView({
     }
   }, [routeOptions, activeRouteOption, mapReady])
 
-  // === Track GPS ===
+  // === Traccia in registrazione ===
   useEffect(() => {
     if (!mapReady) return
     if (!markersRef.current.trackLine) return
-    markersRef.current.trackLine.setLatLngs(trackPoints.map((p) => [p.lat, p.lon]))
-  }, [trackPoints, mapReady])
+    markersRef.current.trackLine.setLatLngs(trackSegments.map((seg) => seg.map((p) => [p[0], p[1]])))
+  }, [trackSegments, mapReady])
+
+  // === Tracce salvate: arancio, inizio verde e fine rossa, nome al tocco ===
+  useEffect(() => {
+    if (!mapReady) return
+    const group = layerGroupRefs.current.savedTracks
+    if (!group) return
+    group.clearLayers()
+    for (const t of shownTracks) {
+      const segs = t.segments.map((seg) => seg.map((p) => [p[0], p[1]])).filter((seg) => seg.length)
+      if (!segs.length) continue
+      const date = new Date(t.start).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
+      L.polyline(segs, { color: '#FF8C1A', weight: 3, opacity: 0.9, interactive: !route.editing })
+        .bindPopup(
+          popupHTML(t.name, [
+            { label: 'Data', value: date, color: 'var(--color-fog)' },
+            { label: 'Miglia', value: `${t.stats?.distanceNm?.toFixed(1) ?? '--'} nm` },
+            { label: 'Media / max', value: `${t.stats?.avgKn?.toFixed(1) ?? '--'} / ${t.stats?.maxKn?.toFixed(1) ?? '--'} kn` },
+          ])
+        )
+        .addTo(group)
+      const first = segs[0][0]
+      const lastSeg = segs[segs.length - 1]
+      const last = lastSeg[lastSeg.length - 1]
+      L.circleMarker(first, { radius: 5, color: '#fff', weight: 2, fillColor: '#2ECC71', fillOpacity: 1, interactive: false }).addTo(group)
+      L.circleMarker(last, { radius: 5, color: '#fff', weight: 2, fillColor: '#FF3B30', fillOpacity: 1, interactive: false }).addTo(group)
+    }
+  }, [shownTracks, mapReady, route.editing])
 
   // === Aree protette e zone militari (contorni OpenStreetMap) ===
   useEffect(() => {
@@ -830,6 +860,16 @@ export default function MapView({
           gribAvailable={!!currentField}
           weatherAvailable={true}
         />
+        {trackRec && (
+          <button
+            type="button"
+            onClick={() => setActiveDrawer('log')}
+            className={`glass mt-1.5 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold tracking-widest ${trackRec.paused ? 'text-warn' : 'text-danger'}`}
+          >
+            <span className={`inline-block h-2 w-2 rounded-full ${trackRec.paused ? 'bg-warn' : 'bg-danger animate-pulse'}`} />
+            {trackRec.paused ? 'PAUSA' : 'REC'} {trackRec.distanceNm.toFixed(1)} nm
+          </button>
+        )}
       </div>
 
       {/* Top-right controls */}
