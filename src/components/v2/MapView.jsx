@@ -1262,7 +1262,15 @@ function LayerPopover({ onClose, onDownloadArea }) {
         onClick={onClose}
         className="absolute inset-0 z-[990] cursor-default"
       />
-      <div className="glass-strong absolute right-16 top-3 z-[1000] w-56 rounded-lg p-3 slide-up">
+      {/* Scorrevole: con il testo grande e lo schermo orizzontale non sta tutto */}
+      <div className="glass-strong panel-scroll absolute right-16 top-3 z-[1000] max-h-[calc(100%-24px)] w-[calc(196px*var(--fs))] max-w-[calc(100%-80px)] rounded-lg p-3 slide-up">
+        <button
+          type="button"
+          onClick={onDownloadArea}
+          className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-md border border-phos bg-phos/10 py-2.5 text-[calc(10px*var(--fs))] font-semibold tracking-widest text-phos"
+        >
+          <CloudDownload size={13} /> SCARICA ZONA OFFLINE
+        </button>
         <div className="label pb-2">Carta base</div>
         <div className="mb-3 flex gap-1">
           {[
@@ -1302,14 +1310,6 @@ function LayerPopover({ onClose, onDownloadArea }) {
             <span className={layers[l.key] ? 'text-paper' : 'text-fog'}>{l.label}</span>
           </button>
         ))}
-        <div className="label pb-2 pt-3">Offline</div>
-        <button
-          type="button"
-          onClick={onDownloadArea}
-          className="flex w-full items-center justify-center gap-1.5 rounded-md border border-phos bg-phos/10 py-2.5 text-[calc(10px*var(--fs))] font-semibold tracking-widest text-phos"
-        >
-          <CloudDownload size={13} /> SCARICA UNA ZONA
-        </button>
       </div>
     </>
   )
