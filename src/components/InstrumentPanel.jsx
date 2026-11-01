@@ -100,13 +100,16 @@ function Position({ geo, gpsOk }) {
   const lat = formatCoord(geo.lat, true)
   const lon = formatCoord(geo.lon, false)
   const copy = async () => {
+    // In maiuscolo, una voce per riga, come si scrive un messaggio di posizione
     const text = [
-      `${boat.vesselName ? `Sail boat "${boat.vesselName}" position: ` : ''}${lat} ${lon}`,
-      boat.callSign && `Call Sign: ${boat.callSign}`,
+      boat.vesselName && `SAIL BOAT "${boat.vesselName}"`,
+      `POSITION: ${lat} ${lon}`,
+      boat.callSign && `CALL SIGN: ${boat.callSign}`,
       boat.mmsi && `MMSI: ${boat.mmsi}`,
     ]
       .filter(Boolean)
       .join('\n')
+      .toUpperCase()
     try {
       await navigator.clipboard.writeText(text)
     } catch {

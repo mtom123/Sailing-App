@@ -173,7 +173,7 @@ export default function SettingsSheet({
               ))}
             </div>
             <div className="whitespace-pre-line pb-3 text-[calc(9px*var(--fs))] text-fog">
-              {`Con COPIA:\nSail boat "${boat.vesselName || '…'}" position: 44°16.002' N 009°23.700' E${boat.callSign ? `\nCall Sign: ${boat.callSign}` : ''}${boat.mmsi ? `\nMMSI: ${boat.mmsi}` : ''}`}
+              {`Con COPIA:\n${boat.vesselName ? `SAIL BOAT "${boat.vesselName.toUpperCase()}"\n` : ''}POSITION: 44°16.002' N 009°23.700' E${boat.callSign ? `\nCALL SIGN: ${boat.callSign.toUpperCase()}` : ''}${boat.mmsi ? `\nMMSI: ${boat.mmsi}` : ''}`}
             </div>
             <div className="label pb-1">Polar</div>
             <div className="flex flex-col gap-1">
