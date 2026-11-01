@@ -1,42 +1,43 @@
 /**
- * Polar Solver per Dufour 41 Classic (monoscafo cruiser 12m)
+ * Polar Solver — Dufour 41 Classic (J&J, metà anni '90)
  *
- * Tabella polar: speed (kn) per [TWS knots] x [TWA degrees]
- * Fonte: stima basata su dati ORC + benchmark Dufour 4x series
- * Per uso reale: caricare file .pol specifico della propria barca.
+ * Media dei certificati ORC di cinque Dufour 41 Classic: MATADOR (ESP6817,
+ * 2024), NIRVANA III (ITA30911, 2019), REWIND (ITA17187, 2019), BOO
+ * (ESP7980, 2022), DIMITRIOS (GRE6729, 2017). Dati ORC via
+ * github.com/jieter/orc-data. Tra le cinque barche le velocità differiscono
+ * di 0,2-0,6 nodi.
  *
- * TWS righe: 4, 6, 8, 10, 12, 15, 18, 22, 26, 30 (kn)
- * TWA colonne: 0 (in prua), 30, 45, 60, 90, 120, 150, 180 (gradi)
+ * - 6-20 nodi, 52°-150°: media diretta dei certificati.
+ * - 40°/45° e 165°/180°: dagli angoli e VMG ottimali di bolina e di poppa
+ *   dei certificati; 30°: barca che stringe troppo (55% della velocità di
+ *   bolina).
+ * - 24 nodi: rapporti 24/20 del certificato MATADOR 2024; 30 nodi: come 24
+ *   con terzaroli (-7% di bolina, -3% al lasco); 4 nodi: forma della polare
+ *   generica OpenCPN.
+ * - In poppa i certificati ORC usano lo spinnaker asimmetrico: senza
+ *   gennaker oltre 120° la barca va un po' più piano.
+ *
+ * Tabella: speeds[i][j] = velocità (kn) a tws[i], twa[j].
+ * Anche in tools/polars/Dufour41Classic_media_ORC.pol (formato OpenCPN).
  */
 
-// Polar matrix: speed in knots
-// Righe = TWS, Colonne = TWA [0, 30, 45, 60, 90, 120, 150, 180]
 const POLAR_DUFOUR_41 = {
-  tws: [4, 6, 8, 10, 12, 15, 18, 22, 26, 30],
-  twa: [0, 30, 45, 60, 90, 120, 150, 180],
-  // speeds[i][j] = boat speed at tws[i], twa[j]
+  tws: [4, 6, 8, 10, 12, 14, 16, 20, 24, 30],
+  twa: [0, 30, 40, 45, 52, 60, 75, 90, 110, 120, 135, 150, 165, 180],
   speeds: [
-    // TWS=4
-    [0.2, 2.1, 3.0, 3.4, 3.8, 3.9, 3.7, 3.2],
-    // TWS=6
-    [0.3, 3.4, 4.6, 5.0, 5.4, 5.6, 5.2, 4.5],
-    // TWS=8
-    [0.4, 4.5, 5.8, 6.3, 6.7, 7.0, 6.5, 5.7],
-    // TWS=10
-    [0.5, 5.4, 6.7, 7.2, 7.6, 7.9, 7.4, 6.5],
-    // TWS=12
-    [0.5, 6.0, 7.3, 7.7, 8.0, 8.3, 7.8, 6.9],
-    // TWS=15
-    [0.4, 6.3, 7.5, 7.9, 8.2, 8.5, 8.0, 7.1],
-    // TWS=18
-    [0.3, 6.4, 7.6, 7.9, 8.2, 8.4, 7.9, 7.0],
-    // TWS=22 (spruzzo, riduzione)
-    [0.3, 6.2, 7.4, 7.7, 8.0, 8.2, 7.6, 6.8],
-    // TWS=26 (riduzione per sicurezza)
-    [0.2, 5.8, 7.0, 7.3, 7.5, 7.7, 7.1, 6.3],
-    // TWS=30 (limitazione, riduzione vela)
-    [0.2, 5.3, 6.4, 6.7, 6.9, 7.0, 6.4, 5.7],
+    [0.00, 1.72, 2.76, 3.27, 3.67, 3.97, 4.22, 4.11, 4.05, 3.81, 3.30, 2.69, 2.39, 2.00], // TWS 4
+    [0.00, 2.53, 3.99, 4.65, 5.08, 5.39, 5.64, 5.60, 5.50, 5.34, 4.81, 4.09, 3.59, 3.09], // TWS 6
+    [0.00, 2.95, 4.89, 5.53, 5.99, 6.32, 6.59, 6.61, 6.64, 6.46, 5.92, 5.14, 4.55, 3.95], // TWS 8
+    [0.00, 3.31, 5.54, 6.21, 6.69, 6.96, 7.15, 7.25, 7.32, 7.21, 6.82, 6.02, 5.39, 4.76], // TWS 10
+    [0.00, 3.55, 6.09, 6.67, 7.09, 7.29, 7.46, 7.58, 7.70, 7.63, 7.37, 6.73, 6.21, 5.69], // TWS 12
+    [0.00, 3.65, 6.51, 6.89, 7.28, 7.48, 7.67, 7.79, 8.02, 7.97, 7.73, 7.17, 6.63, 6.23], // TWS 14
+    [0.00, 3.70, 6.68, 6.99, 7.37, 7.59, 7.85, 7.98, 8.33, 8.32, 8.06, 7.48, 7.04, 6.76], // TWS 16
+    [0.00, 3.73, 6.75, 7.06, 7.44, 7.67, 8.07, 8.36, 8.79, 8.98, 8.75, 7.99, 7.73, 7.51], // TWS 20
+    [0.00, 3.68, 6.66, 6.96, 7.44, 7.70, 8.16, 8.58, 9.04, 9.41, 9.40, 8.45, 8.24, 8.01], // TWS 24
+    [0.00, 3.42, 6.19, 6.47, 6.92, 7.16, 7.91, 8.32, 8.77, 9.13, 9.12, 8.20, 7.99, 7.77], // TWS 30
   ],
+  // Angolo di bolina ottimale (VMG) per vento, media dei certificati
+  beat: { tws: [6, 8, 10, 12, 14, 16, 20], angle: [44.2, 42.5, 42.1, 41.4, 40.5, 40.1, 40.1] },
 }
 
 const POLARS = {
@@ -144,14 +145,20 @@ export function solvePolar(polarKey, tws, twa) {
  * (es. bolina oltre 40°), ritorna il TWA limite.
  */
 export function optimalTwa(polarKey, tws, courseFromWind) {
-  // courseFromWind = angolo tra direzione di navigazione e direzione da cui soffia il vento (0-180)
-  // Se courseFromWind > 45°, navigo direttamente alla rotta
-  // Se < 45°, devo stringere (tack) e il VMG ottimale è ~ 42°
-  if (courseFromWind >= 45) return courseFromWind
-  // bolina: optimal TWA dipende da TWS (più vento = più stringere)
-  if (tws < 6) return 45
-  if (tws < 12) return 42
-  return 40
+  // courseFromWind = angolo tra rotta e direzione da cui soffia il vento (0-180).
+  // Più largo dell'angolo di bolina: si va diritti; più stretto: si bordeggia
+  // all'angolo di bolina della polare (dai certificati, se ci sono)
+  const polar = customPolars.get(polarKey) || POLARS[polarKey] || POLAR_DUFOUR_41
+  const beat = polar.beat ? interpBeat(polar.beat, tws) : tws < 6 ? 45 : tws < 12 ? 42 : 40
+  return courseFromWind >= beat ? courseFromWind : beat
+}
+
+function interpBeat({ tws: xs, angle: ys }, tws) {
+  if (tws <= xs[0]) return ys[0]
+  for (let i = 0; i < xs.length - 1; i++) {
+    if (tws <= xs[i + 1]) return ys[i] + ((ys[i + 1] - ys[i]) * (tws - xs[i])) / (xs[i + 1] - xs[i])
+  }
+  return ys[ys.length - 1]
 }
 
 /**
@@ -166,7 +173,7 @@ export function vmg(polarKey, tws, twa) {
  * Lista barche disponibili
  */
 export const BOAT_LIBRARY = [
-  { key: 'dufour-41-classic', name: 'Dufour 41 Classic', type: 'Monoscafo cruiser', year: '2003-2010', length: '12.50m' },
+  { key: 'dufour-41-classic', name: 'Dufour 41 Classic', type: 'Media ORC di 5 barche (J&J)', year: '1995-1997', length: '11.95m' },
 ]
 
 export default {
