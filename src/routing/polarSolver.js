@@ -94,6 +94,11 @@ function lerp(a, b, t) {
   return a + (b - a) * t
 }
 
+/** Tabella della polare (per mostrarla): { tws, twa, speeds, beat? } */
+export function getPolar(polarKey) {
+  return customPolars.get(polarKey) || POLARS[polarKey] || POLAR_DUFOUR_41
+}
+
 /**
  * Risolve la velocità barca data TWS (kn) e TWA (gradi)
  * Interpolazione bilineare sulla polar matrix.
@@ -173,7 +178,7 @@ export function vmg(polarKey, tws, twa) {
  * Lista barche disponibili
  */
 export const BOAT_LIBRARY = [
-  { key: 'dufour-41-classic', name: 'Dufour 41 Classic', type: 'Media ORC di 5 barche (J&J)', year: '1995-1997', length: '11.95m' },
+  { key: 'dufour-41-classic', name: 'Dufour 41 Classic', type: 'Media ORC di 5 barche (J&J)', year: '1998', length: '11.95m' },
 ]
 
 export default {

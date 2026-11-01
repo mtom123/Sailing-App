@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useAppStore } from '../store/useAppStore.js'
 import { BOAT_LIBRARY, registerCustomPolar, listAvailablePolars } from '../routing/polarSolver.js'
 import { parsePolarFile, saveCustomPolar, listCustomPolars } from '../lib/polarParser.js'
+import PolarViewer from './PolarViewer.jsx'
 
 /*
  * Foglio impostazioni: tutto ciò che si configura una volta e poi si dimentica
@@ -72,6 +73,7 @@ export default function SettingsSheet({
 }) {
   const { boat, setBoat, coastBand, setCoastBand, textScale, setTextScale } = useAppStore()
   const [customPolars, setCustomPolars] = useState([])
+  const [showPolar, setShowPolar] = useState(false)
   const [uploadStatus, setUploadStatus] = useState(null)
   const fileInputRef = useRef(null)
 
@@ -175,7 +177,24 @@ export default function SettingsSheet({
             <div className="whitespace-pre-line pb-3 text-[calc(9px*var(--fs))] text-fog">
               {`Con COPIA:\n${boat.vesselName ? `SAIL BOAT "${boat.vesselName.toUpperCase()}"\n` : ''}POSITION: 44°16.002' N 009°23.700' E${boat.callSign ? `\nCALL SIGN: ${boat.callSign.toUpperCase()}` : ''}${boat.mmsi ? `\nMMSI: ${boat.mmsi}` : ''}`}
             </div>
-            <div className="label pb-1">Polar</div>
+            <div className="flex items-center justify-between pb-1">
+              <span className="label">Polar</span>
+              <button
+                type="button"
+                onClick={() => setShowPolar(true)}
+                className="flex items-center gap-1 rounded-md border border-phos bg-phos/10 px-2.5 py-1.5 text-[calc(10px*var(--fs))] font-semibold tracking-widest text-phos"
+              >
+                <Activity size={12} /> VEDI POLARE
+              </button>
+            </div>
+            {showPolar && (
+              <PolarViewer
+                polarKey={boat.polarProfile}
+                title={`Polare · ${boat.name}`}
+                subtitle={BOAT_LIBRARY.find((b) => b.key === boat.type)?.type}
+                onClose={() => setShowPolar(false)}
+              />
+            )}
             <div className="flex flex-col gap-1">
               {BOAT_LIBRARY.map((b) => {
                 const active = boat.type === b.key
