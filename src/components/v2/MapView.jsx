@@ -52,6 +52,22 @@ import {
 // ============================================================
 // Marker HTML helpers — Leaflet divIcon
 // ============================================================
+// Scale di colore di vento (nodi) e correnti (nodi): frecce e legenda
+const WIND_SCALE = [
+  [8, '#1F6FE0', '< 8'],
+  [14, '#0B9B4A', '8–14'],
+  [20, '#F08C00', '14–20'],
+  [28, '#E2361E', '20–28'],
+  [Infinity, '#B5179E', '> 28'],
+]
+const CURRENT_SCALE = [
+  [0.3, '#26C6DA', '< 0,3'],
+  [0.7, '#039BE5', '0,3–0,7'],
+  [1.2, '#1565C0', '0,7–1,2'],
+  [Infinity, '#7B1FA2', '> 1,2'],
+]
+const scaleColor = (scale, v) => scale.find(([max]) => v < max)[1]
+
 // Profondità a centrobarca, accanto alla freccia (non ruota con la rotta).
 // Ecoscandaglio (Signal K): valore vero, rosso sotto la soglia. Shom (griglia
 // 10 m): valore e rosso sotto pescaggio + margine. EMODnet (~115 m): "≈"
@@ -349,6 +365,15 @@ export default function MapView({
       })
 
       L.control.zoom({ position: 'bottomright' }).addTo(map)
+      // Crediti delle carte chiusi in "ⓘ Fonti" (la riga lunga a 9 pt non si
+      // leggeva e copriva la scala): un tocco li apre, un altro li chiude
+      const attribution = map.attributionControl.getContainer()
+      attribution.classList.add('attr-collapsed')
+      L.DomEvent.on(attribution, 'click', (e) => {
+        if (e.target.closest('a') && !attribution.classList.contains('attr-collapsed')) return
+        L.DomEvent.stop(e)
+        attribution.classList.toggle('attr-collapsed')
+      })
       new NauticalScale({ metric: true, imperial: false, position: 'bottomleft', maxWidth: 200 }).addTo(map)
 
       // Tile layers — zIndex fisso: l'ordine resta giusto anche
@@ -1107,6 +1132,28 @@ export default function MapView({
         <CurrentCanvas map={mapRef.current} field={currentField} timeOffset={useAppStore.getState().timeOffset} />
       )}
 
+      {/* Legenda dei colori di vento e correnti, sopra la scala */}
+      {mapReady && (layers.wind || (layers.current && currentField)) && (
+        <div className="glass pointer-events-none absolute bottom-[112px] left-3 z-[800] rounded-md px-2 py-1.5 text-[calc(10px*var(--fs))] font-semibold text-paper">
+          {[
+            [layers.wind, 'Vento kn', WIND_SCALE],
+            [layers.current && currentField, 'Corrente kn', CURRENT_SCALE],
+          ]
+            .filter(([on]) => on)
+            .map(([, title, scale]) => (
+              <div key={title} className="flex items-center gap-1.5 py-0.5">
+                <span className="w-[calc(64px*var(--fs))] text-fog">{title}</span>
+                {scale.map(([, color, label]) => (
+                  <span key={label} className="flex items-center gap-1 tabular-nums">
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm border border-black/40" style={{ background: color }} />
+                    {label}
+                  </span>
+                ))}
+              </div>
+            ))}
+        </div>
+      )}
+
       {/* In alto a sinistra: col pannello strumenti chiuso SOG/COG e posizione
           (come nel pannello), poi stato della rete, REC e carta offline */}
       <div className="absolute left-3 top-3 z-[900] flex flex-col items-start fade-in">
@@ -1457,15 +1504,8 @@ function WindCanvas({ map, field }) {
     let raf = null
     let lastW = 0
     let lastH = 0
-    // Colori pieni per intensità, ben visibili sul mare chiaro (prima verdi
-    // chiari su verde-azzurro): blu, verde, arancio, rosso, viola oltre 28 kn
-    const colorFor = (speed) => {
-      if (speed < 8) return '#1F6FE0'
-      if (speed < 14) return '#0B9B4A'
-      if (speed < 20) return '#F08C00'
-      if (speed < 28) return '#E2361E'
-      return '#B5179E'
-    }
+    // Colori pieni per intensità (WIND_SCALE), visibili sul mare chiaro
+    const colorFor = (speed) => scaleColor(WIND_SCALE, speed)
     const draw = () => {
       raf = null
       const container = map.getContainer()
@@ -1607,7 +1647,7 @@ function CurrentCanvas({ map, field, timeOffset = 0 }) {
           // Onda con punta di freccia, nel verso in cui scorre l'acqua; più
           // lunga e più scura con la corrente più forte, velocità accanto
           const len = Math.min(64, 34 + speed * 16)
-          const color = speed < 0.3 ? '#26C6DA' : speed < 0.7 ? '#039BE5' : speed < 1.2 ? '#1565C0' : '#7B1FA2'
+          const color = scaleColor(CURRENT_SCALE, speed)
           const wave = () => {
             ctx.beginPath()
             const y0 = len / 2

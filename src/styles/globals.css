@@ -177,6 +177,31 @@ body,
 .leaflet-tooltip.ruler-label::before {
   display: none;
 }
+/* Crediti: chiusi in "ⓘ Fonti", aperti leggibili su più righe */
+.leaflet-control-attribution {
+  cursor: pointer;
+  max-width: min(70vw, 560px);
+  white-space: normal;
+  line-height: 1.4;
+}
+.leaflet-control-attribution:not(.attr-collapsed) {
+  background: rgb(var(--rgb-abyss) / 0.95) !important;
+  color: var(--color-paper) !important;
+  font-size: calc(11px * var(--fs)) !important;
+  padding: 6px 10px !important;
+  border-radius: 8px 0 0 0 !important;
+}
+.leaflet-control-attribution.attr-collapsed {
+  font-size: 0 !important;
+  padding: 3px 8px !important;
+  border-radius: 6px 0 0 0 !important;
+}
+.leaflet-control-attribution.attr-collapsed::before {
+  content: 'ⓘ Fonti';
+  font-size: calc(11px * var(--fs));
+  font-weight: 600;
+  color: var(--color-fog);
+}
 .leaflet-control-attribution a {
   color: var(--color-phos-dim) !important;
 }
