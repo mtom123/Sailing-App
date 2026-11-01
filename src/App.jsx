@@ -460,10 +460,11 @@ export default function App() {
             </div>
           )}
 
-          {/* Wind alarm */}
+          {/* Allarme raffica (Impostazioni): in basso al centro, lontano dalla scala */}
           {windAlarmActive && !mob && (
-            <div className="glass-strong absolute left-3 bottom-20 z-[900] rounded-lg border border-warn/50 px-3 py-1.5 text-xs font-bold text-warn">
-              ⚠ RAFFICHE {Math.round(gustNow)} kn
+            <div className="glass-strong absolute bottom-3 left-1/2 z-[900] -translate-x-1/2 rounded-lg border border-warn/60 px-3 py-1.5 text-center text-warn">
+              <div className="text-[calc(12px*var(--fs))] font-bold tracking-wide">⚠ RAFFICHE PREVISTE {Math.round(gustNow)} kn</div>
+              <div className="text-[calc(10px*var(--fs))] opacity-80">sopra la soglia di {windAlarm.threshold} kn · allarme in Impostazioni</div>
             </div>
           )}
 
