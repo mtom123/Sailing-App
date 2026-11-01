@@ -13,7 +13,7 @@ import { trueWind } from '../lib/boatData.js'
  * dati numerici vento/onde, grafici 72h e sorgente AIS.
  */
 
-function BigValue({ label, value, unit }) {
+export function BigValue({ label, value, unit }) {
   return (
     <div className="flex-1 border border-line bg-panel px-2 py-1.5">
       <div className="label">{label}</div>
@@ -91,7 +91,7 @@ const fmtClock = (d) =>
 // Posizione grande e leggibile, con COPIA per comunicarla in fretta (VHF,
 // telefono, messaggio): gradi e primi, come si legge in radio, preceduti dal
 // nome della barca (Impostazioni → Configurazione barca)
-function Position({ geo, gpsOk }) {
+export function Position({ geo, gpsOk }) {
   const [copied, setCopied] = useState(false)
   const boat = useAppStore((s) => s.boat)
   if (!gpsOk) {

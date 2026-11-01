@@ -21,6 +21,7 @@ import { LiguriaHabitatLayer } from '../../lib/liguriaHabitat.js'
 // bloccava lo zoom col pizzico per 1-2 secondi
 const ISOBATH_VECTOR_MIN_ZOOM = 13
 import ConnectivityIndicator from './ConnectivityIndicator.jsx'
+import { BigValue, Position } from '../InstrumentPanel.jsx'
 import MapContextMenu from './MapContextMenu.jsx'
 import DepthHover, { formatDepth } from './DepthHover.jsx'
 import { depthAt } from '../../lib/depthAt.js'
@@ -1103,11 +1104,10 @@ export default function MapView({
         <CurrentCanvas map={mapRef.current} field={currentField} timeOffset={useAppStore.getState().timeOffset} />
       )}
 
-      {/* SOG/COG sulla carta solo col pannello strumenti chiuso: aperto, li mostra già lui */}
-      {!leftPanelOpen && <FloatingHUD geo={geo} />}
-
-      {/* Connectivity indicator */}
-      <div className={`absolute left-3 z-[900] fade-in ${leftPanelOpen || geo.lat == null ? 'top-3' : 'top-16'}`}>
+      {/* In alto a sinistra: col pannello strumenti chiuso SOG/COG e posizione
+          (come nel pannello), poi stato della rete, REC e carta offline */}
+      <div className="absolute left-3 top-3 z-[900] flex flex-col items-start fade-in">
+        {!leftPanelOpen && <FloatingHUD geo={geo} />}
         <ConnectivityIndicator
           gribAvailable={!!currentField}
           weatherAvailable={true}
@@ -1405,25 +1405,17 @@ function LayerPopover({ onClose, onDownloadArea }) {
   )
 }
 
+// Gli stessi riquadri del pannello strumenti: SOG e COG grandi, posizione
+// con COPIA
 function FloatingHUD({ geo }) {
   if (geo.lat == null) return null
   return (
-    <div className="glass absolute left-3 top-3 z-[900] flex items-center gap-4 rounded-lg px-4 py-2 fade-in">
-      <div>
-        <div className="label">SOG</div>
-        <div className="font-mono text-lg font-bold text-phos">
-          {geo.sog != null ? geo.sog.toFixed(1) : '--'}
-          <span className="text-[calc(10px*var(--fs))] text-fog ml-1">kn</span>
-        </div>
+    <div className="glass mb-1.5 w-[calc(280px*var(--fs))] max-w-[45vw] rounded-lg pt-0.5">
+      <div className="flex gap-1.5 p-1.5">
+        <BigValue label="SOG" value={geo.sog != null ? geo.sog.toFixed(1) : '--'} unit="kn" />
+        <BigValue label="COG" value={geo.cog != null ? formatDeg(geo.cog) : '---'} unit="°" />
       </div>
-      <div className="h-8 w-px bg-line" />
-      <div>
-        <div className="label">COG</div>
-        <div className="font-mono text-lg font-bold text-paper">
-          {geo.cog != null ? formatDeg(geo.cog) : '---'}
-          <span className="text-[calc(10px*var(--fs))] text-fog ml-1">°</span>
-        </div>
-      </div>
+      <Position geo={geo} gpsOk={!geo.error} />
     </div>
   )
 }
