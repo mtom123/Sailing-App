@@ -153,6 +153,17 @@ export default function SettingsSheet({
           </Section>
 
           <Section title="Configurazione barca" icon={Sailboat}>
+            <div className="label pb-1">Nome della barca</div>
+            <input
+              type="text"
+              value={boat.vesselName ?? ''}
+              onChange={(e) => setBoat({ vesselName: e.target.value })}
+              placeholder="Best Shot"
+              className="mb-1 w-full rounded-md border border-line bg-surface px-2.5 py-2.5 text-xs text-paper outline-none focus:border-phos"
+            />
+            <div className="pb-3 text-[calc(9px*var(--fs))] text-fog">
+              Con COPIA la posizione diventa: Sail boat "{boat.vesselName || '…'}" position: 44°16.002' N 009°23.700' E
+            </div>
             <div className="label pb-1">Polar</div>
             <div className="flex flex-col gap-1">
               {BOAT_LIBRARY.map((b) => {

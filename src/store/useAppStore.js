@@ -79,6 +79,7 @@ export const useAppStore = create(
 
       // === Boat configuration ===
       boat: {
+        vesselName: 'Best Shot', // nome della barca, nella posizione copiata
         type: 'dufour-41-classic',
         name: 'Dufour 41 Classic',
         polarProfile: 'cruiser-41-monohull',

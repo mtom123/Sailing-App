@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useAppStore } from '../store/useAppStore.js'
 import { Copy, Satellite } from 'lucide-react'
 import WindCompass from './WindCompass.jsx'
 import ForecastChart from './ForecastChart.jsx'
@@ -88,16 +89,18 @@ const fmtClock = (d) =>
   d ? d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '--'
 
 // Posizione grande e leggibile, con COPIA per comunicarla in fretta (VHF,
-// telefono): gradi e primi, come si legge in radio
+// telefono, messaggio): gradi e primi, come si legge in radio, preceduti dal
+// nome della barca (Impostazioni → Configurazione barca)
 function Position({ geo, gpsOk }) {
   const [copied, setCopied] = useState(false)
+  const vesselName = useAppStore((s) => s.boat.vesselName)
   if (!gpsOk) {
     return <div className="px-3 pb-1 text-[calc(10px*var(--fs))] text-fog">{geo.error || 'In attesa del segnale GPS…'}</div>
   }
   const lat = formatCoord(geo.lat, true)
   const lon = formatCoord(geo.lon, false)
   const copy = async () => {
-    const text = `${lat} ${lon}`
+    const text = `${vesselName ? `Sail boat "${vesselName}" position: ` : ''}${lat} ${lon}`
     try {
       await navigator.clipboard.writeText(text)
     } catch {
