@@ -1576,10 +1576,11 @@ function CurrentCanvas({ map, field, timeOffset = 0 }) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.clearRect(0, 0, w, h)
       if (!field?.grid?.length) return
-      const step = 110
+      const step = 120
       const now = Date.now() + timeOffset * 3600 * 1000
-      for (let px = step / 2; px < w; px += step) {
-        for (let py = step / 2; py < h; py += step) {
+      // Sfalsate rispetto alle frecce del vento (griglia da 90 px)
+      for (let px = step / 2 + 25; px < w; px += step) {
+        for (let py = step / 2 + 25; py < h; py += step) {
           const ll = map.containerPointToLatLng([px, py])
           let best = null
           let bestDist = Infinity
@@ -1603,24 +1604,57 @@ function CurrentCanvas({ map, field, timeOffset = 0 }) {
             dir = best.currDir?.[bestI]
           }
           if (speed == null || dir == null || speed < 0.1) continue
-          const len = Math.min(40, 14 + speed * 8)
+          // Onda con punta di freccia, nel verso in cui scorre l'acqua; più
+          // lunga e più scura con la corrente più forte, velocità accanto
+          const len = Math.min(64, 34 + speed * 16)
+          const color = speed < 0.3 ? '#26C6DA' : speed < 0.7 ? '#039BE5' : speed < 1.2 ? '#1565C0' : '#7B1FA2'
+          const wave = () => {
+            ctx.beginPath()
+            const y0 = len / 2
+            const y1 = -len / 2 + 10
+            for (let k = 0; k <= 24; k++) {
+              const y = y0 + ((y1 - y0) * k) / 24
+              const x = Math.sin((k / 24) * Math.PI * 3) * 5
+              if (k === 0) ctx.moveTo(x, y)
+              else ctx.lineTo(x, y)
+            }
+          }
+          const head = () => {
+            ctx.beginPath()
+            ctx.moveTo(0, -len / 2 - 2)
+            ctx.lineTo(-7.5, -len / 2 + 11)
+            ctx.lineTo(7.5, -len / 2 + 11)
+            ctx.closePath()
+          }
           ctx.save()
           ctx.translate(px, py)
+          ctx.save()
           ctx.rotate((dir * Math.PI) / 180)
-          ctx.strokeStyle = '#4A9EFF'
-          ctx.fillStyle = '#4A9EFF'
-          ctx.globalAlpha = 0.7
-          ctx.lineWidth = 2
-          ctx.beginPath()
-          ctx.moveTo(0, len / 2)
-          ctx.lineTo(0, -len / 2 + 7)
+          ctx.lineJoin = 'round'
+          ctx.lineCap = 'round'
+          ctx.strokeStyle = 'rgba(10, 22, 32, 0.75)'
+          ctx.lineWidth = 6
+          wave()
           ctx.stroke()
-          ctx.beginPath()
-          ctx.moveTo(0, -len / 2)
-          ctx.lineTo(-5, -len / 2 + 9)
-          ctx.lineTo(5, -len / 2 + 9)
-          ctx.closePath()
+          head()
+          ctx.lineWidth = 3
+          ctx.stroke()
+          ctx.strokeStyle = color
+          ctx.fillStyle = color
+          ctx.lineWidth = 3
+          wave()
+          ctx.stroke()
+          head()
           ctx.fill()
+          ctx.restore()
+          // Velocità (nodi), dritta
+          const label = speed.toFixed(1).replace('.', ',')
+          ctx.font = 'bold 11px system-ui, sans-serif'
+          ctx.lineWidth = 3
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)'
+          ctx.strokeText(label, 12, 4)
+          ctx.fillStyle = color
+          ctx.fillText(label, 12, 4)
           ctx.restore()
         }
       }
@@ -1629,10 +1663,10 @@ function CurrentCanvas({ map, field, timeOffset = 0 }) {
       if (raf == null) raf = requestAnimationFrame(draw)
     }
     schedule()
-    map.on('move zoom moveend zoomend resize viewreset', schedule)
+    map.on('moveend zoomend resize viewreset', schedule)
     return () => {
       if (raf != null) cancelAnimationFrame(raf)
-      map.off('move zoom moveend zoomend resize viewreset', schedule)
+      map.off('moveend zoomend resize viewreset', schedule)
     }
   }, [map, field, timeOffset])
   return <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 z-[510]" />
