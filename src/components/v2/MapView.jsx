@@ -16,7 +16,10 @@ import { OrdinancesLayer } from '../../lib/ordinancesLayer.js'
 import { ampContext, ampPageFor, ampPopupHTML } from '../../lib/ampRules.js'
 import { LiguriaHabitatLayer } from '../../lib/liguriaHabitat.js'
 
-const ISOBATH_VECTOR_MIN_ZOOM = 12
+// Isobate calcolate nell'app da qui in su (sotto: immagini del server
+// EMODnet). Allo zoom 12 il calcolo copriva un'area troppo larga e su iPad
+// bloccava lo zoom col pizzico per 1-2 secondi
+const ISOBATH_VECTOR_MIN_ZOOM = 13
 import ConnectivityIndicator from './ConnectivityIndicator.jsx'
 import MapContextMenu from './MapContextMenu.jsx'
 import DepthHover, { formatDepth } from './DepthHover.jsx'
@@ -378,8 +381,8 @@ export default function MapView({
         zIndex: 3,
       })
       tileLayerRefs.current.posidonia = L.layerGroup([seagrass, new LiguriaHabitatLayer()])
-      // Isobate 2–1000 m + acque basse. Vista d'insieme (z9–11): immagini
-      // calcolate dal server EMODnet. Da z12: vettoriali, calcolate nell'app
+      // Isobate 2–1000 m + acque basse. Vista d'insieme (z9–12): immagini
+      // calcolate dal server EMODnet. Da z13: vettoriali, calcolate nell'app
       // dalla griglia delle profondità, nitide a ogni zoom.
       tileLayerRefs.current.isobaths = L.tileLayer.wms(EMODNET_WMS_URL, {
         layers: EMODNET_DEPTH_LAYER,
@@ -390,7 +393,10 @@ export default function MapView({
         interpolations: 'bilinear', // isobate morbide invece che "a scalini" sulle celle da ~115 m
         tileSize: 512,
         minZoom: 9, // sotto: troppo fitte e pesanti da calcolare
-        maxZoom: ISOBATH_VECTOR_MIN_ZOOM - 1,
+        // Fino a mezzo scatto prima delle calcolate (zoom a mezzi scatti):
+        // nessun buco tra le due
+        maxZoom: ISOBATH_VECTOR_MIN_ZOOM - 0.5,
+        maxNativeZoom: ISOBATH_VECTOR_MIN_ZOOM - 1,
         updateWhenZooming: false, // ~1 s per tassello lato server: solo lo zoom finale
         updateWhenIdle: true,
         attribution: '© EMODnet Bathymetry',
