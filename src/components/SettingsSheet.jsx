@@ -153,16 +153,27 @@ export default function SettingsSheet({
           </Section>
 
           <Section title="Configurazione barca" icon={Sailboat}>
-            <div className="label pb-1">Nome della barca</div>
-            <input
-              type="text"
-              value={boat.vesselName ?? ''}
-              onChange={(e) => setBoat({ vesselName: e.target.value })}
-              placeholder="Best Shot"
-              className="mb-1 w-full rounded-md border border-line bg-surface px-2.5 py-2.5 text-xs text-paper outline-none focus:border-phos"
-            />
-            <div className="pb-3 text-[calc(9px*var(--fs))] text-fog">
-              Con COPIA la posizione diventa: Sail boat "{boat.vesselName || '…'}" position: 44°16.002' N 009°23.700' E
+            <div className="label pb-1">Nome, nominativo radio e MMSI</div>
+            <div className="mb-1 grid grid-cols-3 gap-1.5">
+              {[
+                ['vesselName', 'Best Shot'],
+                ['callSign', 'Call Sign'],
+                ['mmsi', 'MMSI'],
+              ].map(([key, placeholder]) => (
+                <input
+                  key={key}
+                  type="text"
+                  value={boat[key] ?? ''}
+                  onChange={(e) => setBoat({ [key]: e.target.value })}
+                  placeholder={placeholder}
+                  autoCapitalize={key === 'callSign' ? 'characters' : 'none'}
+                  inputMode={key === 'mmsi' ? 'numeric' : 'text'}
+                  className="min-w-0 rounded-md border border-line bg-surface px-2 py-2.5 text-xs text-paper outline-none focus:border-phos"
+                />
+              ))}
+            </div>
+            <div className="whitespace-pre-line pb-3 text-[calc(9px*var(--fs))] text-fog">
+              {`Con COPIA:\nSail boat "${boat.vesselName || '…'}" position: 44°16.002' N 009°23.700' E${boat.callSign ? `\nCall Sign: ${boat.callSign}` : ''}${boat.mmsi ? `\nMMSI: ${boat.mmsi}` : ''}`}
             </div>
             <div className="label pb-1">Polar</div>
             <div className="flex flex-col gap-1">

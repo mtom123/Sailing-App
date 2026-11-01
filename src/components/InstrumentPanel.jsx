@@ -93,14 +93,20 @@ const fmtClock = (d) =>
 // nome della barca (Impostazioni → Configurazione barca)
 function Position({ geo, gpsOk }) {
   const [copied, setCopied] = useState(false)
-  const vesselName = useAppStore((s) => s.boat.vesselName)
+  const boat = useAppStore((s) => s.boat)
   if (!gpsOk) {
     return <div className="px-3 pb-1 text-[calc(10px*var(--fs))] text-fog">{geo.error || 'In attesa del segnale GPS…'}</div>
   }
   const lat = formatCoord(geo.lat, true)
   const lon = formatCoord(geo.lon, false)
   const copy = async () => {
-    const text = `${vesselName ? `Sail boat "${vesselName}" position: ` : ''}${lat} ${lon}`
+    const text = [
+      `${boat.vesselName ? `Sail boat "${boat.vesselName}" position: ` : ''}${lat} ${lon}`,
+      boat.callSign && `Call Sign: ${boat.callSign}`,
+      boat.mmsi && `MMSI: ${boat.mmsi}`,
+    ]
+      .filter(Boolean)
+      .join('\n')
     try {
       await navigator.clipboard.writeText(text)
     } catch {
