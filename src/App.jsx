@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import MapView from './components/v2/MapView.jsx'
 import RoutePanel from './components/v2/RoutePanel.jsx'
 import WeatherTimeline from './components/v2/WeatherTimeline.jsx'
@@ -92,7 +92,8 @@ function useRouteAdapter(geo) {
     const dest = waypoints[idx]
     const dtw = haversine(geo.lat, geo.lon, dest.lat, dest.lon)
     const btw = bearing(geo.lat, geo.lon, dest.lat, dest.lon)
-    const xte = crossTrackError({ lat: geo.lat, lon: geo.lon }, prev, dest)
+    // Tratto lungo zero (rotta MOB: partenza e punto coincidono): niente XTE
+    const xte = haversine(prev.lat, prev.lon, dest.lat, dest.lon) < 30 ? 0 : crossTrackError({ lat: geo.lat, lon: geo.lon }, prev, dest)
     const speed = geo.sog != null && geo.sog > 1 ? geo.sog : planSpeed
     const remaining =
       dtw + routeLegs(waypoints.slice(idx)).reduce((sum, leg) => sum + leg.dist, 0)
@@ -314,14 +315,40 @@ export default function App() {
     }))
   }, [geo.lat != null ? geo.lat.toFixed(3) : null, geo.lon != null ? geo.lon.toFixed(3) : null])
 
-  // MOB
+  // MOB: segna il punto e crea subito la rotta "MOB" con la navigazione
+  // attiva verso il punto (direzione, distanza, pilota se collegato).
+  // ANNULLA rimette la rotta e la navigazione di prima
   const [mob, setMob] = useState(null)
+  const mobPrevRoute = useRef(null)
   const dropMob = () => {
     if (geo.lat == null) return
     armAudio()
     warnBeep()
-    setMob({ lat: geo.lat, lon: geo.lon, ts: Date.now() })
-    useAppStore.getState().setFollow(true)
+    const st = useAppStore.getState()
+    if (!mob) {
+      mobPrevRoute.current = { routeDraft: st.routeDraft, routeNavigating: st.routeNavigating, activeWaypointIdx: st.activeWaypointIdx }
+    }
+    const t = Date.now()
+    setMob({ lat: geo.lat, lon: geo.lon, ts: t })
+    useAppStore.setState({
+      routeDraft: {
+        name: 'MOB – uomo a mare',
+        waypoints: [
+          { id: `mob-boat-${t}`, lat: geo.lat, lon: geo.lon, name: 'Barca' },
+          { id: `mob-${t}`, lat: geo.lat, lon: geo.lon, name: 'MOB' },
+        ],
+      },
+      routeEditing: false,
+      routeNavigating: true,
+      activeWaypointIdx: 1,
+      follow: true,
+    })
+  }
+  const cancelMob = () => {
+    setMob(null)
+    const prev = mobPrevRoute.current
+    mobPrevRoute.current = null
+    if (prev) useAppStore.setState(prev)
   }
   const mobInfo =
     mob && geo.lat != null
@@ -504,17 +531,18 @@ export default function App() {
                   ⊕ UOMO A MARE
                 </div>
                 {mobInfo && (
-                  <div className="text-xs text-paper tabular">
+                  <div className="font-mono text-[calc(18px*var(--fs))] font-bold text-paper tabular-nums">
                     {formatDeg(mobInfo.brg)}° {cardinal(mobInfo.brg)} ·{' '}
                     {mobInfo.dist < 1852
                       ? `${mobInfo.dist.toFixed(0)} m`
                       : `${metersToNm(mobInfo.dist).toFixed(2)} nm`}
                   </div>
                 )}
+                <div className="text-[calc(9px*var(--fs))] text-fog">rotta MOB attiva · ANNULLA rimette la rotta di prima</div>
               </div>
               <button
                 type="button"
-                onClick={() => setMob(null)}
+                onClick={cancelMob}
                 className="touch rounded-md border border-line bg-surface px-3 py-1.5 text-[calc(10px*var(--fs))] tracking-widest text-fog"
               >
                 ANNULLA

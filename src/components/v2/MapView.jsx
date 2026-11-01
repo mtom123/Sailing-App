@@ -791,6 +791,23 @@ export default function MapView({
     }
   }, [mob, mapReady])
 
+  // === MOB: linea rossa tratteggiata dalla barca al punto, sempre aggiornata ===
+  useEffect(() => {
+    const map = mapRef.current
+    if (!mapReady || !map) return
+    const line = markersRef.current.mobLine
+    if (!mob || geo.lat == null) {
+      if (line) {
+        map.removeLayer(line)
+        markersRef.current.mobLine = null
+      }
+      return
+    }
+    const pts = [[geo.lat, geo.lon], [mob.lat, mob.lon]]
+    if (line) line.setLatLngs(pts)
+    else markersRef.current.mobLine = L.polyline(pts, { color: '#FF5252', weight: 4, dashArray: '10 8', opacity: 0.95, interactive: false }).addTo(map)
+  }, [mob, geo.lat, geo.lon, mapReady])
+
   // === AIS vessels ===
   useEffect(() => {
     if (!mapReady) return
@@ -1185,6 +1202,18 @@ export default function MapView({
 
       {/* Top-right controls; sotto, le linguette dei pannelli (non si sovrappongono) */}
       <div className="absolute right-0 top-3 z-[1000] flex flex-col items-end gap-2">
+        {/* MOB in cima: stesso stile dei pulsanti, ma rosso pieno e più alto */}
+        <button
+          type="button"
+          title="Uomo a mare"
+          onClick={() => onDropMob?.()}
+          className={`touch mr-3 flex h-[52px] w-11 flex-col items-center justify-center gap-0.5 rounded-lg border border-white/30 bg-[#D32F2F] text-white shadow-[0_2px_10px_rgba(211,47,47,0.45)] transition-transform active:scale-95 ${
+            mob ? 'animate-pulse' : ''
+          }`}
+        >
+          <LifeBuoy size={17} />
+          <span className="text-[10px] font-extrabold leading-none tracking-wider">MOB</span>
+        </button>
         <div className="mr-3 flex flex-col gap-2">
         <MapButton title="Layer" onClick={() => setActiveDrawer('layers')}>
           <Layers size={18} />
@@ -1203,9 +1232,6 @@ export default function MapView({
         </MapButton>
         <MapButton title="Modalità notte" active={nightMode} onClick={() => setNightMode(!nightMode)}>
           <Moon size={18} />
-        </MapButton>
-        <MapButton title="Uomo a mare" danger={Boolean(mob)} onClick={() => onDropMob?.()}>
-          <LifeBuoy size={18} />
         </MapButton>
         <MapButton title="Impostazioni" onClick={() => setSettingsOpen(true)}>
           <Settings size={18} />
