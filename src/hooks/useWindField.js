@@ -9,6 +9,14 @@ import { useEffect, useRef, useState } from 'react'
 const GRID_COLS = 4
 const GRID_ROWS = 3
 const REFRESH_MS = 10 * 60 * 1000
+// La griglia si aggancia a una maglia fissa (allargata verso l'esterno):
+// zoomando o spostandosi dentro la stessa maglia non si richiede niente,
+// e le risposte recenti si riusano (prima: una richiesta a ogni zoomata,
+// con l'app ridisegnata ogni volta)
+const SNAP_DEG = 0.5
+const cache = new Map() // chiave → { at, field }
+
+const snapOut = (v, up) => (up ? Math.ceil(v / SNAP_DEG) : Math.floor(v / SNAP_DEG)) * SNAP_DEG
 
 function gridFromBounds(bounds) {
   const { south, west, north, east } = bounds
@@ -28,10 +36,10 @@ export default function useWindField(bounds, enabled) {
   const [field, setField] = useState([])
   const abortRef = useRef(null)
 
-  // Rifetch solo quando la vista cambia in modo apprezzabile
+  // Rifetch solo quando la vista esce dalla maglia
   const key =
     enabled && bounds
-      ? [bounds.south, bounds.west, bounds.north, bounds.east]
+      ? [snapOut(bounds.south, false), snapOut(bounds.west, false), snapOut(bounds.north, true), snapOut(bounds.east, true)]
           .map((v) => v.toFixed(1))
           .join(',')
       : null
@@ -42,6 +50,11 @@ export default function useWindField(bounds, enabled) {
     const points = gridFromBounds({ south, west, north, east })
 
     async function load() {
+      const hit = cache.get(key)
+      if (hit && Date.now() - hit.at < REFRESH_MS) {
+        setField(hit.field)
+        return
+      }
       if (abortRef.current) abortRef.current.abort()
       const controller = new AbortController()
       abortRef.current = controller
@@ -59,16 +72,17 @@ export default function useWindField(bounds, enabled) {
         if (!res.ok) return
         const data = await res.json()
         const list = Array.isArray(data) ? data : [data]
-        setField(
-          list
-            .map((d, i) => ({
-              lat: points[i]?.lat,
-              lon: points[i]?.lon,
-              speed: d?.current?.wind_speed_10m,
-              dir: d?.current?.wind_direction_10m,
-            }))
-            .filter((d) => d.lat != null && d.speed != null && d.dir != null)
-        )
+        const next = list
+          .map((d, i) => ({
+            lat: points[i]?.lat,
+            lon: points[i]?.lon,
+            speed: d?.current?.wind_speed_10m,
+            dir: d?.current?.wind_direction_10m,
+          }))
+          .filter((d) => d.lat != null && d.speed != null && d.dir != null)
+        cache.set(key, { at: Date.now(), field: next })
+        if (cache.size > 20) cache.delete(cache.keys().next().value)
+        setField(next)
       } catch {
         // rete assente: si mantiene l'ultimo campo noto
       }

@@ -1513,10 +1513,12 @@ function WindCanvas({ map, field }) {
       if (raf == null) raf = requestAnimationFrame(draw)
     }
     schedule()
-    map.on('move zoom moveend zoomend resize viewreset', schedule)
+    // Frecce in posizioni fisse sullo schermo: si ridisegnano quando la carta
+    // si ferma, non a ogni fotogramma di zoom e spostamento (pesava su iPad)
+    map.on('moveend zoomend resize viewreset', schedule)
     return () => {
       if (raf != null) cancelAnimationFrame(raf)
-      map.off('move zoom moveend zoomend resize viewreset', schedule)
+      map.off('moveend zoomend resize viewreset', schedule)
     }
   }, [map, field])
   return <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 z-[500]" />
