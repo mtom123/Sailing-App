@@ -582,7 +582,7 @@ export default function MapView({
     const layer = new LandTintLayer().addTo(map)
     // Carta di riserva sotto i tasselli: dove la carta Esri manca (offline)
     // terra dalla costa OSM su sfondo mare
-    const base = new LandTintLayer({ pane: 'offlineBasePane', zIndex: 150, blend: false, color: '#efe9dc' }).addTo(map)
+    const base = new LandTintLayer({ pane: 'offlineBasePane', zIndex: 150, color: '#efe9dc', fillOpacity: 1 }).addTo(map)
     map.getContainer().style.background = '#c4dbe9'
     return () => {
       map.removeLayer(layer)

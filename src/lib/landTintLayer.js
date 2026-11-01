@@ -4,9 +4,11 @@ import { waterRings } from './waterMask.js'
 
 /*
  * Terra più scura sulla carta CHIARA: al sole la carta Esri (terra quasi
- * bianca, mare azzurro chiaro) si confonde. Un velo color sabbia in
- * "moltiplica" su tutta la vista, con il mare ritagliato via dalla costa
- * OSM: la terra scurisce ma strade, rilievo e nomi restano leggibili.
+ * bianca, mare azzurro chiaro) si confonde. Un velo marrone semitrasparente
+ * su tutta la vista, con il mare ritagliato via dalla costa OSM: la terra
+ * scurisce e strade, rilievo e nomi restano leggibili. Niente fusione dei
+ * colori ("moltiplica"): su iPad Safari ricomponeva tutta la carta a ogni
+ * fotogramma di zoom e lo bloccava.
  *
  * Con `pane: 'offlineBasePane', blend: false` è invece la carta di riserva
  * sotto i tasselli Esri: terra piena dalla costa OSM, che si vede solo dove
@@ -17,7 +19,7 @@ const PAD = 0.1
 const MIN_ZOOM = 8 // sotto: troppi tasselli per la costa, niente velo
 
 export const LandTintLayer = L.Layer.extend({
-  options: { color: '#cdbd9b', pane: 'landTintPane', zIndex: 235, blend: true },
+  options: { color: '#8a6d3b', fillOpacity: 0.45, pane: 'landTintPane', zIndex: 235, blend: false },
 
   initialize(options) {
     L.setOptions(this, options)
@@ -56,7 +58,7 @@ export const LandTintLayer = L.Layer.extend({
         if (req !== this._req || !this._map) return
         this._group.clearLayers()
         if (!rings) return
-        L.rectangle(bounds, { renderer: this._renderer, stroke: false, fillColor: this.options.color, fillOpacity: 1, interactive: false }).addTo(this._group)
+        L.rectangle(bounds, { renderer: this._renderer, stroke: false, fillColor: this.options.color, fillOpacity: this.options.fillOpacity, interactive: false }).addTo(this._group)
         // Il mare va via per ultimo
         if (rings.length) L.polygon(rings, { renderer: this._renderer, cut: true, stroke: false, interactive: false }).addTo(this._group)
       })
