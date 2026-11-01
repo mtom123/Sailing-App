@@ -43,10 +43,11 @@ export default function WeatherTimeline() {
     const tick = (now) => {
       const dt = now - lastTickRef.current
       lastTickRef.current = now
-      // playSpeed = ore per secondo → ms di offset aggiunti per ms reale
-      const addOffsetH = (dt / 1000) * playSpeed
-      setTimeOffset(Math.min(MAX_H, timeOffset + addOffsetH))
-      if (timeOffset + addOffsetH >= MAX_H) {
+      // playSpeed = ore per secondo. L'ora si rilegge ogni volta dallo store:
+      // quella della chiusura resterebbe ferma (prima il PLAY non avanzava)
+      const next = useAppStore.getState().timeOffset + (dt / 1000) * playSpeed
+      setTimeOffset(Math.min(MAX_H, next))
+      if (next >= MAX_H) {
         setIsPlaying(false)
         return
       }

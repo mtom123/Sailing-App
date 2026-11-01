@@ -498,6 +498,9 @@ export default function MapView({
         })
       }
       map.on('moveend', emitView)
+      // Subito anche all'apertura: senza uno spostamento della carta l'area
+      // restava vuota e frecce del vento e previsioni a griglia non partivano
+      emitView()
       map.on('dragstart', () => setFollow(false))
       map.on('click', (e) => {
         const st = useAppStore.getState()
@@ -1329,20 +1332,41 @@ function MapButton({ active, danger, onClick, title, children }) {
 
 function LayerPopover({ onClose, onDownloadArea }) {
   const { layers, toggleLayer, baseStyle, setBaseStyle } = useAppStore()
-  const LAYER_DEFS = [
-    { key: 'bathy', label: 'Batimetria' },
-    { key: 'isobaths', label: 'Isobate / bassi fondali' },
-    { key: 'posidonia', label: 'Posidonia / fondali (Liguria)' },
-    { key: 'shomRelief', label: 'Fondale HD Francia (Shom)' },
-    { key: 'seamarks', label: 'Fari / Boe' },
-    { key: 'wind', label: 'Vettori vento' },
-    { key: 'ais', label: 'Navi AIS' },
-    { key: 'parks', label: 'Aree protette e zone militari' },
-    { key: 'coastBand', label: 'Fascia dalla costa (balneazione)' },
-    { key: 'ordinances', label: 'Ordinanze Capitanerie (90 giorni)' },
-    { key: 'rain', label: 'Radar pioggia' },
-    { key: 'current', label: 'Correnti' },
-    { key: 'offlineZones', label: 'Zone scaricate offline' },
+  // Voci raggruppate per argomento
+  const LAYER_GROUPS = [
+    [
+      'Fondale',
+      [
+        { key: 'bathy', label: 'Batimetria (colori)' },
+        { key: 'isobaths', label: 'Isobate e bassi fondali' },
+        { key: 'shomRelief', label: 'Rilievo HD Francia (Shom)' },
+        { key: 'posidonia', label: 'Posidonia e fondali (Liguria)' },
+      ],
+    ],
+    [
+      'Navigazione',
+      [
+        { key: 'seamarks', label: 'Fari e boe' },
+        { key: 'ais', label: 'Navi AIS' },
+      ],
+    ],
+    [
+      'Regole e divieti',
+      [
+        { key: 'parks', label: 'Aree protette e zone militari' },
+        { key: 'coastBand', label: 'Fascia dalla costa (balneazione)' },
+        { key: 'ordinances', label: 'Ordinanze Capitanerie (90 giorni)' },
+      ],
+    ],
+    [
+      'Meteo',
+      [
+        { key: 'wind', label: 'Vettori vento (con cursore del tempo)' },
+        { key: 'current', label: 'Correnti' },
+        { key: 'rain', label: 'Radar pioggia' },
+      ],
+    ],
+    ['Offline', [{ key: 'offlineZones', label: 'Zone scaricate' }]],
   ]
   return (
     <>
@@ -1382,23 +1406,27 @@ function LayerPopover({ onClose, onDownloadArea }) {
             </button>
           ))}
         </div>
-        <div className="label pb-2">Overlay</div>
-        {LAYER_DEFS.map((l) => (
-          <button
-            key={l.key}
-            type="button"
-            onClick={() => toggleLayer(l.key)}
-            className="flex w-full items-center gap-2.5 rounded-md px-2 py-2.5 text-left text-[calc(11px*var(--fs))] tracking-wide hover:bg-raised transition-colors"
-          >
-            <span
-              className={`flex h-4 w-4 flex-none items-center justify-center rounded border text-[calc(10px*var(--fs))] ${
-                layers[l.key] ? 'border-phos text-phos' : 'border-line text-transparent'
-              }`}
-            >
-              ✓
-            </span>
-            <span className={layers[l.key] ? 'text-paper' : 'text-fog'}>{l.label}</span>
-          </button>
+        {LAYER_GROUPS.map(([group, defs]) => (
+          <div key={group}>
+            <div className="label pb-1 pt-2">{group}</div>
+            {defs.map((l) => (
+              <button
+                key={l.key}
+                type="button"
+                onClick={() => toggleLayer(l.key)}
+                className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-[calc(11px*var(--fs))] tracking-wide hover:bg-raised transition-colors"
+              >
+                <span
+                  className={`flex h-4 w-4 flex-none items-center justify-center rounded border text-[calc(10px*var(--fs))] ${
+                    layers[l.key] ? 'border-phos text-phos' : 'border-line text-transparent'
+                  }`}
+                >
+                  ✓
+                </span>
+                <span className={layers[l.key] ? 'text-paper' : 'text-fog'}>{l.label}</span>
+              </button>
+            ))}
+          </div>
         ))}
       </div>
     </>

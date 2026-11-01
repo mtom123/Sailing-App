@@ -16,6 +16,7 @@ import { logStep, failStep } from './lib/debugLogger.js'
 import useGeolocation from './hooks/useGeolocation.js'
 import useSignalK from './hooks/useSignalK.js'
 import { boatGeo, liveDepth } from './lib/boatData.js'
+import { windFieldAt } from './lib/gribAt.js'
 import useOpenMeteo from './hooks/useOpenMeteo.js'
 import useWindField from './hooks/useWindField.js'
 import useAIS from './hooks/useAIS.js'
@@ -187,6 +188,14 @@ export default function App() {
   const geo = useMemo(() => boatGeo(phoneGeo, sk.data, signalK.useGps), [geoKey])
   const depthLive = liveDepth(sk.data, boat)
 
+  // Cursore nascosto (vento e correnti spenti): si torna all'ora attuale
+  useEffect(() => {
+    if (windLayerOn || layers.current) return
+    const st = useAppStore.getState()
+    if (st.isPlaying) st.setIsPlaying(false)
+    if (st.timeOffset !== 0) st.setTimeOffset(0)
+  }, [windLayerOn, layers.current])
+
   // Wake lock
   useEffect(() => {
     let lock = null
@@ -222,6 +231,14 @@ export default function App() {
   const windField = useWindField(view.bounds, windLayerOn)
   const gribData = useGrib(view.bounds, true)
   const grib = gribData?.grib || null
+  // Frecce del vento all'ora del cursore del tempo (a passi di un quarto d'ora,
+  // per non ridisegnare a ogni fotogramma del PLAY); su "ORA" il vento attuale
+  const timeOffset = useAppStore((s) => s.timeOffset)
+  const offsetQ = Math.round(timeOffset * 4) / 4
+  const shownWind = useMemo(
+    () => (offsetQ !== 0 && grib ? windFieldAt(grib, Date.now() + offsetQ * 3600 * 1000) || windField : windField),
+    [offsetQ, grib, windField]
+  )
   const currentField = gribData?.currentField || null
   const rainTileUrl = useRainRadar(rainLayerOn)
   const { vessels: aisVessels, status: aisOwnStatus } = useAIS({
@@ -383,7 +400,7 @@ export default function App() {
           <MapView
             geo={geo}
             weather={weather}
-            windField={windField}
+            windField={shownWind}
             currentField={currentField}
             rainTileUrl={rainTileUrl}
             vessels={vessels}
@@ -505,8 +522,8 @@ export default function App() {
           )}
         </div>
 
-        {/* BOTTOM timeline */}
-        <WeatherTimeline />
+        {/* Cursore del tempo: serve solo a frecce del vento e correnti */}
+        {(windLayerOn || layers.current) && <WeatherTimeline />}
 
         {/* RIGHT drawer */}
         {activeDrawer && activeDrawer !== 'layers' && (
