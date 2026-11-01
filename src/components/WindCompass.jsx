@@ -6,7 +6,7 @@ import { cardinal, formatDeg } from '../lib/geo.js'
  */
 
 const C_WIND = '#3DFF7A'
-const C_WAVE = '#3A86EA'
+const C_WAVE = '#4FC3F7' // azzurro chiaro con bordo bianco: si stacca dal quadrante nero
 
 export default function WindCompass({ wind, wave }) {
   const size = 200
@@ -63,10 +63,11 @@ export default function WindCompass({ wind, wave }) {
       {wave && wave.dir != null && (
         <g transform={`rotate(${wave.dir} ${c} ${c})`}>
           <path
-            d={`M${c},${c - rTick + 2} l6,9 l-6,9 l-6,-9 Z`}
+            d={`M${c},${c - rTick} l9,12 l-9,12 l-9,-12 Z`}
             fill={C_WAVE}
-            stroke="#0D0D0D"
-            strokeWidth="1.5"
+            stroke="#FFFFFF"
+            strokeWidth="2"
+            strokeLinejoin="round"
           />
         </g>
       )}

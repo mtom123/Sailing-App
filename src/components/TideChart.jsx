@@ -10,11 +10,11 @@ const C_GRID = '#242424'
 const C_TEXT = '#9BA0A6'
 
 const W = 320
-const H = 92
 const PAD_L = 30
 const PAD_R = 6
 const PAD_T = 10
-const PAD_B = 16
+const PAD_B = 40 // ore 06/12/18 e, sotto, i giorni (come la previsione)
+const H = 76 + PAD_B
 
 export default function TideChart({ hourly }) {
   const [hoverIdx, setHoverIdx] = useState(null)
@@ -32,7 +32,14 @@ export default function TideChart({ hourly }) {
     hourly.forEach((h, i) => {
       if (Math.abs(new Date(h.t) - now) < Math.abs(new Date(hourly[nowIdx].t) - now)) nowIdx = i
     })
-    return { levels, min, max, span, nowIdx, n: hourly.length }
+    const days = []
+    const hours = []
+    hourly.forEach((h, i) => {
+      if (h.t.endsWith('T00:00') || i === 0) days.push({ i, label: new Date(h.t).toLocaleDateString('it-IT', { weekday: 'short' }) })
+      const hh = h.t.slice(11, 13)
+      if (h.t.endsWith(':00') && ['06', '12', '18'].includes(hh)) hours.push({ i, label: hh })
+    })
+    return { levels, min, max, span, nowIdx, n: hourly.length, days, hours }
   }, [hourly])
 
   if (!data) {
@@ -101,6 +108,23 @@ export default function TideChart({ hourly }) {
         <text x={PAD_L - 3} y={H - PAD_B + 3} textAnchor="end" fontSize="7" fill={C_TEXT}>
           {data.min.toFixed(1)}
         </text>
+        {data.hours.map((h) => (
+          <g key={`h${h.i}`}>
+            <line x1={sx(h.i)} x2={sx(h.i)} y1={PAD_T} y2={H - PAD_B} stroke={C_TEXT} strokeOpacity="0.18" />
+            <line x1={sx(h.i)} x2={sx(h.i)} y1={H - PAD_B} y2={H - PAD_B + 3} stroke={C_TEXT} />
+            <text x={sx(h.i)} y={H - PAD_B + 14} textAnchor="middle" fontSize="10.5" fill={C_TEXT}>
+              {h.label}
+            </text>
+          </g>
+        ))}
+        {data.days.map((d) => (
+          <g key={`d${d.i}`}>
+            <line x1={sx(d.i)} x2={sx(d.i)} y1={PAD_T} y2={H - PAD_B + 18} stroke={C_TEXT} strokeOpacity="0.45" />
+            <text x={sx(d.i) + 3} y={H - PAD_B + 31} fontSize="11.5" fontWeight="bold" fill={C_TEXT} style={{ textTransform: 'uppercase' }}>
+              {d.label}
+            </text>
+          </g>
+        ))}
         <path d={areaD} fill={C_TIDE} opacity="0.16" />
         <path d={lineD} fill="none" stroke={C_TIDE} strokeWidth="2" strokeLinejoin="round" />
         <line
