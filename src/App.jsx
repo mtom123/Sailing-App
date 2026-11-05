@@ -5,6 +5,7 @@ import WeatherTimeline from './components/v2/WeatherTimeline.jsx'
 import ConnectivityIndicator from './components/v2/ConnectivityIndicator.jsx'
 import InstrumentPanel from './components/InstrumentPanel.jsx'
 import RacePanel from './components/RacePanel.jsx'
+import MarksPanel from './components/MarksPanel.jsx'
 import AnchoragePanel from './components/AnchoragePanel.jsx'
 import SettingsSheet from './components/SettingsSheet.jsx'
 import TrackPanel from './components/TrackPanel.jsx'
@@ -45,6 +46,7 @@ import { detourLegRefined } from './lib/routeHazards.js'
 import { bandText } from './lib/coastBand.js'
 import useOfflineRoute from './hooks/useOfflineRoute.js'
 import useRaceRoute from './hooks/useRaceRoute.js'
+import useMarks from './hooks/useMarks.js'
 import { useRaceSignals } from './hooks/useRaceTimer.js'
 import { ampRuleFor, zoneLetter, zoneSummary } from './lib/ampRules.js'
 
@@ -377,6 +379,7 @@ export default function App() {
     if (course !== raceCourse) setRaceCourse(course)
   }, [geo, raceCourse, setRaceCourse])
   useRaceSignals(timerShown(raceCourse) ? raceCourse.startAt : null)
+  useMarks()
   const raceIdeal = useRaceRoute({
     ...racePlan(raceCourse, geo),
     grib,
@@ -639,11 +642,12 @@ export default function App() {
 
         {/* RIGHT drawer */}
         {activeDrawer && activeDrawer !== 'layers' && (
-          <div className="glass-strong absolute right-0 top-0 z-[1050] flex h-full w-[380px] max-w-[75%] flex-col border-l border-line slide-up">
+          <div className="glass-strong absolute right-0 top-0 z-[1050] flex h-full w-[400px] max-w-[75%] flex-col border-l border-line slide-up">
             <div className="flex flex-none items-center border-b border-line">
               {[
                 { id: 'route', label: 'ROTTA' },
                 { id: 'anchors', label: 'ANCORE' },
+                { id: 'marks', label: 'MARK' },
                 { id: 'weather', label: 'METEO' },
                 { id: 'log', label: 'LOG' },
                 { id: 'race', label: 'REGATA' },
@@ -713,6 +717,7 @@ export default function App() {
               )}
               {activeDrawer === 'log' && <TrackPanel track={track} gpsOk={gpsOk} />}
               {activeDrawer === 'race' && <RacePanel geo={geo} ideal={raceIdeal} />}
+              {activeDrawer === 'marks' && <MarksPanel geo={geo} depthLive={depthLive} draftM={boat.draftM ?? 1.9} />}
             </div>
           </div>
         )}

@@ -31,6 +31,8 @@ import { LandTintLayer } from '../../lib/landTintLayer.js'
 import RulerTool from './RulerTool.jsx'
 import { beforeStart, coursePoints, courseTarget, moveCoursePoint, moveLineEnd, pickOnCourse, raceStats, timerShown } from '../../lib/race.js'
 import RaceClock from '../RaceClock.jsx'
+import { MarksLayer } from '../../lib/marksLayer.js'
+import { newMark } from '../../lib/marks.js'
 import AreaDownloadTool from './AreaDownloadTool.jsx'
 import { setOfflineLayers } from '../../lib/offlinePack.js'
 import { OfflineZonesLayer } from '../../lib/offlineZonesLayer.js'
@@ -308,9 +310,13 @@ export default function MapView({
   const raceInfo = raceStats(geo, raceTarget)
   const racePreStart = beforeStart(raceCourse) // si pianifica: niente rotta dalla barca
   const raceEditing = racePicking === 'edit' // i punti si trascinano sulla carta
+  const marks = useAppStore((s) => s.marks)
+  const markEdit = useAppStore((s) => s.markEdit)
+  const markPicking = useAppStore((s) => s.markPicking)
+  const marksLayerRef = useRef(null)
   const lastDrawerRef = useRef('route')
   useEffect(() => {
-    if (['route', 'anchors', 'weather', 'log', 'race'].includes(activeDrawer)) lastDrawerRef.current = activeDrawer
+    if (['route', 'anchors', 'marks', 'weather', 'log', 'race'].includes(activeDrawer)) lastDrawerRef.current = activeDrawer
   }, [activeDrawer])
 
   // Actions via store (per click handler)
@@ -539,6 +545,11 @@ export default function MapView({
       map.on('dragstart', () => setFollow(false))
       map.on('click', (e) => {
         const st = useAppStore.getState()
+        if (st.markPicking) {
+          const p = { lat: e.latlng.lat, lon: e.latlng.lng }
+          useAppStore.setState({ markPicking: false, activeDrawer: 'marks', markEdit: st.markEdit ? { ...st.markEdit, ...p } : newMark('mark', p) })
+          return
+        }
         if (st.racePicking === 'edit') return
         if (st.racePicking) {
           // Boe e linea di partenza vogliono più tocchi; poi si torna al pannello REGATA
@@ -655,6 +666,41 @@ export default function MapView({
     }).addTo(map)
     return () => map.removeLayer(layer)
   }, [rainTileUrl, mapReady])
+
+  // === Mark personali ===
+  // Toccarne uno apre la scheda, a meno di non stare mettendo punti sulla carta
+  useEffect(() => {
+    const map = mapRef.current
+    if (!mapReady || !map || !layers.marks) return undefined
+    const layer = new MarksLayer((mark) => {
+      const st = useAppStore.getState()
+      if (st.routeEditing || st.racePicking || st.markPicking || toolsRef.current.rulerOn || toolsRef.current.areaOn) {
+        map.fire('click', { latlng: L.latLng(mark.lat, mark.lon) })
+      } else {
+        useAppStore.setState({ markEdit: mark, activeDrawer: 'marks' })
+      }
+    })
+    layer.setMarks(useAppStore.getState().marks)
+    marksLayerRef.current = layer.addTo(map)
+    return () => {
+      map.removeLayer(layer)
+      marksLayerRef.current = null
+    }
+  }, [layers.marks, mapReady])
+
+  useEffect(() => {
+    marksLayerRef.current?.setMarks(marks)
+  }, [marks])
+
+  // Mark nuovo non ancora salvato: un pallino dove finirà
+  const markDraftAt = markEdit && !markEdit.id ? [markEdit.lat, markEdit.lon] : null
+  useEffect(() => {
+    const map = mapRef.current
+    if (!mapReady || !map || !markDraftAt) return undefined
+    const dot = L.circleMarker(markDraftAt, { radius: 8, color: '#0a1620', weight: 2, fillColor: '#FFD54F', fillOpacity: 1, interactive: false }).addTo(map)
+    return () => map.removeLayer(dot)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [markDraftAt?.[0], markDraftAt?.[1], mapReady])
 
   // === Zone già scaricate per l'offline, velate di verde ===
   useEffect(() => {
@@ -932,8 +978,8 @@ export default function MapView({
 
   // Mentre si sceglie o si trascina la carta non deve correre dietro alla barca
   useEffect(() => {
-    if (racePicking) setFollow(false)
-  }, [racePicking, setFollow])
+    if (racePicking || markPicking) setFollow(false)
+  }, [racePicking, markPicking, setFollow])
 
   // Primo estremo della linea di partenza, in attesa del secondo
   const raceLineFrom = racePicking?.lineFrom
@@ -1512,6 +1558,20 @@ export default function MapView({
         </div>
       )}
 
+      {/* Posizione di un mark sulla carta */}
+      {markPicking && (
+        <div className="glass-strong absolute left-1/2 top-3 z-[950] flex -translate-x-1/2 items-center gap-3 rounded-lg px-4 py-2 slide-up">
+          <span className="whitespace-nowrap text-xs font-semibold tracking-wider text-warn">TOCCA IL PUNTO DEL MARK</span>
+          <button
+            type="button"
+            onClick={() => useAppStore.setState({ markPicking: false, activeDrawer: 'marks' })}
+            className="rounded-md border border-warn bg-warn/15 px-3 py-1.5 text-[calc(10px*var(--fs))] font-semibold tracking-widest text-warn touch"
+          >
+            ANNULLA
+          </button>
+        </div>
+      )}
+
       {rulerOn && (
         <RulerTool
           map={mapRef.current}
@@ -1544,19 +1604,10 @@ export default function MapView({
       <MapContextMenu
         map={mapRef.current}
         mapReady={mapReady}
-        enabled={!route.editing && !rulerOn && !areaOn && !racePicking}
+        enabled={!route.editing && !rulerOn && !areaOn && !racePicking && !markPicking}
         onAddWaypoint={(lat, lon) => addWaypoint(lat, lon)}
-        onSetDestination={(lat, lon) => {
-          useAppStore.setState((s) => ({
-            routeDraft: {
-              name: 'Destinazione',
-              waypoints: s.routeDraft.waypoints.length >= 1
-                ? [...s.routeDraft.waypoints, { id: `w${Date.now().toString(36)}`, lat, lon, name: `WP${s.routeDraft.waypoints.length + 1}` }]
-                : [{ id: `w${Date.now().toString(36)}`, lat: s.view.center.lat, lon: s.view.center.lon, name: 'WP1' }, { id: `w${Date.now().toString(36)}x`, lat, lon, name: 'WP2' }],
-            },
-            activeDrawer: 'route',
-          }))
-        }}
+        onSetDestination={(lat, lon) => useAppStore.getState().routeTo(lat, lon)}
+        onAddMark={(type, lat, lon) => useAppStore.setState({ markEdit: newMark(type, { lat, lon }), activeDrawer: 'marks' })}
         onShowMeteogram={(lat, lon) => setMeteoPoint({ lat, lon })}
         boatPosition={geo.lat != null ? { lat: geo.lat, lon: geo.lon } : null}
       />
@@ -1645,6 +1696,7 @@ function LayerPopover({ onClose, onDownloadArea }) {
     [
       'Navigazione',
       [
+        { key: 'marks', label: 'I miei mark' },
         { key: 'seamarks', label: 'Fari e boe' },
         { key: 'ais', label: 'Navi AIS' },
       ],

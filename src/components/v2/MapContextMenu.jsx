@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Navigation2, MapPin, Anchor, X, Ship, BarChart3 } from 'lucide-react'
+import { Navigation2, MapPin, Anchor, X, Ship, BarChart3, Bookmark } from 'lucide-react'
 import { haversine, bearing, formatDeg, metersToNm, cardinal } from '../../lib/geo.js'
 import { depthAt } from '../../lib/depthAt.js'
 import { formatDepth } from './DepthHover.jsx'
@@ -27,6 +27,7 @@ export default function MapContextMenu({
   onSetDestination,
   onSetAnchor,
   onShowMeteogram,
+  onAddMark,
   boatPosition,
 }) {
   const [menu, setMenu] = useState(null) // { lat, lon, x, y }
@@ -147,6 +148,26 @@ export default function MapContextMenu({
   const close = () => setMenu(null)
 
   const actions = []
+  if (onAddMark) {
+    actions.push(
+      {
+        icon: Bookmark,
+        label: 'Aggiungi mark',
+        onClick: () => {
+          onAddMark('mark', menu.lat, menu.lon)
+          close()
+        },
+      },
+      {
+        icon: Anchor,
+        label: 'Mark di ancoraggio',
+        onClick: () => {
+          onAddMark('anchor', menu.lat, menu.lon)
+          close()
+        },
+      }
+    )
+  }
   if (onShowMeteogram) {
     actions.push({
       icon: BarChart3,
@@ -203,11 +224,12 @@ export default function MapContextMenu({
     )
   }
 
-  // Clamp menu position to viewport
+  // Posizione dentro la carta (il menu sta nel suo riquadro, non nella finestra)
+  const box = map.getContainer().getBoundingClientRect()
   const menuW = 220
-  const menuH = actions.length * 44 + 60
-  const x = Math.min(menu.x, window.innerWidth - menuW - 10)
-  const y = Math.min(menu.y, window.innerHeight - menuH - 10)
+  const menuH = Math.min(actions.length * 44 + 190, box.height - 20)
+  const x = Math.max(10, Math.min(menu.x - box.left, box.width - menuW - 10))
+  const y = Math.max(10, Math.min(menu.y - box.top, box.height - menuH - 10))
 
   return (
     <>
@@ -218,8 +240,8 @@ export default function MapContextMenu({
         className="absolute inset-0 z-[2000] cursor-default"
       />
       <div
-        className="glass-strong absolute z-[2001] w-[220px] rounded-lg p-1 slide-up"
-        style={{ left: x, top: y }}
+        className="glass-strong absolute z-[2001] w-[220px] overflow-y-auto rounded-lg p-1 slide-up"
+        style={{ left: x, top: y, maxHeight: box.height - 20 }}
       >
         <div className="px-3 py-2 border-b border-line">
           <div className="text-[calc(10px*var(--fs))] text-fog">Posizione</div>

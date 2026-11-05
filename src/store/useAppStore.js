@@ -36,6 +36,7 @@ export const useAppStore = create(
         rain: false,
         current: false,
         offlineZones: true,
+        marks: true,
       },
       toggleLayer: (key) =>
         set((s) => ({ layers: { ...s.layers, [key]: !s.layers[key] } })),
@@ -159,6 +160,23 @@ export const useAppStore = create(
       raceCourse: EMPTY_COURSE, // { start, marks: [{ lat, lon }], next }
       setRaceCourse: (raceCourse) => set({ raceCourse }),
       racePicking: false, // 'start', 'mark' o { move: indice }: cosa fa il tocco sulla carta
+
+      // === Mark personali: l'archivio è su IndexedDB (useMarks.js) ===
+      marks: [],
+      markEdit: null, // scheda aperta: un mark esistente o uno nuovo senza id
+      markPicking: false, // il prossimo tocco sulla carta dà la posizione al mark
+
+      // Rotta verso un punto: dalla rotta in corso, o dal centro carta se non c'è
+      routeTo: (lat, lon) =>
+        set((s) => ({
+          routeDraft: {
+            name: 'Destinazione',
+            waypoints: s.routeDraft.waypoints.length >= 1
+              ? [...s.routeDraft.waypoints, { id: `w${Date.now().toString(36)}`, lat, lon, name: `WP${s.routeDraft.waypoints.length + 1}` }]
+              : [{ id: `w${Date.now().toString(36)}`, lat: s.view.center.lat, lon: s.view.center.lon, name: 'WP1' }, { id: `w${Date.now().toString(36)}x`, lat, lon, name: 'WP2' }],
+          },
+          activeDrawer: 'route',
+        })),
 
       // === Alarms ===
       windAlarm: { on: false, threshold: 30 },
