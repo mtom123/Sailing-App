@@ -600,6 +600,7 @@ export default function App() {
                   bridgeConfigured={Boolean(wsUrl)}
                   autopilot={autopilot}
                   offline={offline}
+                  boatPosition={gpsOk ? { lat: geo.lat, lon: geo.lon } : null}
                 />
               )}
               {activeDrawer === 'anchors' && (

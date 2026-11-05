@@ -530,7 +530,9 @@ export default function MapView({
       map.on('click', (e) => {
         const st = useAppStore.getState()
         if (st.routeEditing) {
-          addWaypoint(e.latlng.lat, e.latlng.lng)
+          // Scheda aperta: il primo tocco la chiude, i successivi mettono i punti
+          if (st.activeDrawer && st.activeDrawer !== 'layers') st.setActiveDrawer(null)
+          else addWaypoint(e.latlng.lat, e.latlng.lng)
         }
       })
 
@@ -1104,6 +1106,19 @@ export default function MapView({
     setAreaOn(true)
   }
 
+  // FINE: con la rotta pronta riapre la scheda (nome e SALVA ROTTA), un altro
+  // FINE esce dalla modifica. Senza almeno due punti non resta niente
+  const finishRouteEditing = () => {
+    const st = useAppStore.getState()
+    if (st.routeDraft.waypoints.length < 2) {
+      useAppStore.setState({ routeDraft: { name: '', waypoints: [] }, routeEditing: false })
+    } else if (st.activeDrawer !== 'route') {
+      setActiveDrawer('route')
+    } else {
+      setRouteEditing(false)
+    }
+  }
+
   const toggleRouteEditing = () => {
     const st = useAppStore.getState()
     if (st.routeEditing) {
@@ -1113,11 +1128,8 @@ export default function MapView({
     setRulerOn(false)
     setAreaOn(false)
     if (st.routeDraft.waypoints.length === 0) {
-      useAppStore.setState({
-        routeDraft: { name: '', waypoints: [] },
-        routeEditing: true,
-        activeDrawer: 'route',
-      })
+      // Nessuna rotta: la scheda propone da dove partire
+      setActiveDrawer('route')
     } else {
       setRouteEditing(true)
     }
@@ -1269,14 +1281,18 @@ export default function MapView({
       {route.editing && (
         <div className="glass-strong absolute left-1/2 top-3 z-[950] flex -translate-x-1/2 items-center gap-3 rounded-lg px-4 py-2 slide-up">
           <span className="text-xs font-semibold tracking-wider text-warn">
-            ROTTA · TAP SUL MARE
+            {route.waypoints.length === 0
+              ? 'TOCCA IL PUNTO DI PARTENZA'
+              : route.waypoints.length === 1
+                ? 'TOCCA IL PUNTO DI ARRIVO'
+                : 'ROTTA · TAP SUL MARE'}
           </span>
           <span className="text-xs font-semibold text-paper tabular">
             {route.waypoints.length} WP · {route.totalNm.toFixed(1)} nm
           </span>
           <button
             type="button"
-            onClick={() => setRouteEditing(false)}
+            onClick={finishRouteEditing}
             className="rounded-md border border-warn bg-warn/15 px-3 py-1.5 text-[calc(10px*var(--fs))] font-semibold tracking-widest text-warn touch"
           >
             FINE

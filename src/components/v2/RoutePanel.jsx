@@ -18,6 +18,7 @@ import {
   Route,
   CloudDownload,
   X,
+  Navigation,
 } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore.js'
 import { formatDeg, metersToNm } from '../../lib/geo.js'
@@ -388,7 +389,7 @@ function SavedRoutes() {
   )
 }
 
-export default function RoutePanel({ route, routeWx, routeOptions, computing, gpsOk, bridgeConfigured, autopilot, duration, offline }) {
+export default function RoutePanel({ route, routeWx, routeOptions, computing, gpsOk, bridgeConfigured, autopilot, duration, offline, boatPosition }) {
   const [nameInput, setNameInput] = useState('')
   const {
     activeRouteOption,
@@ -430,26 +431,34 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
     setRouteEditing(false)
   }
 
+  // Nuova rotta: si chiude la scheda per lasciare libera la carta. Dalla
+  // posizione attuale basta il punto di arrivo, altrimenti partenza e arrivo
+  const startRoute = (fromBoat) => {
+    const waypoints = fromBoat ? [{ id: `w${Date.now().toString(36)}`, lat: boatPosition.lat, lon: boatPosition.lon, name: 'WP1' }] : []
+    setRouteDraft({ name: '', waypoints })
+    setRouteEditing(true)
+    useAppStore.getState().setActiveDrawer(null)
+  }
+
   // ---- 1. NO ROUTE ----
   if (!routeEditing && waypoints.length === 0) {
     return (
       <div className="flex h-full flex-col">
         <div className="p-3">
-          <BigButton
-            primary
-            onClick={() => {
-              setRouteDraft({ name: '', waypoints: [] })
-              setRouteEditing(true)
-            }}
-          >
-            <Plus size={15} />
-            NUOVA ROTTA
+          <BigButton primary disabled={!boatPosition} onClick={() => startRoute(true)}>
+            <Navigation size={15} />
+            NUOVA ROTTA DA QUI
           </BigButton>
-          <p className="pt-2 text-[calc(10px*var(--fs))] leading-relaxed text-fog">
-            Tocca il mare sulla mappa per posare i waypoint. Trascinali per
-            correggerli, toccali per eliminarli. Con 2+ WP puoi chiedere il
-            weather routing automatico.
-          </p>
+          <div className="pb-2 pt-1 text-[calc(10px*var(--fs))] leading-relaxed text-fog">
+            {boatPosition ? 'Parte dalla posizione attuale: tocca sulla carta il punto di arrivo.' : 'Serve il segnale GPS.'}
+          </div>
+          <BigButton onClick={() => startRoute(false)}>
+            <Plus size={15} />
+            NUOVA ROTTA ALTROVE
+          </BigButton>
+          <div className="pt-1 text-[calc(10px*var(--fs))] leading-relaxed text-fog">
+            Tocca sulla carta il punto di partenza e poi quello di arrivo.
+          </div>
         </div>
         <div className="scroll-y min-h-0 flex-1">
           <SavedRoutes />
