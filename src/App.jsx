@@ -4,6 +4,7 @@ import RoutePanel from './components/v2/RoutePanel.jsx'
 import WeatherTimeline from './components/v2/WeatherTimeline.jsx'
 import ConnectivityIndicator from './components/v2/ConnectivityIndicator.jsx'
 import InstrumentPanel from './components/InstrumentPanel.jsx'
+import RacePanel from './components/RacePanel.jsx'
 import AnchoragePanel from './components/AnchoragePanel.jsx'
 import SettingsSheet from './components/SettingsSheet.jsx'
 import TrackPanel from './components/TrackPanel.jsx'
@@ -42,6 +43,7 @@ import { routeLegs, routeTotalNm, crossTrackError } from './lib/route.js'
 import { detourLegRefined } from './lib/routeHazards.js'
 import { bandText } from './lib/coastBand.js'
 import useOfflineRoute from './hooks/useOfflineRoute.js'
+import useRaceRoute from './hooks/useRaceRoute.js'
 import { ampRuleFor, zoneLetter, zoneSummary } from './lib/ampRules.js'
 
 // Adaptive hooks: gli hook leggono dallo store
@@ -180,6 +182,7 @@ export default function App() {
     setActiveRouteOption,
     routeOptions: storedRouteOptions,
     setRouteOptions,
+    raceMark,
   } = useAppStore()
 
   // Strumenti di bordo (Signal K): GPS della barca al posto di quello
@@ -365,6 +368,15 @@ export default function App() {
   const boatWind = trueWind(sk.data)
   const liveWindSpeed = boatWind?.twd != null ? Math.round(boatWind.tws) : null
   const liveWindDir = boatWind?.twd != null ? Math.round(boatWind.twd) : null
+  const raceIdeal = useRaceRoute({
+    geo,
+    mark: raceMark,
+    grib,
+    currentField,
+    polarKey: boat.polarProfile,
+    liveWind: liveWindSpeed != null ? { speed: liveWindSpeed, dir: liveWindDir } : null,
+    minDepth: (boat.draftM ?? 1.9) + (boat.safetyMarginM ?? 1),
+  })
   const mobEst = useMemo(
     () =>
       mob
@@ -471,6 +483,7 @@ export default function App() {
             weather={weather}
             windField={shownWind}
             currentField={currentField}
+            raceRoute={raceIdeal.route}
             rainTileUrl={rainTileUrl}
             vessels={vessels}
             depthLive={depthLive}
@@ -625,6 +638,7 @@ export default function App() {
                 { id: 'anchors', label: 'ANCORE' },
                 { id: 'weather', label: 'METEO' },
                 { id: 'log', label: 'LOG' },
+                { id: 'race', label: 'REGATA' },
               ].map((t) => {
                 const active = activeDrawer === t.id
                 return (
@@ -632,7 +646,7 @@ export default function App() {
                     key={t.id}
                     type="button"
                     onClick={() => setActiveDrawer(t.id)}
-                    className={`flex-1 border-b-2 py-3 text-[calc(10px*var(--fs))] font-semibold tracking-widest transition-all ${
+                    className={`min-w-0 flex-1 border-b-2 py-3 text-[calc(9px*var(--fs))] font-semibold tracking-wide transition-all ${
                       active
                         ? 'border-phos text-phos'
                         : 'border-transparent text-fog hover:text-paper'
@@ -690,6 +704,7 @@ export default function App() {
                 <WeatherDetail weather={weather} />
               )}
               {activeDrawer === 'log' && <TrackPanel track={track} gpsOk={gpsOk} />}
+              {activeDrawer === 'race' && <RacePanel geo={geo} ideal={raceIdeal} />}
             </div>
           </div>
         )}

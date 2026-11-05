@@ -154,6 +154,11 @@ export const useAppStore = create(
       departureOffsetH: 0,
       setDepartureOffsetH: (departureOffsetH) => set({ departureOffsetH }),
 
+      // === Regata: boa verso cui si calcola la VMG ===
+      raceMark: null, // { lat, lon }
+      setRaceMark: (raceMark) => set({ raceMark }),
+      racePicking: false, // il prossimo tocco sulla carta sceglie la boa
+
       // === Alarms ===
       windAlarm: { on: false, threshold: 30 },
       setWindAlarm: (windAlarm) =>
@@ -181,6 +186,7 @@ export const useAppStore = create(
         layers: s.layers,
         boat: s.boat,
         coastBand: s.coastBand,
+        raceMark: s.raceMark,
         savedRoutes: s.savedRoutes,
         planSpeed: s.planSpeed,
         aisMode: s.aisMode,
