@@ -66,7 +66,7 @@ function MarkEditor({ mark, geo, depthLive, draftM }) {
       await saveMark({ ...mark, name, depth: mark.depth.trim() })
       close()
     } catch {
-      setError('Mark non salvato: spazio sul dispositivo non disponibile')
+      setError('Marker non salvato: spazio sul dispositivo non disponibile')
     }
   }
 
@@ -82,7 +82,7 @@ function MarkEditor({ mark, geo, depthLive, draftM }) {
   return (
     <div className="p-2">
       <button type="button" onClick={close} className="touch flex items-center gap-1 pb-2 text-[calc(11px*var(--fs))] font-semibold text-fog">
-        <ChevronLeft size={14} /> {mark.id ? 'Mark' : 'Annulla'}
+        <ChevronLeft size={14} /> {mark.id ? 'Marker' : 'Annulla'}
       </button>
 
       <div className="label pb-1">Tipo</div>
@@ -168,7 +168,7 @@ function MarkEditor({ mark, geo, depthLive, draftM }) {
 
       {error && <div className="pt-1 text-[calc(10px*var(--fs))] text-danger">{error}</div>}
       <button type="button" onClick={save} className={`${btn} mt-3 w-full border-phos bg-phos/15 text-phos`}>
-        SALVA MARK
+        SALVA MARKER
       </button>
       {mark.id && (
         <div className="mt-1.5 grid grid-cols-2 gap-1.5">
@@ -218,7 +218,7 @@ function MarksBackup({ marks }) {
       const fresh = newMarksOnly(found, marks)
       await importMarks(fresh)
       const skipped = found.length - fresh.length
-      setMessage(found.length ? `${fresh.length} mark caricati${skipped ? `, ${skipped} già presenti` : ''}` : 'Nessun mark nel file')
+      setMessage(found.length ? `${fresh.length} marker caricati${skipped ? `, ${skipped} già presenti` : ''}` : 'Nessun marker nel file')
       setFailed(false)
     } catch {
       setMessage('File non valido: serve un GPX')
@@ -229,7 +229,7 @@ function MarksBackup({ marks }) {
   return (
     <div className="mt-1.5">
       {/* Senza accept: su iPad un filtro per estensione rende grigi i .gpx */}
-      <input ref={fileRef} type="file" onChange={load} className="hidden" aria-label="File GPX dei mark" />
+      <input ref={fileRef} type="file" onChange={load} className="hidden" aria-label="File GPX dei marker" />
       <div className="grid grid-cols-2 gap-1.5">
         <button
           type="button"
@@ -245,7 +245,7 @@ function MarksBackup({ marks }) {
       </div>
       {message && <div className={`pt-1 text-[calc(10px*var(--fs))] font-semibold ${failed ? 'text-danger' : 'text-phos'}`}>{message}</div>}
       <div className="pt-1 text-[calc(10px*var(--fs))] text-fog">
-        I mark stanno solo su questo iPad: salva ogni tanto il file su iCloud. È un GPX, lo legge anche Navionics.
+        I marker stanno solo su questo iPad: salva ogni tanto il file su iCloud. È un GPX, lo legge anche Navionics.
       </div>
     </div>
   )
@@ -265,9 +265,10 @@ function MarkList({ marks, geo }) {
 
   return (
     <div className="p-2">
+      <div className="pb-2 text-[calc(14px*var(--fs))] font-bold text-paper">Marker</div>
       <div className="grid grid-cols-2 gap-1.5">
         <button type="button" disabled={geo.lat == null} onClick={addHere} className={`${btn} border-phos bg-phos/15 text-phos disabled:opacity-40`}>
-          <Plus size={14} /> MARK QUI
+          <Plus size={14} /> MARKER QUI
         </button>
         <button type="button" onClick={addOnMap} className={`${btn} border-phos bg-phos/15 text-phos`}>
           <MapPin size={14} /> SULLA CARTA
@@ -277,13 +278,13 @@ function MarkList({ marks, geo }) {
 
       {marks.length === 0 ? (
         <div className="pt-3 text-[calc(11px*var(--fs))] leading-relaxed text-fog">
-          Nessun mark. Puoi aggiungerli anche tenendo premuto un punto della carta.
+          Nessun marker. Puoi aggiungerli anche tenendo premuto un punto della carta.
         </div>
       ) : (
         <>
           <div className="relative mt-2">
             <Search size={13} className="absolute left-2.5 top-3 text-fog" />
-            <input type="text" value={text} onChange={(e) => setText(e.target.value)} placeholder="Cerca nei mark" className={`${input} pl-8`} />
+            <input type="text" value={text} onChange={(e) => setText(e.target.value)} placeholder="Cerca nei marker" className={`${input} pl-8`} />
           </div>
           <div className="mt-1.5 flex flex-wrap gap-1">
             {MARK_TYPES.filter((t) => marks.some((m) => m.type === t.id)).map((t) => (
@@ -299,7 +300,7 @@ function MarkList({ marks, geo }) {
             ))}
           </div>
           <div className="label pb-0.5 pt-2">
-            {found.length} mark
+            {found.length} marker
           </div>
           {found.slice(0, limit).map((m) => (
             <MarkRow key={m.id} mark={m} geo={geo} onOpen={() => open(m)} />

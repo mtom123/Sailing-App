@@ -316,7 +316,7 @@ export default function MapView({
   const marksLayerRef = useRef(null)
   const lastDrawerRef = useRef('route')
   useEffect(() => {
-    if (['route', 'anchors', 'marks', 'weather', 'log', 'race'].includes(activeDrawer)) lastDrawerRef.current = activeDrawer
+    if (['route', 'anchors', 'weather', 'log', 'race'].includes(activeDrawer)) lastDrawerRef.current = activeDrawer
   }, [activeDrawer])
 
   // Actions via store (per click handler)
@@ -1492,12 +1492,12 @@ export default function MapView({
             </button>
             <button
               type="button"
-              title="I miei mark"
+              title="I miei marker"
               onClick={() => setActiveDrawer('marks')}
               className="glass mt-2 flex h-14 w-[calc(48px*var(--fs))] flex-col items-center justify-center gap-0.5 rounded-l-lg text-fog hover:text-paper transition-colors"
             >
               <Bookmark size={18} />
-              <span className="text-[calc(9px*var(--fs))] font-bold">MARK</span>
+              <span className="text-[calc(9px*var(--fs))] font-bold">MARKER</span>
             </button>
           </>
         )}
@@ -1572,7 +1572,7 @@ export default function MapView({
       {/* Posizione di un mark sulla carta */}
       {markPicking && (
         <div className="glass-strong absolute left-1/2 top-3 z-[950] flex -translate-x-1/2 items-center gap-3 rounded-lg px-4 py-2 slide-up">
-          <span className="whitespace-nowrap text-xs font-semibold tracking-wider text-warn">TOCCA IL PUNTO DEL MARK</span>
+          <span className="whitespace-nowrap text-xs font-semibold tracking-wider text-warn">TOCCA IL PUNTO DEL MARKER</span>
           <button
             type="button"
             onClick={() => useAppStore.setState({ markPicking: false, activeDrawer: 'marks' })}
@@ -1707,7 +1707,7 @@ function LayerPopover({ onClose, onDownloadArea }) {
     [
       'Navigazione',
       [
-        { key: 'marks', label: 'I miei mark' },
+        { key: 'marks', label: 'I miei marker' },
         { key: 'seamarks', label: 'Fari e boe' },
         { key: 'ais', label: 'Navi AIS' },
       ],

@@ -642,12 +642,11 @@ export default function App() {
 
         {/* RIGHT drawer */}
         {activeDrawer && activeDrawer !== 'layers' && (
-          <div className="glass-strong absolute right-0 top-0 z-[1050] flex h-full w-[400px] max-w-[75%] flex-col border-l border-line slide-up">
+          <div className="glass-strong absolute right-0 top-0 z-[1050] flex h-full w-[380px] max-w-[75%] flex-col border-l border-line slide-up">
             <div className="flex flex-none items-center border-b border-line">
               {[
                 { id: 'route', label: 'ROTTA' },
                 { id: 'anchors', label: 'ANCORE' },
-                { id: 'marks', label: 'MARK' },
                 { id: 'weather', label: 'METEO' },
                 { id: 'log', label: 'LOG' },
                 { id: 'race', label: 'REGATA' },

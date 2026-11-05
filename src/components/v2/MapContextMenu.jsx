@@ -152,7 +152,7 @@ export default function MapContextMenu({
     actions.push(
       {
         icon: Bookmark,
-        label: 'Aggiungi mark',
+        label: 'Aggiungi marker',
         onClick: () => {
           onAddMark('mark', menu.lat, menu.lon)
           close()
@@ -160,7 +160,7 @@ export default function MapContextMenu({
       },
       {
         icon: Anchor,
-        label: 'Mark di ancoraggio',
+        label: 'Marker di ancoraggio',
         onClick: () => {
           onAddMark('anchor', menu.lat, menu.lon)
           close()

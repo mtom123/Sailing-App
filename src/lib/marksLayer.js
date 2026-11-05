@@ -5,11 +5,17 @@ import { markIconHtml } from './markIcons.js'
  * Mark sulla carta. Possono essere migliaia: si disegnano solo quelli a vista
  * e, finché non si è vicini, quelli sovrapposti diventano una bolla col
  * numero, così i marcatori sulla carta restano pochi (iPad).
+ *
+ * Il tocco si riconosce qui (dito giù e su, poco spostamento) e non con il
+ * click di Leaflet: sull'iPad il dito si muove di qualche pixel, Leaflet lo
+ * prende per un trascinamento e il click non arriva.
  */
 
 const CELL_PX = 56
 const CLUSTER_MAX_ZOOM = 16 // da qui in su si vedono tutti
 const NAMES_MIN_ZOOM = 13
+const TAP_MAX_MOVE_PX = 12
+const TAP_MAX_MS = 500
 
 const escapeHtml = (text) => text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
 
@@ -37,6 +43,7 @@ export const MarksLayer = L.Layer.extend({
   initialize(onTap) {
     this._onTap = onTap
     this._marks = []
+    this._actions = new WeakMap() // icona sulla carta → cosa fa il tocco
   },
 
   setMarks(marks) {
@@ -47,11 +54,33 @@ export const MarksLayer = L.Layer.extend({
   onAdd(map) {
     this._group = L.layerGroup().addTo(map)
     map.on('moveend', this._draw, this)
+    const el = map.getContainer()
+    this._pointerDown = (e) => {
+      this._press = e.isPrimary ? { x: e.clientX, y: e.clientY, t: Date.now() } : null
+    }
+    this._pointerCancel = () => {
+      this._press = null
+    }
+    this._pointerUp = (e) => {
+      const press = this._press
+      this._press = null
+      if (!press || !e.isPrimary || Date.now() - press.t > TAP_MAX_MS) return
+      if (Math.hypot(e.clientX - press.x, e.clientY - press.y) > TAP_MAX_MOVE_PX) return
+      const icon = e.target.closest?.('.leaflet-marker-icon')
+      if (icon) this._actions.get(icon)?.()
+    }
+    el.addEventListener('pointerdown', this._pointerDown)
+    el.addEventListener('pointerup', this._pointerUp)
+    el.addEventListener('pointercancel', this._pointerCancel)
     this._draw()
   },
 
   onRemove(map) {
     map.off('moveend', this._draw, this)
+    const el = map.getContainer()
+    el.removeEventListener('pointerdown', this._pointerDown)
+    el.removeEventListener('pointerup', this._pointerUp)
+    el.removeEventListener('pointercancel', this._pointerCancel)
     this._group.remove()
   },
 
@@ -77,15 +106,18 @@ export const MarksLayer = L.Layer.extend({
     for (const group of cells.values()) {
       if (group.length === 1) {
         const [m] = group
-        L.marker([m.lat, m.lon], { icon: markIcon(m, zoom >= NAMES_MIN_ZOOM), zIndexOffset: 500 })
-          .on('click', () => this._onTap(m))
-          .addTo(this._group)
+        this._add([m.lat, m.lon], markIcon(m, zoom >= NAMES_MIN_ZOOM), () => this._onTap(m))
         continue
       }
       const bounds = L.latLngBounds(group.map((m) => [m.lat, m.lon]))
-      L.marker(bounds.getCenter(), { icon: clusterIcon(group.length), zIndexOffset: 500 })
-        .on('click', () => map.flyToBounds(bounds.pad(0.3), { maxZoom: Math.min(zoom + 3, CLUSTER_MAX_ZOOM), duration: 0.4 }))
-        .addTo(this._group)
+      this._add(bounds.getCenter(), clusterIcon(group.length), () =>
+        map.flyToBounds(bounds.pad(0.3), { maxZoom: Math.min(zoom + 3, CLUSTER_MAX_ZOOM), duration: 0.4 })
+      )
     }
+  },
+
+  _add(latlng, icon, action) {
+    const marker = L.marker(latlng, { icon, zIndexOffset: 500 }).addTo(this._group)
+    this._actions.set(marker.getElement(), action)
   },
 })
