@@ -38,6 +38,8 @@ const DEM_URL = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium'
 
 const project = (lat, lon) => L.CRS.EPSG3857.project(L.latLng(lat, lon))
 const unproject = (x, y) => L.CRS.EPSG3857.unproject(L.point(x, y))
+// Tra un passo pesante e l'altro: le dita sulla carta devono poter passare
+const breathe = () => new Promise((resolve) => setTimeout(resolve))
 // Metri Web Mercator per metro reale alla latitudine data
 const mercPerM = (lat) => 1 / Math.cos((lat * Math.PI) / 180)
 
@@ -198,11 +200,12 @@ const DIRS8 = [
 /**
  * Costa del riquadro (L.LatLngBounds) su una griglia da `res` metri Mercator:
  * { w, h, res, minX, maxY, m, sea: Uint8Array, coast: [{ c, r, region, kind,
- * dM, dPx }] }, o null se servono troppi tasselli.
+ * dM, dPx }] }, o null se servono troppi tasselli o isStale() dice che il
+ * risultato non serve più.
  */
-async function analyze(bounds, res, cfg, maxTiles) {
+async function analyze(bounds, res, cfg, maxTiles, isStale = () => false) {
   const [features, elev] = await Promise.all([coastFeatures(bounds, maxTiles), elevation(bounds)])
-  if (!features) return null
+  if (!features || isStale()) return null
   const sw = project(bounds.getSouth(), bounds.getWest())
   const ne = project(bounds.getNorth(), bounds.getEast())
   const minX = sw.x
@@ -247,6 +250,8 @@ async function analyze(bounds, res, cfg, maxTiles) {
   const beachA = ctx.getImageData(0, 0, w, h).data
   // Safari iOS ha un limite di memoria per i canvas: oltre, li disegna neri
   canvas.width = canvas.height = 0
+  await breathe()
+  if (isStale()) return null
 
   const harbors = features.harbors.map(toPx)
   const harborR2 = ((HARBOR_FREE_M * m) / res) ** 2
@@ -318,11 +323,14 @@ function governor(coast) {
 /**
  * Linee della fascia sul riquadro (L.LatLngBounds) a `res` metri Mercator
  * per cella: [{ region: 'italy' | 'france', dM, rule, path: [lat, lon][] }], o
- * null se il riquadro è troppo grande per i dati disponibili.
+ * null se il riquadro è troppo grande per i dati disponibili o isStale() dice
+ * che il risultato non serve più.
  */
-export async function coastBandLines(bounds, res, cfg = BAND_DEFAULTS) {
-  const a = await analyze(bounds, res, cfg, 48)
+export async function coastBandLines(bounds, res, cfg = BAND_DEFAULTS, isStale = () => false) {
+  const a = await analyze(bounds, res, cfg, 48, isStale)
   if (!a) return null
+  await breathe()
+  if (isStale()) return null
   const { w, h, sea, coast, minX, maxY } = a
   const toLatLng = ([x, y]) => {
     const ll = unproject(minX + x * res, maxY - y * res)
@@ -350,6 +358,8 @@ export async function coastBandLines(bounds, res, cfg = BAND_DEFAULTS) {
   for (const group of ['italy', 'france']) {
     const pts = coast.filter((p) => (group === 'france') === (p.region === 'france'))
     if (!pts.length) continue
+    await breathe()
+    if (isStale()) break
     ctx.clearRect(0, 0, w, h)
     ctx.fillStyle = '#fff'
     ctx.beginPath()
@@ -395,7 +405,7 @@ export async function coastBandLines(bounds, res, cfg = BAND_DEFAULTS) {
     }
   }
   canvas.width = canvas.height = 0 // Safari iOS: libera la memoria dei canvas
-  return lines
+  return isStale() ? null : lines
 }
 
 /**
