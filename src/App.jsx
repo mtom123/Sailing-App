@@ -17,7 +17,7 @@ import { logStep, failStep } from './lib/debugLogger.js'
 import useGeolocation from './hooks/useGeolocation.js'
 import useSignalK from './hooks/useSignalK.js'
 import { boatGeo, liveDepth, trueWind } from './lib/boatData.js'
-import { advanceCourse, racePlan } from './lib/race.js'
+import { advanceCourse, racePlan, timerShown } from './lib/race.js'
 import { estimateDrift } from './lib/mobDrift.js'
 import { windFieldAt } from './lib/gribAt.js'
 import useOpenMeteo from './hooks/useOpenMeteo.js'
@@ -45,6 +45,7 @@ import { detourLegRefined } from './lib/routeHazards.js'
 import { bandText } from './lib/coastBand.js'
 import useOfflineRoute from './hooks/useOfflineRoute.js'
 import useRaceRoute from './hooks/useRaceRoute.js'
+import { useRaceSignals } from './hooks/useRaceTimer.js'
 import { ampRuleFor, zoneLetter, zoneSummary } from './lib/ampRules.js'
 
 // Adaptive hooks: gli hook leggono dallo store
@@ -375,6 +376,7 @@ export default function App() {
     const course = advanceCourse(raceCourse, geo)
     if (course !== raceCourse) setRaceCourse(course)
   }, [geo, raceCourse, setRaceCourse])
+  useRaceSignals(timerShown(raceCourse) ? raceCourse.startAt : null)
   const raceIdeal = useRaceRoute({
     ...racePlan(raceCourse, geo),
     grib,

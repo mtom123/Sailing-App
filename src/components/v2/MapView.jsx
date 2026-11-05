@@ -29,7 +29,8 @@ import MeteogramPopup from './MeteogramPopup.jsx'
 import WaypointPopup from './WaypointPopup.jsx'
 import { LandTintLayer } from '../../lib/landTintLayer.js'
 import RulerTool from './RulerTool.jsx'
-import { beforeStart, coursePoints, courseTarget, pickOnCourse, raceStats } from '../../lib/race.js'
+import { beforeStart, coursePoints, courseTarget, moveCoursePoint, moveLineEnd, pickOnCourse, raceStats, timerShown } from '../../lib/race.js'
+import RaceClock from '../RaceClock.jsx'
 import AreaDownloadTool from './AreaDownloadTool.jsx'
 import { setOfflineLayers } from '../../lib/offlinePack.js'
 import { OfflineZonesLayer } from '../../lib/offlineZonesLayer.js'
@@ -306,6 +307,7 @@ export default function MapView({
   const raceTarget = courseTarget(raceCourse)
   const raceInfo = raceStats(geo, raceTarget)
   const racePreStart = beforeStart(raceCourse) // si pianifica: niente rotta dalla barca
+  const raceEditing = racePicking === 'edit' // i punti si trascinano sulla carta
   const lastDrawerRef = useRef('route')
   useEffect(() => {
     if (['route', 'anchors', 'weather', 'log', 'race'].includes(activeDrawer)) lastDrawerRef.current = activeDrawer
@@ -537,6 +539,7 @@ export default function MapView({
       map.on('dragstart', () => setFollow(false))
       map.on('click', (e) => {
         const st = useAppStore.getState()
+        if (st.racePicking === 'edit') return
         if (st.racePicking) {
           // Boe e linea di partenza vogliono più tocchi; poi si torna al pannello REGATA
           const picked = pickOnCourse(st.raceCourse, st.racePicking, { lat: e.latlng.lat, lon: e.latlng.lng })
@@ -849,38 +852,88 @@ export default function MapView({
   }, [mob, mobEst?.lat, mobEst?.lon, mobEst?.radiusM, mobEst?.minutes, mapReady])
 
   // === Percorso della regata: partenza, boe numerate e linea dalla barca ===
+  // In modifica i punti si trascinano: le linee li seguono durante il gesto,
+  // il percorso si salva quando si lascia il dito
   useEffect(() => {
     const map = mapRef.current
     const points = coursePoints(raceCourse)
     if (!mapReady || !map || !points.length) return undefined
-    const startLine = points[0].line?.map((p) => [p.lat, p.lon])
-    const group = L.layerGroup([
-      L.polyline(points.map((p) => [p.lat, p.lon]), { color: '#FFD54F', weight: 2, dashArray: '3 7', opacity: 0.7, interactive: false }),
-      ...(startLine
-        ? [
-            L.polyline(startLine, { color: '#0a1620', weight: 7, opacity: 0.55, interactive: false }),
-            L.polyline(startLine, { color: '#69F0AE', weight: 4, opacity: 1, interactive: false }),
-            ...startLine.map((p) => L.circleMarker(p, { radius: 6, color: '#0a1620', weight: 2, fillColor: '#69F0AE', fillOpacity: 1, interactive: false })),
-          ]
-        : []),
-      ...points.map((p, i) => {
-        const bg = p.kind === 'start' ? '#69F0AE' : '#FFD54F'
-        const ring = i === raceCourse.next ? '0 0 0 3px #fff,' : ''
-        return L.marker([p.lat, p.lon], {
-          interactive: false,
-          zIndexOffset: 800,
-          opacity: i < raceCourse.next ? 0.5 : 1,
-          icon: L.divIcon({
-            className: 'timone-marker',
-            html: `<div style="width:30px;height:30px;border-radius:50%;background:${bg};border:2.5px solid #0a1620;color:#0a1620;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;box-shadow:${ring}0 2px 6px rgba(0,0,0,0.5)">${p.short}</div>`,
-            iconSize: [30, 30],
-            iconAnchor: [15, 15],
-          }),
+    const ll = (p) => [p.lat, p.lon]
+    const startLine = points[0].line
+    const dashed = L.polyline(points.map(ll), { color: '#FFD54F', weight: 2, dashArray: '3 7', opacity: 0.7, interactive: false })
+    const lines = startLine
+      ? [
+          L.polyline(startLine.map(ll), { color: '#0a1620', weight: 7, opacity: 0.55, interactive: false }),
+          L.polyline(startLine.map(ll), { color: '#69F0AE', weight: 4, opacity: 1, interactive: false }),
+        ]
+      : []
+
+    let draft = raceCourse
+    let ends = []
+    let pins = []
+    const refresh = (dragged) => {
+      const pts = coursePoints(draft)
+      dashed.setLatLngs(pts.map(ll))
+      if (startLine) {
+        lines.forEach((l) => l.setLatLngs(pts[0].line.map(ll)))
+        ends.forEach((m, i) => m !== dragged && m.setLatLng(ll(pts[0].line[i])))
+      }
+      pins.forEach((m, i) => m !== dragged && m.setLatLng(ll(pts[i])))
+    }
+    const drag = (marker, move) =>
+      marker
+        .on('drag', () => {
+          const { lat, lng } = marker.getLatLng()
+          draft = move(draft, { lat, lon: lng })
+          refresh(marker)
         })
-      }),
-    ]).addTo(map)
+        .on('dragend', () => useAppStore.getState().setRaceCourse(draft))
+    // In modifica l'icona è più grande del disegno: si prende bene col dito
+    const pinIcon = (size, inner) => {
+      const box = raceEditing ? 48 : size
+      return L.divIcon({
+        className: 'timone-marker',
+        html: `<div style="width:${box}px;height:${box}px;display:flex;align-items:center;justify-content:center">${inner}</div>`,
+        iconSize: [box, box],
+        iconAnchor: [box / 2, box / 2],
+      })
+    }
+
+    ends = (startLine || []).map((p, i) =>
+      raceEditing
+        ? drag(
+            L.marker(ll(p), {
+              draggable: true,
+              zIndexOffset: 900,
+              icon: pinIcon(20, '<div style="width:20px;height:20px;border-radius:50%;background:#69F0AE;border:2.5px solid #0a1620;box-shadow:0 0 0 3px #fff"></div>'),
+            }),
+            (course, q) => moveLineEnd(course, i, q)
+          )
+        : L.circleMarker(ll(p), { radius: 6, color: '#0a1620', weight: 2, fillColor: '#69F0AE', fillOpacity: 1, interactive: false })
+    )
+    pins = points.map((p, i) => {
+      const bg = p.kind === 'start' ? '#69F0AE' : '#FFD54F'
+      const ring = raceEditing || i === raceCourse.next ? '0 0 0 3px #fff,' : ''
+      const marker = L.marker(ll(p), {
+        interactive: raceEditing,
+        draggable: raceEditing,
+        zIndexOffset: 800,
+        opacity: !raceEditing && i < raceCourse.next ? 0.5 : 1,
+        icon: pinIcon(
+          30,
+          `<div style="width:30px;height:30px;border-radius:50%;background:${bg};border:2.5px solid #0a1620;color:#0a1620;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;box-shadow:${ring}0 2px 6px rgba(0,0,0,0.5)">${p.short}</div>`
+        ),
+      })
+      return raceEditing ? drag(marker, (course, q) => moveCoursePoint(course, i, q)) : marker
+    })
+    const group = L.layerGroup([dashed, ...lines, ...ends, ...pins]).addTo(map)
     return () => map.removeLayer(group)
-  }, [raceCourse, mapReady])
+  }, [raceCourse, raceEditing, mapReady])
+
+  // Mentre si sceglie o si trascina la carta non deve correre dietro alla barca
+  useEffect(() => {
+    if (racePicking) setFollow(false)
+  }, [racePicking, setFollow])
 
   // Primo estremo della linea di partenza, in attesa del secondo
   const raceLineFrom = racePicking?.lineFrom
@@ -1312,6 +1365,15 @@ export default function MapView({
             {trackRec.paused ? 'PAUSA' : 'REC'} {trackRec.distanceNm.toFixed(1)} nm
           </button>
         )}
+        {timerShown(raceCourse) && (
+          <button
+            type="button"
+            onClick={() => setActiveDrawer('race')}
+            className="glass mt-1.5 flex items-center gap-1.5 rounded-full px-3 py-1 text-[calc(11px*var(--fs))] font-bold text-paper"
+          >
+            VIA <RaceClock startAt={raceCourse.startAt} className="text-[calc(18px*var(--fs))]" />
+          </button>
+        )}
         {raceInfo && (
           <button
             type="button"
@@ -1428,22 +1490,24 @@ export default function MapView({
       {racePicking && (
         <div className="glass-strong absolute left-1/2 top-3 z-[950] flex -translate-x-1/2 items-center gap-3 rounded-lg px-4 py-2 slide-up">
           <span className="whitespace-nowrap text-xs font-semibold tracking-wider text-warn">
-            {racePicking === 'mark'
-              ? 'TOCCA LE BOE NELL\'ORDINE'
-              : racePicking === 'start'
-                ? 'TOCCA IL PUNTO DI PARTENZA'
-                : racePicking === 'line'
-                  ? 'TOCCA UN ESTREMO DELLA LINEA'
-                  : raceLineFrom
-                    ? 'TOCCA L\'ALTRO ESTREMO'
-                    : 'TOCCA LA NUOVA POSIZIONE'}
+            {raceEditing
+              ? 'TRASCINA I PUNTI SULLA CARTA'
+              : racePicking === 'mark'
+                ? 'TOCCA LE BOE NELL\'ORDINE'
+                : racePicking === 'start'
+                  ? 'TOCCA IL PUNTO DI PARTENZA'
+                  : racePicking === 'line'
+                    ? 'TOCCA UN ESTREMO DELLA LINEA'
+                    : raceLineFrom
+                      ? 'TOCCA L\'ALTRO ESTREMO'
+                      : 'TOCCA LA NUOVA POSIZIONE'}
           </span>
           <button
             type="button"
             onClick={() => useAppStore.setState({ racePicking: false, activeDrawer: 'race' })}
             className="rounded-md border border-warn bg-warn/15 px-3 py-1.5 text-[calc(10px*var(--fs))] font-semibold tracking-widest text-warn touch"
           >
-            {racePicking === 'mark' ? 'FATTO' : 'ANNULLA'}
+            {racePicking === 'mark' || raceEditing ? 'FATTO' : 'ANNULLA'}
           </button>
         </div>
       )}

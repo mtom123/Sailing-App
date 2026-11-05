@@ -17,6 +17,7 @@ import { checkLeg } from '../lib/routeHazards.js'
 
 const REFRESH_MS = 120000
 const CHECK_DELAY_MS = 3000
+const LIVE_WIND_AHEAD_MS = 30 * 60 * 1000
 
 // Il vento di bordo oscilla di continuo: conta solo un cambio vero
 const windKey = (w) => (w ? `${Math.round(w.speed / 2)}/${Math.round(w.dir / 10)}` : '')
@@ -33,7 +34,7 @@ async function isClear(segment, minDepth) {
   return true
 }
 
-export default function useRaceRoute({ from, heading, targets, grib, currentField, polarKey, liveWind, minDepth }) {
+export default function useRaceRoute({ from, heading, targets, departMs, grib, currentField, polarKey, liveWind, minDepth }) {
   const [state, setState] = useState({ route: null, error: null, blocked: false })
   const [tick, setTick] = useState(0)
   const checked = useRef({ key: null, flips: [], blocked: false })
@@ -47,7 +48,7 @@ export default function useRaceRoute({ from, heading, targets, grib, currentFiel
 
   const key =
     hasTargets && from
-      ? [from.lat.toFixed(3), from.lon.toFixed(3), targets.map((p) => `${p.lat},${p.lon}`).join(';'), !!grib, polarKey, windKey(liveWind), tick].join('|')
+      ? [from.lat.toFixed(3), from.lon.toFixed(3), targets.map((p) => `${p.lat},${p.lon}`).join(';'), !!grib, departMs, polarKey, windKey(liveWind), tick].join('|')
       : null
 
   useEffect(() => {
@@ -61,7 +62,10 @@ export default function useRaceRoute({ from, heading, targets, grib, currentFiel
     }
     let alive = true
     const timer = setTimeout(async () => {
-      const opts = { from, targets, nowMs: Date.now(), heading, grib, currentField, liveWind, polarKey }
+      // Con l'ora di partenza conta il vento di allora; quello di bordo solo se è vicina
+      const now = Date.now()
+      const nowMs = Math.max(now, departMs || 0)
+      const opts = { from, targets, nowMs, heading, grib, currentField, liveWind: nowMs - now < LIVE_WIND_AHEAD_MS ? liveWind : null, polarKey }
       const route = solveRaceCourse(opts)
       if (route.error) {
         if (alive) setState({ route: null, error: route.error, blocked: false })

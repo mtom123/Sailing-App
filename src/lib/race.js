@@ -7,7 +7,34 @@ import { bearing, haversine } from './geo.js'
 
 const ROUNDED_M = 80 // a questa distanza il punto è passato: si punta al successivo
 
-export const EMPTY_COURSE = { start: null, marks: [], next: 0 }
+const TIMER_SHOWN_MS = 12 * 3600 * 1000 // dopo il via il tempo di gara resta a vista per mezza giornata
+
+export const EMPTY_COURSE = { start: null, marks: [], next: 0, startAt: null }
+
+/** Timer da mostrare: partenza impostata e non troppo vecchia. */
+export const timerShown = (course, now = Date.now()) => !!course.startAt && now - course.startAt < TIMER_SHOWN_MS
+
+/** Imposta o azzera il via. Con un via da aspettare si torna alla partenza, se c'è. */
+export const setStartTime = (course, startAt) => ({ ...course, startAt, next: startAt && course.start ? 0 : course.next })
+
+/** Ora "hh:mm" → istante della prossima volta che arriva (oggi o domani), null se non valida. */
+export function startTimeOf(text, now = Date.now()) {
+  const m = String(text).match(/^(\d{1,2}):(\d{2})/)
+  if (!m) return null
+  const d = new Date(now)
+  d.setHours(Number(m[1]), Number(m[2]), 0, 0)
+  if (d.getTime() <= now) d.setDate(d.getDate() + 1)
+  return d.getTime()
+}
+
+/** Conto alla rovescia "4:32" o "1:04:32"; dopo il via tempo di gara "+0:12". */
+export function fmtClock(leftMs) {
+  const s = Math.abs(leftMs <= 0 ? Math.floor(leftMs / 1000) : Math.ceil(leftMs / 1000))
+  const pad = (n) => String(n).padStart(2, '0')
+  const h = Math.floor(s / 3600)
+  const text = h ? `${h}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}` : `${Math.floor(s / 60)}:${pad(s % 60)}`
+  return leftMs <= 0 ? `+${text}` : text
+}
 
 // Partenza: un punto { lat, lon }, o una linea con l'altro estremo in end
 function startPoint({ lat, lon, end }) {
@@ -28,12 +55,13 @@ export const beforeStart = (course) => !!course.start && course.next === 0
 /**
  * Da dove a dove va la rotta ideale: prima della partenza si pianifica dalla
  * partenza alle boe, senza il tratto dalla barca; poi dalla barca in avanti.
- * { from, heading, targets }, from null senza GPS.
+ * { from, heading, targets, departMs }, from null senza GPS, departMs l'ora
+ * di partenza se c'è (vale il vento di quell'ora).
  */
 export function racePlan(course, geo) {
   const points = coursePoints(course)
-  if (beforeStart(course)) return { from: { lat: points[0].lat, lon: points[0].lon }, heading: null, targets: points.slice(1) }
-  return { from: geo.lat != null ? { lat: geo.lat, lon: geo.lon } : null, heading: geo.cog, targets: points.slice(course.next) }
+  if (beforeStart(course)) return { from: { lat: points[0].lat, lon: points[0].lon }, heading: null, targets: points.slice(1), departMs: course.startAt || null }
+  return { from: geo.lat != null ? { lat: geo.lat, lon: geo.lon } : null, heading: geo.cog, targets: points.slice(course.next), departMs: null }
 }
 
 /** Il punto verso cui si naviga adesso, o null a percorso vuoto. */
@@ -44,7 +72,8 @@ export function courseTarget(course) {
 /**
  * Dove porta un tocco sulla carta: { raceCourse, racePicking }, racePicking
  * false a scelta finita. picking è 'start', 'line' (poi { lineFrom } per il
- * secondo estremo), 'mark' o { move: indice }.
+ * secondo estremo), 'mark' o { move: indice }. Con 'edit' i punti si
+ * trascinano e il tocco non fa niente.
  */
 export function pickOnCourse(course, picking, p) {
   if (picking === 'mark') return { raceCourse: addCourseMark(course, p), racePicking: 'mark' }
@@ -56,11 +85,24 @@ export function pickOnCourse(course, picking, p) {
 
 export const addCourseMark = (course, p) => ({ ...course, marks: [...course.marks, p] })
 
-// Una partenza nuova fa ricominciare il percorso
-export const setCourseStart = (course, p) => ({ ...course, start: p, next: 0 })
+// La prima partenza diventa il punto da raggiungere; cambiarla poi non tocca il percorso
+export const setCourseStart = (course, p) => ({ ...course, start: p, next: course.start ? course.next : 0 })
 
+/** Sposta un estremo (0 o 1) della linea di partenza. */
+export function moveLineEnd(course, which, p) {
+  const { start } = course
+  return { ...course, start: which === 0 ? { ...start, ...p } : { ...start, end: p } }
+}
+
+/** Sposta un punto; la linea di partenza si sposta tutta, tenendo il centro su p. */
 export function moveCoursePoint(course, index, p) {
-  if (course.start && index === 0) return { ...course, start: p }
+  if (course.start && index === 0) {
+    const { lat, lon, end } = course.start
+    if (!end) return { ...course, start: p }
+    const dLat = p.lat - (lat + end.lat) / 2
+    const dLon = p.lon - (lon + end.lon) / 2
+    return { ...course, start: { lat: lat + dLat, lon: lon + dLon, end: { lat: end.lat + dLat, lon: end.lon + dLon } } }
+  }
   const at = index - (course.start ? 1 : 0)
   return { ...course, marks: course.marks.map((m, i) => (i === at ? p : m)) }
 }
@@ -84,8 +126,12 @@ function distanceTo(geo, point) {
   return haversine(geo.lat, geo.lon, a.lat + by * t, a.lon + (b.lon - a.lon) * t)
 }
 
-/** Punto passato → si punta al successivo. L'ultimo resta il traguardo. */
-export function advanceCourse(course, geo) {
+/**
+ * Punto passato → si punta al successivo. L'ultimo resta il traguardo.
+ * Prima del via si resta sulla partenza, anche stando sulla linea.
+ */
+export function advanceCourse(course, geo, now = Date.now()) {
+  if (beforeStart(course) && course.startAt > now) return course
   const points = coursePoints(course)
   let { next } = course
   while (next < points.length - 1 && distanceTo(geo, points[next]) < ROUNDED_M) next += 1

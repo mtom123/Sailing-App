@@ -52,6 +52,12 @@ export function isAlarmRunning() {
   return intervalId != null
 }
 
+/** Segnale del timer di regata: `times` note da `ms` millisecondi. */
+export function raceBeep(ms = 150, times = 1) {
+  armAudio()
+  for (let i = 0; i < times; i++) setTimeout(() => beep(1040, ms), i * ms * 1.6)
+}
+
 /** Tripla nota di avviso (allarme vento): non interferisce con la sirena. */
 export function warnBeep() {
   armAudio()

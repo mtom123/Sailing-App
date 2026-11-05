@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { Flag, MapPin, Trash2 } from 'lucide-react'
+import { Flag, MapPin, Move, Trash2 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore.js'
 import { cardinal, formatCoord, formatDeg, metersToNm } from '../lib/geo.js'
-import { EMPTY_COURSE, addCourseMark, beforeStart, coursePoints, parseCoord, raceStats, removeCoursePoint, racePlan, setCourseStart } from '../lib/race.js'
+import { EMPTY_COURSE, addCourseMark, beforeStart, coursePoints, parseCoord, racePlan, raceStats, removeCoursePoint, setCourseStart, setStartTime, startTimeOf, timerShown } from '../lib/race.js'
+import { armAudio } from '../lib/alarm.js'
+import RaceClock from './RaceClock.jsx'
 
 /*
  * Regata: VMG verso il prossimo punto in grande, con distanza, direzione e
@@ -70,6 +72,58 @@ function IdealRoute({ ideal, targets, fromStart }) {
       )}
       {blocked && (
         <div className="pt-1 text-[calc(10px*var(--fs))] font-semibold text-danger">Passa su terra, bassi fondali o zone vietate: controlla a vista</div>
+      )}
+    </div>
+  )
+}
+
+const fmtStartTime = (ms) => {
+  const d = new Date(ms)
+  const day = d.toDateString() === new Date().toDateString() ? '' : ' di domani'
+  return `Partenza alle ${d.toLocaleTimeString('it-IT')}${day}`
+}
+
+// 5, 3 e 1 si premono al segnale, anche a timer avviato: rimettono il tempo esatto
+function RaceTimer({ startAt, onChange }) {
+  const [clock, setClock] = useState('')
+  const shown = !!startAt
+  const set = (ms) => {
+    armAudio() // iOS: il suono parte solo da un tocco
+    onChange(ms)
+  }
+  const btn = 'touch flex items-center justify-center rounded-md border border-line bg-surface py-2.5 text-[calc(12px*var(--fs))] font-bold text-paper'
+  return (
+    <div className="mb-1.5 border border-line bg-panel px-3 py-2">
+      <div className="label">Timer partenza</div>
+      {shown && (
+        <>
+          <RaceClock startAt={startAt} className="block text-[52px] font-bold leading-none" />
+          <div className="pb-1.5 pt-1 text-[calc(11px*var(--fs))] text-fog">{fmtStartTime(startAt)}</div>
+        </>
+      )}
+      <div className="mt-1 grid grid-cols-3 gap-1.5">
+        {[5, 3, 1].map((min) => (
+          <button key={min} type="button" onClick={() => set(Date.now() + min * 60000)} className={btn}>
+            {min} MIN
+          </button>
+        ))}
+      </div>
+      <div className="mt-1.5 flex gap-1.5">
+        <input
+          type="time"
+          aria-label="Ora della partenza"
+          value={clock}
+          onChange={(e) => setClock(e.target.value)}
+          className="w-full min-w-0 flex-1 rounded-md border border-line bg-surface px-2.5 py-2 font-mono text-xs text-paper outline-none focus:border-phos"
+        />
+        <button type="button" disabled={!clock} onClick={() => set(startTimeOf(clock))} className={`${btn} flex-1 disabled:opacity-40`}>
+          ORA PARTENZA
+        </button>
+      </div>
+      {shown && (
+        <button type="button" onClick={() => onChange(null)} className={`${btn} mt-1.5 w-full text-danger`}>
+          AZZERA TIMER
+        </button>
       )}
     </div>
   )
@@ -151,6 +205,7 @@ export default function RacePanel({ geo, ideal }) {
 
   return (
     <div className="p-2">
+      <RaceTimer startAt={timerShown(raceCourse) ? raceCourse.startAt : null} onChange={(startAt) => setRaceCourse(setStartTime(raceCourse, startAt))} />
       {target ? (
         <>
           {!preStart && (
@@ -198,6 +253,9 @@ export default function RacePanel({ geo, ideal }) {
             ))}
           </div>
           <div className="pt-1 text-[calc(10px*var(--fs))] text-fog">Passato un punto si punta da soli al successivo. Tocca una riga per scegliere tu.</div>
+          <button type="button" onClick={() => pickOnMap('edit')} className={`${btn} mt-1.5 w-full border-line bg-surface text-paper`}>
+            <Move size={14} /> MODIFICA SULLA CARTA
+          </button>
         </>
       )}
 
