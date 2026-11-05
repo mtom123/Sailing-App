@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
-import { ChevronLeft, MapPin, Navigation2, Plus, Search, Trash2 } from 'lucide-react'
-import { removeMark, saveMark } from '../hooks/useMarks.js'
+import { useEffect, useRef, useState } from 'react'
+import { ChevronLeft, Download, MapPin, Navigation2, Plus, Search, Trash2, Upload } from 'lucide-react'
+import { importMarks, removeMark, saveMark } from '../hooks/useMarks.js'
 import { depthAt } from '../lib/depthAt.js'
 import { formatCoord, formatDeg, bearing, haversine, metersToNm } from '../lib/geo.js'
+import { gpxToMarks, marksFileName, marksToGpx, newMarksOnly } from '../lib/markGpx.js'
 import { MARK_TYPES, SEABEDS, markDetail, markType, newMark, searchMarks, validDepth } from '../lib/marks.js'
+import { shareFile } from '../lib/route.js'
 import { useAppStore } from '../store/useAppStore.js'
 
 /*
@@ -197,6 +199,54 @@ function MarkRow({ mark, onOpen, geo }) {
   )
 }
 
+// Copia su file: i mark stanno solo in questo browser, e cancellandone i dati si perdono
+function MarksBackup({ marks }) {
+  const fileRef = useRef(null)
+  const [message, setMessage] = useState(null)
+  const [failed, setFailed] = useState(false)
+
+  const load = async (e) => {
+    const [file] = e.target.files
+    e.target.value = ''
+    if (!file) return
+    try {
+      const found = gpxToMarks(await file.text())
+      const fresh = newMarksOnly(found, marks)
+      await importMarks(fresh)
+      const skipped = found.length - fresh.length
+      setMessage(found.length ? `${fresh.length} mark caricati${skipped ? `, ${skipped} già presenti` : ''}` : 'Nessun mark nel file')
+      setFailed(false)
+    } catch {
+      setMessage('File non valido: serve un GPX')
+      setFailed(true)
+    }
+  }
+
+  return (
+    <div className="mt-1.5">
+      {/* Senza accept: su iPad un filtro per estensione rende grigi i .gpx */}
+      <input ref={fileRef} type="file" onChange={load} className="hidden" aria-label="File GPX dei mark" />
+      <div className="grid grid-cols-2 gap-1.5">
+        <button
+          type="button"
+          disabled={!marks.length}
+          onClick={() => shareFile(marksFileName(), marksToGpx(marks))}
+          className={`${btn} border-line bg-surface text-paper disabled:opacity-40`}
+        >
+          <Download size={13} /> SALVA SU FILE
+        </button>
+        <button type="button" onClick={() => fileRef.current?.click()} className={`${btn} border-line bg-surface text-paper`}>
+          <Upload size={13} /> CARICA DA FILE
+        </button>
+      </div>
+      {message && <div className={`pt-1 text-[calc(10px*var(--fs))] font-semibold ${failed ? 'text-danger' : 'text-phos'}`}>{message}</div>}
+      <div className="pt-1 text-[calc(10px*var(--fs))] text-fog">
+        I mark stanno solo su questo iPad: salva ogni tanto il file su iCloud. È un GPX, lo legge anche Navionics.
+      </div>
+    </div>
+  )
+}
+
 function MarkList({ marks, geo }) {
   const [text, setText] = useState('')
   const [type, setType] = useState(null)
@@ -219,6 +269,7 @@ function MarkList({ marks, geo }) {
           <MapPin size={14} /> SULLA CARTA
         </button>
       </div>
+      <MarksBackup marks={marks} />
 
       {marks.length === 0 ? (
         <div className="pt-3 text-[calc(11px*var(--fs))] leading-relaxed text-fog">

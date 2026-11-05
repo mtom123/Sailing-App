@@ -84,6 +84,24 @@ export function trackToGPX(segments, name = 'Traccia TIMONE') {
   return out + '</trk>\n</gpx>\n'
 }
 
+/**
+ * Passa il file al foglio di condivisione (iPad: Salva su File, AirDrop,
+ * Mail), che funziona anche dall'app sulla schermata Home; dove non c'è lo
+ * scarica.
+ */
+export async function shareFile(filename, content, mime = 'application/gpx+xml') {
+  const file = new File([content], filename, { type: mime })
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] })
+      return
+    } catch (err) {
+      if (err.name === 'AbortError') return // chiuso dall'utente
+    }
+  }
+  downloadFile(filename, content, mime)
+}
+
 export function downloadFile(filename, content, mime = 'application/gpx+xml') {
   const blob = new Blob([content], { type: mime })
   const url = URL.createObjectURL(blob)

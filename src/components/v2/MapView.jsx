@@ -48,7 +48,7 @@ import {
   ChevronRight,
   Waves,
   Sun,
-  Menu,
+  Bookmark, Menu,
   Ruler,
   CloudDownload,
 } from 'lucide-react'
@@ -1480,15 +1480,26 @@ export default function MapView({
         </MapButton>
         </div>
         {!activeDrawer && (
-          <button
-            type="button"
-            title="Rotta, ancore, meteo e registro"
-            onClick={() => setActiveDrawer(lastDrawerRef.current)}
-            className="glass mt-2 flex h-14 w-[calc(48px*var(--fs))] flex-col items-center justify-center gap-0.5 rounded-l-lg text-fog hover:text-paper transition-colors"
-          >
-            <Menu size={18} />
-            <span className="text-[calc(7px*var(--fs))] font-bold tracking-wider">MENU</span>
-          </button>
+          <>
+            <button
+              type="button"
+              title="Rotta, ancore, meteo e registro"
+              onClick={() => setActiveDrawer(lastDrawerRef.current)}
+              className="glass mt-2 flex h-14 w-[calc(48px*var(--fs))] flex-col items-center justify-center gap-0.5 rounded-l-lg text-fog hover:text-paper transition-colors"
+            >
+              <Menu size={18} />
+              <span className="text-[calc(9px*var(--fs))] font-bold">MENU</span>
+            </button>
+            <button
+              type="button"
+              title="I miei mark"
+              onClick={() => setActiveDrawer('marks')}
+              className="glass mt-2 flex h-14 w-[calc(48px*var(--fs))] flex-col items-center justify-center gap-0.5 rounded-l-lg text-fog hover:text-paper transition-colors"
+            >
+              <Bookmark size={18} />
+              <span className="text-[calc(9px*var(--fs))] font-bold">MARK</span>
+            </button>
+          </>
         )}
       </div>
 

@@ -35,4 +35,8 @@ async function run(mode, fn) {
 
 export const listMarks = async () => (await run('readonly', (s) => s.getAll())) || []
 export const putMark = (mark) => run('readwrite', (s) => s.put(mark))
+export const putMarks = (marks) =>
+  run('readwrite', (s) => {
+    marks.forEach((m) => s.put(m))
+  })
 export const deleteMark = (id) => run('readwrite', (s) => s.delete(id))
