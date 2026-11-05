@@ -54,15 +54,14 @@ export default function useOfflineRoute(waypoints, { editing }) {
     setState({ status: 'idle', progress: null, info: offlineInfo(pointsRef.current), error: null })
   }, [key])
 
-  // Automatico: rotta stabile, online, mai scaricata, non lunga zero (la rotta
-  // MOB parte e arriva nello stesso punto: niente da scaricare)
+  // Automatico: rotta stabile, online, mai scaricata. Non per la rotta MOB:
+  // è un'emergenza, e la stima di deriva la sposta di continuo
+  const isMob = waypoints.some((w) => String(w.id).startsWith('mob-'))
   useEffect(() => {
-    const pts = pointsRef.current
-    const spanM = pts.length >= 2 ? Math.hypot((pts[0].lat - pts[pts.length - 1].lat) * 111320, (pts[0].lon - pts[pts.length - 1].lon) * 80000) : 0
-    if (editing || pts.length < 2 || (pts.length === 2 && spanM < 200) || !navigator.onLine || offlineInfo(pts)) return undefined
+    if (editing || isMob || pointsRef.current.length < 2 || !navigator.onLine || offlineInfo(pointsRef.current)) return undefined
     const timer = setTimeout(start, AUTO_DELAY_MS)
     return () => clearTimeout(timer)
-  }, [key, editing, start])
+  }, [key, editing, isMob, start])
 
   useEffect(() => () => ctrlRef.current?.abort(), [])
 

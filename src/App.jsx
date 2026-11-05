@@ -15,7 +15,8 @@ import { logStep, failStep } from './lib/debugLogger.js'
 // Hooks riusabili
 import useGeolocation from './hooks/useGeolocation.js'
 import useSignalK from './hooks/useSignalK.js'
-import { boatGeo, liveDepth } from './lib/boatData.js'
+import { boatGeo, liveDepth, trueWind } from './lib/boatData.js'
+import { estimateDrift } from './lib/mobDrift.js'
 import { windFieldAt } from './lib/gribAt.js'
 import useOpenMeteo from './hooks/useOpenMeteo.js'
 import useWindField from './hooks/useWindField.js'
@@ -319,6 +320,8 @@ export default function App() {
   // attiva verso il punto (direzione, distanza, pilota se collegato).
   // ANNULLA rimette la rotta e la navigazione di prima
   const [mob, setMob] = useState(null)
+  const [mobTarget, setMobTarget] = useState('gps') // 'gps' | 'est': lo sceglie solo chi naviga
+  const [mobTick, setMobTick] = useState(0)
   const mobPrevRoute = useRef(null)
   const dropMob = () => {
     if (geo.lat == null) return
@@ -330,6 +333,7 @@ export default function App() {
     }
     const t = Date.now()
     setMob({ lat: geo.lat, lon: geo.lon, ts: t })
+    setMobTarget('gps')
     useAppStore.setState({
       routeDraft: {
         name: 'MOB – uomo a mare',
@@ -346,17 +350,55 @@ export default function App() {
   }
   const cancelMob = () => {
     setMob(null)
+    setMobTarget('gps')
     const prev = mobPrevRoute.current
     mobPrevRoute.current = null
     if (prev) useAppStore.setState(prev)
   }
+  // Stima di deriva, ricalcolata ogni 20 secondi. Vento misurato a bordo se
+  // c'è (Signal K), altrimenti la previsione
+  useEffect(() => {
+    if (!mob) return undefined
+    const timer = setInterval(() => setMobTick((n) => n + 1), 20000)
+    return () => clearInterval(timer)
+  }, [mob])
+  const boatWind = trueWind(sk.data)
+  const liveWindSpeed = boatWind?.twd != null ? Math.round(boatWind.tws) : null
+  const liveWindDir = boatWind?.twd != null ? Math.round(boatWind.twd) : null
+  const mobEst = useMemo(
+    () =>
+      mob
+        ? estimateDrift(mob, Date.now(), {
+            grid: grib?.grid,
+            wind: liveWindSpeed != null ? { speed: liveWindSpeed, dir: liveWindDir } : null,
+          })
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mob, mobTick, grib, liveWindSpeed, liveWindDir]
+  )
+  const mobShowEst = mobEst && mobEst.minutes >= 1
+  const mobGoal = mobTarget === 'est' && mobShowEst ? mobEst : mob
   const mobInfo =
     mob && geo.lat != null
       ? {
-          dist: haversine(geo.lat, geo.lon, mob.lat, mob.lon),
-          brg: bearing(geo.lat, geo.lon, mob.lat, mob.lon),
+          dist: haversine(geo.lat, geo.lon, mobGoal.lat, mobGoal.lon),
+          brg: bearing(geo.lat, geo.lon, mobGoal.lat, mobGoal.lon),
         }
       : null
+  // La rotta MOB segue la destinazione scelta (e la stima, se è quella)
+  const mobGoalLat = mobGoal?.lat
+  const mobGoalLon = mobGoal?.lon
+  useEffect(() => {
+    if (!mob || mobGoalLat == null) return
+    const st = useAppStore.getState()
+    const wps = st.routeDraft.waypoints
+    const dest = wps[wps.length - 1]
+    if (!dest || !String(dest.id).startsWith('mob-') || haversine(dest.lat, dest.lon, mobGoalLat, mobGoalLon) < 10) return
+    st.setRouteDraft((d) => ({
+      ...d,
+      waypoints: d.waypoints.map((w, i) => (i === d.waypoints.length - 1 ? { ...w, lat: mobGoalLat, lon: mobGoalLon } : w)),
+    }))
+  }, [mob, mobGoalLat, mobGoalLon])
 
   // Wind alarm
   const gustNow = weather.wind?.gust ?? weather.wind?.speed ?? null
@@ -440,6 +482,7 @@ export default function App() {
             offlineDl={offline.status === 'running' && offline.progress?.total ? Math.round((100 * offline.progress.done) / offline.progress.total) : null}
             shownTracks={track.shown}
             mob={mob}
+            mobEst={mobShowEst ? { ...mobEst, active: mobTarget === 'est' } : null}
             routeOptions={routeOptions}
             onDropMob={dropMob}
           />
@@ -525,28 +568,47 @@ export default function App() {
 
           {/* MOB banner */}
           {mob && (
-            <div className="alarm-flash glass-strong absolute left-1/2 top-3 z-[1100] flex -translate-x-1/2 items-center gap-3 rounded-lg border-2 border-danger px-4 py-2 text-center">
-              <div>
-                <div className="text-sm font-bold tracking-[0.25em] text-danger">
+            <div className="alarm-flash glass-strong absolute left-1/2 top-3 z-[1100] flex w-max max-w-[calc(100%-150px)] -translate-x-1/2 items-center gap-3 rounded-lg border-2 border-danger px-4 py-2 text-center">
+              <div className="min-w-0">
+                <div className="whitespace-nowrap text-sm font-bold tracking-[0.2em] text-danger">
                   ⊕ UOMO A MARE
                 </div>
                 {mobInfo && (
-                  <div className="font-mono text-[calc(18px*var(--fs))] font-bold text-paper tabular-nums">
+                  <div className="whitespace-nowrap font-mono text-[calc(18px*var(--fs))] font-bold text-paper tabular-nums">
                     {formatDeg(mobInfo.brg)}° {cardinal(mobInfo.brg)} ·{' '}
                     {mobInfo.dist < 1852
                       ? `${mobInfo.dist.toFixed(0)} m`
                       : `${metersToNm(mobInfo.dist).toFixed(2)} nm`}
                   </div>
                 )}
-                <div className="text-[calc(9px*var(--fs))] text-fog">rotta MOB attiva · ANNULLA rimette la rotta di prima</div>
+                <div className="text-[calc(9px*var(--fs))] text-fog">
+                  {mobTarget === 'est' && mobShowEst ? 'rotta verso la STIMA' : 'rotta verso il PUNTO GPS'}
+                </div>
+                {mobShowEst && (
+                  <div className="pt-0.5 text-[calc(10px*var(--fs))] font-semibold text-warn tabular-nums">
+                    Stima +{mobEst.minutes} min: deriva {Math.round(mobEst.driftM)} m {cardinal(bearing(mob.lat, mob.lon, mobEst.lat, mobEst.lon))} · raggio {Math.round(mobEst.radiusM)} m
+                  </div>
+                )}
+                {mob && !mobEst && <div className="pt-0.5 text-[calc(10px*var(--fs))] text-fog">Stima di deriva non disponibile: mancano corrente e vento</div>}
               </div>
-              <button
-                type="button"
-                onClick={cancelMob}
-                className="touch rounded-md border border-line bg-surface px-3 py-1.5 text-[calc(10px*var(--fs))] tracking-widest text-fog"
-              >
-                ANNULLA
-              </button>
+              <div className="flex flex-none flex-col gap-1.5">
+                {mobShowEst && (
+                  <button
+                    type="button"
+                    onClick={() => setMobTarget(mobTarget === 'est' ? 'gps' : 'est')}
+                    className="touch whitespace-nowrap rounded-md border border-warn bg-warn/15 px-3 py-1.5 text-[calc(10px*var(--fs))] font-semibold tracking-widest text-warn"
+                  >
+                    {mobTarget === 'est' ? 'VAI AL PUNTO GPS' : 'VAI ALLA STIMA'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={cancelMob}
+                  className="touch rounded-md border border-line bg-surface px-3 py-1.5 text-[calc(10px*var(--fs))] tracking-widest text-fog"
+                >
+                  ANNULLA
+                </button>
+              </div>
             </div>
           )}
         </div>

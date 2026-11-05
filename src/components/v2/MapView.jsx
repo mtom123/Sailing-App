@@ -250,6 +250,7 @@ export default function MapView({
   mob,
   routeOptions,
   onDropMob,
+  mobEst = null, // { lat, lon, radiusM, minutes, active } stima di deriva del MOB
 }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
@@ -793,7 +794,7 @@ export default function MapView({
     }
   }, [mob, mapReady])
 
-  // === MOB: linea rossa tratteggiata dalla barca al punto, sempre aggiornata ===
+  // === MOB: linea rossa dalla barca alla destinazione scelta, sempre aggiornata ===
   useEffect(() => {
     const map = mapRef.current
     if (!mapReady || !map) return
@@ -805,10 +806,34 @@ export default function MapView({
       }
       return
     }
-    const pts = [[geo.lat, geo.lon], [mob.lat, mob.lon]]
+    const goal = mobEst?.active ? mobEst : mob
+    const pts = [[geo.lat, geo.lon], [goal.lat, goal.lon]]
     if (line) line.setLatLngs(pts)
     else markersRef.current.mobLine = L.polyline(pts, { color: '#FF5252', weight: 4, dashArray: '10 8', opacity: 0.95, interactive: false }).addTo(map)
-  }, [mob, geo.lat, geo.lon, mapReady])
+  }, [mob, mobEst?.active, mobEst?.lat, mobEst?.lon, geo.lat, geo.lon, mapReady])
+
+  // === MOB: stima di deriva, separata dal punto GPS che resta fisso ===
+  useEffect(() => {
+    const map = mapRef.current
+    if (!mapReady || !map) return undefined
+    if (!mob || !mobEst) return undefined
+    const color = '#F5A623'
+    const group = L.layerGroup([
+      L.polyline([[mob.lat, mob.lon], [mobEst.lat, mobEst.lon]], { color, weight: 2, dashArray: '3 6', interactive: false }),
+      L.circle([mobEst.lat, mobEst.lon], { radius: mobEst.radiusM, color, weight: 2, dashArray: '6 6', fillColor: color, fillOpacity: 0.12, interactive: false }),
+      L.marker([mobEst.lat, mobEst.lon], {
+        interactive: false,
+        zIndexOffset: 2100,
+        icon: L.divIcon({
+          className: 'timone-marker',
+          // Sopra il punto, per non finire sotto il marcatore MOB
+          html: `<div style="width:max-content;transform:translate(-50%,-170%);white-space:nowrap;background:${color};color:#0a1620;border:2px solid #0a1620;border-radius:6px;padding:1px 6px;font:700 calc(11px * var(--fs)) var(--font-mono)">STIMA +${mobEst.minutes}'</div>`,
+          iconSize: [0, 0],
+        }),
+      }),
+    ]).addTo(map)
+    return () => map.removeLayer(group)
+  }, [mob, mobEst?.lat, mobEst?.lon, mobEst?.radiusM, mobEst?.minutes, mapReady])
 
   // === AIS vessels ===
   useEffect(() => {
@@ -992,7 +1017,7 @@ export default function MapView({
     const group = layerGroupRefs.current.routeOptions
     if (!group) return
     group.clearLayers()
-    if (!routeOptions) return
+    if (!routeOptions || mob) return // col MOB solo la rotta verso il naufrago
     const colors = {
       fastest: '#5EE6C8',
       comfortable: '#4A9EFF',
@@ -1008,7 +1033,7 @@ export default function MapView({
         dashArray: '4 3',
       }).addTo(group)
     }
-  }, [routeOptions, activeRouteOption, mapReady])
+  }, [routeOptions, activeRouteOption, mob, mapReady])
 
   // === Traccia in registrazione ===
   useEffect(() => {
