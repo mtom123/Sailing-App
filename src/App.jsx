@@ -17,6 +17,7 @@ import { logStep, failStep } from './lib/debugLogger.js'
 import useGeolocation from './hooks/useGeolocation.js'
 import useSignalK from './hooks/useSignalK.js'
 import { boatGeo, liveDepth, trueWind } from './lib/boatData.js'
+import { advanceCourse, coursePoints } from './lib/race.js'
 import { estimateDrift } from './lib/mobDrift.js'
 import { windFieldAt } from './lib/gribAt.js'
 import useOpenMeteo from './hooks/useOpenMeteo.js'
@@ -182,7 +183,8 @@ export default function App() {
     setActiveRouteOption,
     routeOptions: storedRouteOptions,
     setRouteOptions,
-    raceMark,
+    raceCourse,
+    setRaceCourse,
   } = useAppStore()
 
   // Strumenti di bordo (Signal K): GPS della barca al posto di quello
@@ -368,9 +370,14 @@ export default function App() {
   const boatWind = trueWind(sk.data)
   const liveWindSpeed = boatWind?.twd != null ? Math.round(boatWind.tws) : null
   const liveWindDir = boatWind?.twd != null ? Math.round(boatWind.twd) : null
+  useEffect(() => {
+    if (geo.lat == null) return
+    const course = advanceCourse(raceCourse, geo)
+    if (course !== raceCourse) setRaceCourse(course)
+  }, [geo, raceCourse, setRaceCourse])
   const raceIdeal = useRaceRoute({
     geo,
-    mark: raceMark,
+    targets: coursePoints(raceCourse).slice(raceCourse.next),
     grib,
     currentField,
     polarKey: boat.polarProfile,

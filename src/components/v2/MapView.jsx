@@ -29,7 +29,7 @@ import MeteogramPopup from './MeteogramPopup.jsx'
 import WaypointPopup from './WaypointPopup.jsx'
 import { LandTintLayer } from '../../lib/landTintLayer.js'
 import RulerTool from './RulerTool.jsx'
-import { raceStats } from '../../lib/race.js'
+import { coursePoints, courseTarget, pickOnCourse, raceStats } from '../../lib/race.js'
 import AreaDownloadTool from './AreaDownloadTool.jsx'
 import { setOfflineLayers } from '../../lib/offlinePack.js'
 import { OfflineZonesLayer } from '../../lib/offlineZonesLayer.js'
@@ -301,9 +301,10 @@ export default function MapView({
 
   // Ultima scheda aperta del pannello (rotta, ancore, meteo, registro): la
   // linguetta MENU riapre quella
-  const raceMark = useAppStore((s) => s.raceMark)
+  const raceCourse = useAppStore((s) => s.raceCourse)
   const racePicking = useAppStore((s) => s.racePicking)
-  const raceInfo = raceStats(geo, raceMark)
+  const raceTarget = courseTarget(raceCourse)
+  const raceInfo = raceStats(geo, raceTarget)
   const lastDrawerRef = useRef('route')
   useEffect(() => {
     if (['route', 'anchors', 'weather', 'log', 'race'].includes(activeDrawer)) lastDrawerRef.current = activeDrawer
@@ -536,8 +537,9 @@ export default function MapView({
       map.on('click', (e) => {
         const st = useAppStore.getState()
         if (st.racePicking) {
-          // Boa scelta sulla carta: si torna al pannello REGATA
-          useAppStore.setState({ raceMark: { lat: e.latlng.lat, lon: e.latlng.lng }, racePicking: false, activeDrawer: 'race' })
+          // Le boe si mettono una dopo l'altra; il resto torna al pannello REGATA
+          const raceCourse = pickOnCourse(st.raceCourse, st.racePicking, { lat: e.latlng.lat, lon: e.latlng.lng })
+          useAppStore.setState(st.racePicking === 'mark' ? { raceCourse } : { raceCourse, racePicking: false, activeDrawer: 'race' })
           return
         }
         if (st.routeEditing) {
@@ -845,38 +847,47 @@ export default function MapView({
     return () => map.removeLayer(group)
   }, [mob, mobEst?.lat, mobEst?.lon, mobEst?.radiusM, mobEst?.minutes, mapReady])
 
-  // === Boa della regata: bandierina e linea dalla barca ===
+  // === Percorso della regata: partenza, boe numerate e linea dalla barca ===
   useEffect(() => {
     const map = mapRef.current
-    if (!mapReady || !map || !raceMark) return undefined
-    const marker = L.marker([raceMark.lat, raceMark.lon], {
-      interactive: false,
-      zIndexOffset: 800,
-      icon: L.divIcon({
-        className: 'timone-marker',
-        html: '<div style="width:30px;height:30px;border-radius:50%;background:#FFD54F;border:2.5px solid #0a1620;color:#0a1620;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 2px 6px rgba(0,0,0,0.5)">⚑</div>',
-        iconSize: [30, 30],
-        iconAnchor: [15, 15],
+    const points = coursePoints(raceCourse)
+    if (!mapReady || !map || !points.length) return undefined
+    const group = L.layerGroup([
+      L.polyline(points.map((p) => [p.lat, p.lon]), { color: '#FFD54F', weight: 2, dashArray: '3 7', opacity: 0.7, interactive: false }),
+      ...points.map((p, i) => {
+        const bg = p.kind === 'start' ? '#69F0AE' : '#FFD54F'
+        const ring = i === raceCourse.next ? '0 0 0 3px #fff,' : ''
+        return L.marker([p.lat, p.lon], {
+          interactive: false,
+          zIndexOffset: 800,
+          opacity: i < raceCourse.next ? 0.5 : 1,
+          icon: L.divIcon({
+            className: 'timone-marker',
+            html: `<div style="width:30px;height:30px;border-radius:50%;background:${bg};border:2.5px solid #0a1620;color:#0a1620;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;box-shadow:${ring}0 2px 6px rgba(0,0,0,0.5)">${p.short}</div>`,
+            iconSize: [30, 30],
+            iconAnchor: [15, 15],
+          }),
+        })
       }),
-    }).addTo(map)
-    return () => map.removeLayer(marker)
-  }, [raceMark, mapReady])
+    ]).addTo(map)
+    return () => map.removeLayer(group)
+  }, [raceCourse, mapReady])
 
   useEffect(() => {
     const map = mapRef.current
     if (!mapReady || !map) return
     const line = markersRef.current.raceLine
-    if (!raceMark || geo.lat == null) {
+    if (!raceTarget || geo.lat == null) {
       if (line) {
         map.removeLayer(line)
         markersRef.current.raceLine = null
       }
       return
     }
-    const pts = [[geo.lat, geo.lon], [raceMark.lat, raceMark.lon]]
+    const pts = [[geo.lat, geo.lon], [raceTarget.lat, raceTarget.lon]]
     if (line) line.setLatLngs(pts)
     else markersRef.current.raceLine = L.polyline(pts, { color: '#FFD54F', weight: 3, dashArray: '6 7', opacity: 0.95, interactive: false }).addTo(map)
-  }, [raceMark, geo.lat, geo.lon, mapReady])
+  }, [raceTarget?.lat, raceTarget?.lon, geo.lat, geo.lon, mapReady])
 
   // Rotta ideale: bordi pieni, con un pallino dove si vira
   useEffect(() => {
@@ -1289,7 +1300,7 @@ export default function MapView({
             onClick={() => setActiveDrawer('race')}
             className="glass mt-1.5 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[calc(11px*var(--fs))] font-bold tabular-nums text-paper"
           >
-            <span className="text-[#FFD54F]">⚑</span>
+            <span className="text-[#FFD54F]">⚑ {raceTarget.short}</span>
             VMG {raceInfo.vmg != null ? raceInfo.vmg.toFixed(1).replace('.', ',') : '--'} kn · {metersToNm(raceInfo.distM).toFixed(2).replace('.', ',')} nm
           </button>
         )}
@@ -1394,16 +1405,18 @@ export default function MapView({
 
       {areaOn && <AreaDownloadTool map={mapRef.current} onClose={() => setAreaOn(false)} />}
 
-      {/* Scelta della boa sulla carta */}
+      {/* Scelta dei punti del percorso sulla carta */}
       {racePicking && (
         <div className="glass-strong absolute left-1/2 top-3 z-[950] flex -translate-x-1/2 items-center gap-3 rounded-lg px-4 py-2 slide-up">
-          <span className="whitespace-nowrap text-xs font-semibold tracking-wider text-warn">TOCCA LA BOA SULLA CARTA</span>
+          <span className="whitespace-nowrap text-xs font-semibold tracking-wider text-warn">
+            {racePicking === 'mark' ? 'TOCCA LE BOE NELL\'ORDINE' : racePicking === 'start' ? 'TOCCA LA PARTENZA SULLA CARTA' : 'TOCCA LA NUOVA POSIZIONE'}
+          </span>
           <button
             type="button"
             onClick={() => useAppStore.setState({ racePicking: false, activeDrawer: 'race' })}
             className="rounded-md border border-warn bg-warn/15 px-3 py-1.5 text-[calc(10px*var(--fs))] font-semibold tracking-widest text-warn touch"
           >
-            ANNULLA
+            {racePicking === 'mark' ? 'FATTO' : 'ANNULLA'}
           </button>
         </div>
       )}

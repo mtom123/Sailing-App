@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { BAND_DEFAULTS } from '../lib/coastBand.js'
+import { EMPTY_COURSE } from '../lib/race.js'
 
 /**
  * App store — single source of truth per stato globale
@@ -154,10 +155,10 @@ export const useAppStore = create(
       departureOffsetH: 0,
       setDepartureOffsetH: (departureOffsetH) => set({ departureOffsetH }),
 
-      // === Regata: boa verso cui si calcola la VMG ===
-      raceMark: null, // { lat, lon }
-      setRaceMark: (raceMark) => set({ raceMark }),
-      racePicking: false, // il prossimo tocco sulla carta sceglie la boa
+      // === Regata: percorso, la VMG si calcola verso il prossimo punto ===
+      raceCourse: EMPTY_COURSE, // { start, marks: [{ lat, lon }], next }
+      setRaceCourse: (raceCourse) => set({ raceCourse }),
+      racePicking: false, // 'start', 'mark' o { move: indice }: cosa fa il tocco sulla carta
 
       // === Alarms ===
       windAlarm: { on: false, threshold: 30 },
@@ -180,13 +181,15 @@ export const useAppStore = create(
         boat: { ...current.boat, ...persisted?.boat },
         coastBand: { ...current.coastBand, ...persisted?.coastBand },
         signalK: { ...current.signalK, ...persisted?.signalK },
+        // Prima c'era una boa sola
+        raceCourse: persisted?.raceCourse ?? (persisted?.raceMark ? { ...EMPTY_COURSE, marks: [persisted.raceMark] } : current.raceCourse),
       }),
       partialize: (s) => ({
         baseStyle: s.baseStyle,
         layers: s.layers,
         boat: s.boat,
         coastBand: s.coastBand,
-        raceMark: s.raceMark,
+        raceCourse: s.raceCourse,
         savedRoutes: s.savedRoutes,
         planSpeed: s.planSpeed,
         aisMode: s.aisMode,

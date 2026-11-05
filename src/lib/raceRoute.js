@@ -19,6 +19,7 @@ const MAX_STEPS = 96
 const ARRIVED_NM = 0.02
 const MIN_SPEED_KN = 0.3
 const SAME_LEG_DEG = 8 // prue così vicine sono lo stesso bordo
+const TINY_LEG_MS = 60000 // l'ultimo aggiustamento sulla boa non è un bordo
 const LIVE_WIND_MS = 30 * 60 * 1000 // il vento misurato vale per la prima mezz'ora
 const rad = Math.PI / 180
 
@@ -61,9 +62,9 @@ const headingGap = (a, b) => Math.abs(((a - b + 540) % 360) - 180)
  * turns: [{ lat, lon }], downwind, totalMs, distNm } oppure { error }. flip: inizia con le altre mure
  * (se quelle preferite portano su terra o bassi fondali).
  */
-export function solveRaceRoute({ from, mark, nowMs, heading, grib, currentField, liveWind, polarKey, flip = false }) {
+export function solveRaceRoute({ from, mark, nowMs, startMs = nowMs, heading, grib, currentField, liveWind, polarKey, flip = false }) {
   let { lat, lon } = from
-  let t = nowMs
+  let t = startMs
   let prev = heading
   let first = true
   const raw = []
@@ -107,7 +108,7 @@ export function solveRaceRoute({ from, mark, nowMs, heading, grib, currentField,
   const legs = []
   for (const s of raw) {
     const last = legs[legs.length - 1]
-    if (last && headingGap(last.heading, s.heading) < SAME_LEG_DEG) {
+    if (last && (headingGap(last.heading, s.heading) < SAME_LEG_DEG || s.ms < TINY_LEG_MS)) {
       last.ms += s.ms
       last.toLat = s.toLat
       last.toLon = s.toLon
@@ -130,5 +131,33 @@ export function solveRaceRoute({ from, mark, nowMs, heading, grib, currentField,
     distNm: legs.reduce((sum, l) => sum + l.distNm, 0),
     turns,
     downwind: legs.every((l) => l.twa > 90),
+  }
+}
+
+/**
+ * Tutto il percorso che resta, un tratto per ogni punto: ogni tratto parte
+ * all'ora di arrivo del precedente, con il vento di quel momento.
+ * { segments, points, turns, totalMs, distNm } oppure { error }. flips[i]:
+ * il tratto i inizia con le altre mure.
+ */
+export function solveRaceCourse({ from, targets, nowMs, heading, flips = [], ...conditions }) {
+  const segments = []
+  let pos = from
+  let startMs = nowMs
+  let prev = heading
+  for (let i = 0; i < targets.length; i++) {
+    const seg = solveRaceRoute({ ...conditions, from: pos, mark: targets[i], nowMs, startMs, heading: prev, flip: !!flips[i] })
+    if (seg.error) return seg
+    segments.push(seg)
+    pos = targets[i]
+    startMs += seg.totalMs
+    prev = seg.legs[seg.legs.length - 1]?.heading ?? prev
+  }
+  return {
+    segments,
+    points: segments.flatMap((seg, i) => (i === 0 ? seg.points : seg.points.slice(1))),
+    turns: segments.flatMap((seg) => seg.turns),
+    totalMs: startMs - nowMs,
+    distNm: segments.reduce((sum, seg) => sum + seg.distNm, 0),
   }
 }

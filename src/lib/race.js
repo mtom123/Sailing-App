@@ -1,9 +1,58 @@
 import { bearing, haversine } from './geo.js'
 
 /*
- * Regata: VMG verso una boa (o qualunque punto) e lettura delle coordinate
- * scritte a mano.
+ * Regata: percorso (partenza e boe in ordine), VMG verso il prossimo punto e
+ * lettura delle coordinate scritte a mano.
  */
+
+const ROUNDED_M = 80 // a questa distanza il punto è passato: si punta al successivo
+
+export const EMPTY_COURSE = { start: null, marks: [], next: 0 }
+
+/** Punti in ordine di percorso: [{ lat, lon, label, short, kind }]. */
+export function coursePoints(course) {
+  const marks = course.marks.map((m, i) => ({ ...m, label: `Boa ${i + 1}`, short: String(i + 1), kind: 'mark' }))
+  return course.start ? [{ ...course.start, label: 'Partenza', short: 'P', kind: 'start' }, ...marks] : marks
+}
+
+/** Il punto verso cui si naviga adesso, o null a percorso vuoto. */
+export function courseTarget(course) {
+  return coursePoints(course)[course.next] ?? null
+}
+
+/** Dove porta un tocco sulla carta: picking è 'start', 'mark' o { move: indice }. */
+export function pickOnCourse(course, picking, p) {
+  if (picking === 'start') return setCourseStart(course, p)
+  if (picking === 'mark') return addCourseMark(course, p)
+  return moveCoursePoint(course, picking.move, p)
+}
+
+export const addCourseMark = (course, p) => ({ ...course, marks: [...course.marks, p] })
+
+// Una partenza nuova fa ricominciare il percorso
+export const setCourseStart = (course, p) => ({ ...course, start: p, next: 0 })
+
+export function moveCoursePoint(course, index, p) {
+  if (course.start && index === 0) return { ...course, start: p }
+  const at = index - (course.start ? 1 : 0)
+  return { ...course, marks: course.marks.map((m, i) => (i === at ? p : m)) }
+}
+
+export function removeCoursePoint(course, index) {
+  const next = index < course.next ? course.next - 1 : course.next
+  const left = course.start && index === 0
+    ? { ...course, start: null }
+    : { ...course, marks: course.marks.filter((_, i) => i !== index - (course.start ? 1 : 0)) }
+  return { ...left, next: Math.max(0, Math.min(next, coursePoints(left).length - 1)) }
+}
+
+/** Punto passato → si punta al successivo. L'ultimo resta il traguardo. */
+export function advanceCourse(course, geo) {
+  const points = coursePoints(course)
+  let { next } = course
+  while (next < points.length - 1 && haversine(geo.lat, geo.lon, points[next].lat, points[next].lon) < ROUNDED_M) next += 1
+  return next === course.next ? course : { ...course, next }
+}
 
 /**
  * Coordinata da testo: "44.2667", "44 16.002 N", "44°16.002' N",
