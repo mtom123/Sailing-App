@@ -17,7 +17,7 @@ import { logStep, failStep } from './lib/debugLogger.js'
 import useGeolocation from './hooks/useGeolocation.js'
 import useSignalK from './hooks/useSignalK.js'
 import { boatGeo, liveDepth, trueWind } from './lib/boatData.js'
-import { advanceCourse, coursePoints } from './lib/race.js'
+import { advanceCourse, racePlan } from './lib/race.js'
 import { estimateDrift } from './lib/mobDrift.js'
 import { windFieldAt } from './lib/gribAt.js'
 import useOpenMeteo from './hooks/useOpenMeteo.js'
@@ -376,8 +376,7 @@ export default function App() {
     if (course !== raceCourse) setRaceCourse(course)
   }, [geo, raceCourse, setRaceCourse])
   const raceIdeal = useRaceRoute({
-    geo,
-    targets: coursePoints(raceCourse).slice(raceCourse.next),
+    ...racePlan(raceCourse, geo),
     grib,
     currentField,
     polarKey: boat.polarProfile,
@@ -638,7 +637,7 @@ export default function App() {
 
         {/* RIGHT drawer */}
         {activeDrawer && activeDrawer !== 'layers' && (
-          <div className="glass-strong absolute right-0 top-0 z-[1050] flex h-full w-[340px] max-w-[75%] flex-col border-l border-line slide-up">
+          <div className="glass-strong absolute right-0 top-0 z-[1050] flex h-full w-[380px] max-w-[75%] flex-col border-l border-line slide-up">
             <div className="flex flex-none items-center border-b border-line">
               {[
                 { id: 'route', label: 'ROTTA' },
@@ -653,10 +652,10 @@ export default function App() {
                     key={t.id}
                     type="button"
                     onClick={() => setActiveDrawer(t.id)}
-                    className={`min-w-0 flex-1 border-b-2 py-3 text-[calc(9px*var(--fs))] font-semibold tracking-wide transition-all ${
+                    className={`min-w-0 flex-1 border-b-[3px] py-3.5 text-[calc(12px*var(--fs))] font-bold transition-all ${
                       active
-                        ? 'border-phos text-phos'
-                        : 'border-transparent text-fog hover:text-paper'
+                        ? 'border-phos bg-phos/15 text-phos'
+                        : 'border-transparent text-paper'
                     }`}
                   >
                     {t.label}

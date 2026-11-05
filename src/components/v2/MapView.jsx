@@ -29,7 +29,7 @@ import MeteogramPopup from './MeteogramPopup.jsx'
 import WaypointPopup from './WaypointPopup.jsx'
 import { LandTintLayer } from '../../lib/landTintLayer.js'
 import RulerTool from './RulerTool.jsx'
-import { coursePoints, courseTarget, pickOnCourse, raceStats } from '../../lib/race.js'
+import { beforeStart, coursePoints, courseTarget, pickOnCourse, raceStats } from '../../lib/race.js'
 import AreaDownloadTool from './AreaDownloadTool.jsx'
 import { setOfflineLayers } from '../../lib/offlinePack.js'
 import { OfflineZonesLayer } from '../../lib/offlineZonesLayer.js'
@@ -305,6 +305,7 @@ export default function MapView({
   const racePicking = useAppStore((s) => s.racePicking)
   const raceTarget = courseTarget(raceCourse)
   const raceInfo = raceStats(geo, raceTarget)
+  const racePreStart = beforeStart(raceCourse) // si pianifica: niente rotta dalla barca
   const lastDrawerRef = useRef('route')
   useEffect(() => {
     if (['route', 'anchors', 'weather', 'log', 'race'].includes(activeDrawer)) lastDrawerRef.current = activeDrawer
@@ -537,9 +538,9 @@ export default function MapView({
       map.on('click', (e) => {
         const st = useAppStore.getState()
         if (st.racePicking) {
-          // Le boe si mettono una dopo l'altra; il resto torna al pannello REGATA
-          const raceCourse = pickOnCourse(st.raceCourse, st.racePicking, { lat: e.latlng.lat, lon: e.latlng.lng })
-          useAppStore.setState(st.racePicking === 'mark' ? { raceCourse } : { raceCourse, racePicking: false, activeDrawer: 'race' })
+          // Boe e linea di partenza vogliono più tocchi; poi si torna al pannello REGATA
+          const picked = pickOnCourse(st.raceCourse, st.racePicking, { lat: e.latlng.lat, lon: e.latlng.lng })
+          useAppStore.setState(picked.racePicking ? picked : { ...picked, activeDrawer: 'race' })
           return
         }
         if (st.routeEditing) {
@@ -852,8 +853,16 @@ export default function MapView({
     const map = mapRef.current
     const points = coursePoints(raceCourse)
     if (!mapReady || !map || !points.length) return undefined
+    const startLine = points[0].line?.map((p) => [p.lat, p.lon])
     const group = L.layerGroup([
       L.polyline(points.map((p) => [p.lat, p.lon]), { color: '#FFD54F', weight: 2, dashArray: '3 7', opacity: 0.7, interactive: false }),
+      ...(startLine
+        ? [
+            L.polyline(startLine, { color: '#0a1620', weight: 7, opacity: 0.55, interactive: false }),
+            L.polyline(startLine, { color: '#69F0AE', weight: 4, opacity: 1, interactive: false }),
+            ...startLine.map((p) => L.circleMarker(p, { radius: 6, color: '#0a1620', weight: 2, fillColor: '#69F0AE', fillOpacity: 1, interactive: false })),
+          ]
+        : []),
       ...points.map((p, i) => {
         const bg = p.kind === 'start' ? '#69F0AE' : '#FFD54F'
         const ring = i === raceCourse.next ? '0 0 0 3px #fff,' : ''
@@ -873,11 +882,20 @@ export default function MapView({
     return () => map.removeLayer(group)
   }, [raceCourse, mapReady])
 
+  // Primo estremo della linea di partenza, in attesa del secondo
+  const raceLineFrom = racePicking?.lineFrom
+  useEffect(() => {
+    const map = mapRef.current
+    if (!mapReady || !map || !raceLineFrom) return undefined
+    const dot = L.circleMarker([raceLineFrom.lat, raceLineFrom.lon], { radius: 7, color: '#0a1620', weight: 2, fillColor: '#69F0AE', fillOpacity: 1, interactive: false }).addTo(map)
+    return () => map.removeLayer(dot)
+  }, [raceLineFrom, mapReady])
+
   useEffect(() => {
     const map = mapRef.current
     if (!mapReady || !map) return
     const line = markersRef.current.raceLine
-    if (!raceTarget || geo.lat == null) {
+    if (!raceTarget || racePreStart || geo.lat == null) {
       if (line) {
         map.removeLayer(line)
         markersRef.current.raceLine = null
@@ -887,21 +905,21 @@ export default function MapView({
     const pts = [[geo.lat, geo.lon], [raceTarget.lat, raceTarget.lon]]
     if (line) line.setLatLngs(pts)
     else markersRef.current.raceLine = L.polyline(pts, { color: '#FFD54F', weight: 3, dashArray: '6 7', opacity: 0.95, interactive: false }).addTo(map)
-  }, [raceTarget?.lat, raceTarget?.lon, geo.lat, geo.lon, mapReady])
+  }, [raceTarget?.lat, raceTarget?.lon, racePreStart, geo.lat, geo.lon, mapReady])
 
   // Rotta ideale: bordi pieni, con un pallino dove si vira
   useEffect(() => {
     const map = mapRef.current
-    if (!mapReady || !map || !raceRoute || geo.lat == null) return undefined
+    if (!mapReady || !map || !raceRoute) return undefined
     const pts = raceRoute.points.map((p) => [p.lat, p.lon])
-    pts[0] = [geo.lat, geo.lon]
+    if (!racePreStart && geo.lat != null) pts[0] = [geo.lat, geo.lon]
     const group = L.layerGroup([
       L.polyline(pts, { color: '#0a1620', weight: 7, opacity: 0.55, interactive: false }),
       L.polyline(pts, { color: '#FFD54F', weight: 4, opacity: 1, interactive: false }),
       ...raceRoute.turns.map((p) => L.circleMarker([p.lat, p.lon], { radius: 6, color: '#0a1620', weight: 2, fillColor: '#FFD54F', fillOpacity: 1, interactive: false })),
     ]).addTo(map)
     return () => map.removeLayer(group)
-  }, [raceRoute, geo.lat, geo.lon, mapReady])
+  }, [raceRoute, racePreStart, geo.lat, geo.lon, mapReady])
 
   // === AIS vessels ===
   useEffect(() => {
@@ -1301,7 +1319,8 @@ export default function MapView({
             className="glass mt-1.5 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[calc(11px*var(--fs))] font-bold tabular-nums text-paper"
           >
             <span className="text-[#FFD54F]">⚑ {raceTarget.short}</span>
-            VMG {raceInfo.vmg != null ? raceInfo.vmg.toFixed(1).replace('.', ',') : '--'} kn · {metersToNm(raceInfo.distM).toFixed(2).replace('.', ',')} nm
+            {!racePreStart && `VMG ${raceInfo.vmg != null ? raceInfo.vmg.toFixed(1).replace('.', ',') : '--'} kn · `}
+            {metersToNm(raceInfo.distM).toFixed(2).replace('.', ',')} nm
           </button>
         )}
         {offlineDl != null && (
@@ -1409,7 +1428,15 @@ export default function MapView({
       {racePicking && (
         <div className="glass-strong absolute left-1/2 top-3 z-[950] flex -translate-x-1/2 items-center gap-3 rounded-lg px-4 py-2 slide-up">
           <span className="whitespace-nowrap text-xs font-semibold tracking-wider text-warn">
-            {racePicking === 'mark' ? 'TOCCA LE BOE NELL\'ORDINE' : racePicking === 'start' ? 'TOCCA LA PARTENZA SULLA CARTA' : 'TOCCA LA NUOVA POSIZIONE'}
+            {racePicking === 'mark'
+              ? 'TOCCA LE BOE NELL\'ORDINE'
+              : racePicking === 'start'
+                ? 'TOCCA IL PUNTO DI PARTENZA'
+                : racePicking === 'line'
+                  ? 'TOCCA UN ESTREMO DELLA LINEA'
+                  : raceLineFrom
+                    ? 'TOCCA L\'ALTRO ESTREMO'
+                    : 'TOCCA LA NUOVA POSIZIONE'}
           </span>
           <button
             type="button"

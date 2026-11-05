@@ -9,10 +9,31 @@ const ROUNDED_M = 80 // a questa distanza il punto è passato: si punta al succe
 
 export const EMPTY_COURSE = { start: null, marks: [], next: 0 }
 
-/** Punti in ordine di percorso: [{ lat, lon, label, short, kind }]. */
+// Partenza: un punto { lat, lon }, o una linea con l'altro estremo in end
+function startPoint({ lat, lon, end }) {
+  const point = { lat, lon, label: 'Partenza', short: 'P', kind: 'start' }
+  if (!end) return point
+  return { ...point, lat: (lat + end.lat) / 2, lon: (lon + end.lon) / 2, line: [{ lat, lon }, end], lineM: haversine(lat, lon, end.lat, end.lon) }
+}
+
+/** Punti in ordine di percorso: [{ lat, lon, label, short, kind, line?, lineM? }]. */
 export function coursePoints(course) {
   const marks = course.marks.map((m, i) => ({ ...m, label: `Boa ${i + 1}`, short: String(i + 1), kind: 'mark' }))
-  return course.start ? [{ ...course.start, label: 'Partenza', short: 'P', kind: 'start' }, ...marks] : marks
+  return course.start ? [startPoint(course.start), ...marks] : marks
+}
+
+/** Partenza segnata e non ancora passata. */
+export const beforeStart = (course) => !!course.start && course.next === 0
+
+/**
+ * Da dove a dove va la rotta ideale: prima della partenza si pianifica dalla
+ * partenza alle boe, senza il tratto dalla barca; poi dalla barca in avanti.
+ * { from, heading, targets }, from null senza GPS.
+ */
+export function racePlan(course, geo) {
+  const points = coursePoints(course)
+  if (beforeStart(course)) return { from: { lat: points[0].lat, lon: points[0].lon }, heading: null, targets: points.slice(1) }
+  return { from: geo.lat != null ? { lat: geo.lat, lon: geo.lon } : null, heading: geo.cog, targets: points.slice(course.next) }
 }
 
 /** Il punto verso cui si naviga adesso, o null a percorso vuoto. */
@@ -20,11 +41,17 @@ export function courseTarget(course) {
   return coursePoints(course)[course.next] ?? null
 }
 
-/** Dove porta un tocco sulla carta: picking è 'start', 'mark' o { move: indice }. */
+/**
+ * Dove porta un tocco sulla carta: { raceCourse, racePicking }, racePicking
+ * false a scelta finita. picking è 'start', 'line' (poi { lineFrom } per il
+ * secondo estremo), 'mark' o { move: indice }.
+ */
 export function pickOnCourse(course, picking, p) {
-  if (picking === 'start') return setCourseStart(course, p)
-  if (picking === 'mark') return addCourseMark(course, p)
-  return moveCoursePoint(course, picking.move, p)
+  if (picking === 'mark') return { raceCourse: addCourseMark(course, p), racePicking: 'mark' }
+  if (picking === 'line') return { raceCourse: course, racePicking: { lineFrom: p } }
+  if (picking.lineFrom) return { raceCourse: setCourseStart(course, { ...picking.lineFrom, end: p }), racePicking: false }
+  if (picking === 'start') return { raceCourse: setCourseStart(course, p), racePicking: false }
+  return { raceCourse: moveCoursePoint(course, picking.move, p), racePicking: false }
 }
 
 export const addCourseMark = (course, p) => ({ ...course, marks: [...course.marks, p] })
@@ -46,11 +73,22 @@ export function removeCoursePoint(course, index) {
   return { ...left, next: Math.max(0, Math.min(next, coursePoints(left).length - 1)) }
 }
 
+// Dalla barca al punto, o al tratto più vicino della linea di partenza
+function distanceTo(geo, point) {
+  if (!point.line) return haversine(geo.lat, geo.lon, point.lat, point.lon)
+  const [a, b] = point.line
+  const k = Math.cos((geo.lat * Math.PI) / 180)
+  const bx = (b.lon - a.lon) * k
+  const by = b.lat - a.lat
+  const t = Math.max(0, Math.min(1, ((geo.lon - a.lon) * k * bx + (geo.lat - a.lat) * by) / (bx * bx + by * by || 1)))
+  return haversine(geo.lat, geo.lon, a.lat + by * t, a.lon + (b.lon - a.lon) * t)
+}
+
 /** Punto passato → si punta al successivo. L'ultimo resta il traguardo. */
 export function advanceCourse(course, geo) {
   const points = coursePoints(course)
   let { next } = course
-  while (next < points.length - 1 && haversine(geo.lat, geo.lon, points[next].lat, points[next].lon) < ROUNDED_M) next += 1
+  while (next < points.length - 1 && distanceTo(geo, points[next]) < ROUNDED_M) next += 1
   return next === course.next ? course : { ...course, next }
 }
 

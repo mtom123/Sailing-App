@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Flag, MapPin, Trash2 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore.js'
 import { cardinal, formatCoord, formatDeg, metersToNm } from '../lib/geo.js'
-import { EMPTY_COURSE, addCourseMark, coursePoints, parseCoord, raceStats, removeCoursePoint, setCourseStart } from '../lib/race.js'
+import { EMPTY_COURSE, addCourseMark, beforeStart, coursePoints, parseCoord, raceStats, removeCoursePoint, racePlan, setCourseStart } from '../lib/race.js'
 
 /*
  * Regata: VMG verso il prossimo punto in grande, con distanza, direzione e
@@ -34,7 +34,7 @@ const turnsText = (seg) => {
 
 const fmtNm = (nm) => `${nm.toFixed(2).replace('.', ',')} nm`
 
-function IdealRoute({ ideal, targets }) {
+function IdealRoute({ ideal, targets, fromStart }) {
   const { route, error, blocked } = ideal
   if (!route) {
     return error ? <div className="mt-1.5 border border-line bg-panel px-3 py-2 text-[calc(11px*var(--fs))] text-fog">{error}</div> : null
@@ -42,7 +42,7 @@ function IdealRoute({ ideal, targets }) {
   const [first, ...rest] = route.segments
   return (
     <div className="mt-1.5 border border-line bg-panel px-3 py-2">
-      <div className="label">Rotta ideale verso {targets[0]?.label}</div>
+      <div className="label">Rotta ideale {fromStart ? 'dalla partenza a' : 'verso'} {targets[0]?.label}</div>
       <div className="text-[calc(14px*var(--fs))] font-bold text-paper tabular-nums">
         {fmtEta(first.totalMs)} · {fmtNm(first.distNm)} · {turnsText(first)}
       </div>
@@ -86,7 +86,9 @@ function CourseRow({ point, index, next, onTarget, onMove, onRemove }) {
           {point.short}
         </span>
         <span className="min-w-0">
-          <span className="block text-[calc(12px*var(--fs))] font-bold text-paper">{point.label}</span>
+          <span className="block text-[calc(12px*var(--fs))] font-bold text-paper">
+            {point.line ? `Linea di partenza · ${Math.round(point.lineM)} m` : point.label}
+          </span>
           <span className="block truncate font-mono text-[calc(9px*var(--fs))] text-fog">
             {formatCoord(point.lat, true)} {formatCoord(point.lon, false)}
           </span>
@@ -109,9 +111,9 @@ export default function RacePanel({ geo, ideal }) {
   const [error, setError] = useState(null)
   const [clearing, setClearing] = useState(false)
   const points = coursePoints(raceCourse)
-  const targets = points.slice(raceCourse.next)
-  const target = targets[0] ?? null
+  const target = points[raceCourse.next] ?? null
   const stats = raceStats(geo, target)
+  const preStart = beforeStart(raceCourse)
   const hasGps = geo.lat != null
 
   const typedPoint = () => {
@@ -143,7 +145,7 @@ export default function RacePanel({ geo, ideal }) {
   }
 
   const vmg = stats?.vmg
-  const away = vmg != null && vmg < 0
+  const away = !preStart && vmg != null && vmg < 0
   const input = 'w-full min-w-0 rounded-md border border-line bg-surface px-2.5 py-2.5 font-mono text-xs text-paper outline-none focus:border-phos'
   const btn = 'touch flex items-center justify-center gap-1.5 rounded-md border py-2.5 text-[calc(10px*var(--fs))] font-semibold tracking-widest'
 
@@ -151,24 +153,26 @@ export default function RacePanel({ geo, ideal }) {
     <div className="p-2">
       {target ? (
         <>
-          <div className={`border px-3 py-2 ${away ? 'border-danger bg-danger/10' : 'border-line bg-panel'}`}>
-            <div className="label">VMG verso {target.label}</div>
-            <div className="flex items-baseline gap-1.5">
-              <span className={`text-[52px] font-bold leading-none tabular-nums ${away ? 'text-danger' : 'text-phos'}`}>
-                {vmg != null ? vmg.toFixed(1).replace('.', ',') : '--'}
-              </span>
-              <span className="text-xs text-fog">kn</span>
+          {!preStart && (
+            <div className={`mb-1.5 border px-3 py-2 ${away ? 'border-danger bg-danger/10' : 'border-line bg-panel'}`}>
+              <div className="label">VMG verso {target.label}</div>
+              <div className="flex items-baseline gap-1.5">
+                <span className={`text-[52px] font-bold leading-none tabular-nums ${away ? 'text-danger' : 'text-phos'}`}>
+                  {vmg != null ? vmg.toFixed(1).replace('.', ',') : '--'}
+                </span>
+                <span className="text-xs text-fog">kn</span>
+              </div>
+              {away && <div className="pt-1 text-[calc(10px*var(--fs))] font-semibold text-danger">Ti stai allontanando da questo punto</div>}
             </div>
-            {away && <div className="pt-1 text-[calc(10px*var(--fs))] font-semibold text-danger">Ti stai allontanando da questo punto</div>}
-          </div>
-          <div className="mt-1.5 grid grid-cols-2 gap-1.5">
-            <Cell label="Distanza" value={stats ? fmtDist(stats.distM) : '--'} />
+          )}
+          <div className="grid grid-cols-2 gap-1.5">
+            <Cell label={preStart ? 'Alla partenza' : 'Distanza'} value={stats ? fmtDist(stats.distM) : '--'} />
             <Cell label="Direzione" value={stats ? `${formatDeg(stats.brg)}° ${cardinal(stats.brg)}` : '--'} />
-            <Cell label="SOG" value={geo.sog != null ? `${geo.sog.toFixed(1).replace('.', ',')} kn` : '--'} />
-            <Cell label="Arrivo a questa VMG" value={stats?.etaMs != null ? fmtEta(stats.etaMs) : '--'} />
+            {!preStart && <Cell label="SOG" value={geo.sog != null ? `${geo.sog.toFixed(1).replace('.', ',')} kn` : '--'} />}
+            {!preStart && <Cell label="Arrivo a questa VMG" value={stats?.etaMs != null ? fmtEta(stats.etaMs) : '--'} />}
           </div>
           {!stats && <div className="pt-1.5 text-[calc(10px*var(--fs))] text-fog">In attesa del GPS.</div>}
-          <IdealRoute ideal={ideal} targets={targets} />
+          <IdealRoute ideal={ideal} targets={racePlan(raceCourse, geo).targets} fromStart={preStart} />
         </>
       ) : (
         <div className="flex items-start gap-2 border border-line bg-panel px-3 py-3 text-[calc(11px*var(--fs))] leading-relaxed text-fog">
@@ -188,7 +192,7 @@ export default function RacePanel({ geo, ideal }) {
                 index={i}
                 next={raceCourse.next}
                 onTarget={() => setRaceCourse({ ...raceCourse, next: i })}
-                onMove={() => pickOnMap({ move: i })}
+                onMove={() => pickOnMap(p.line ? 'line' : { move: i })}
                 onRemove={() => setRaceCourse(removeCoursePoint(raceCourse, i))}
               />
             ))}
@@ -200,17 +204,21 @@ export default function RacePanel({ geo, ideal }) {
       <button type="button" onClick={() => pickOnMap('mark')} className={`${btn} mt-3 w-full border-phos bg-phos/15 text-phos`}>
         <MapPin size={14} /> AGGIUNGI BOE SULLA CARTA
       </button>
-      <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+      <div className="label pb-1 pt-3">Partenza</div>
+      <div className="grid grid-cols-3 gap-1.5">
         <button
           type="button"
           disabled={!hasGps}
           onClick={() => setRaceCourse(setCourseStart(raceCourse, { lat: geo.lat, lon: geo.lon }))}
           className={`${btn} border-line bg-surface text-paper disabled:opacity-40`}
         >
-          PARTENZA QUI
+          QUI
         </button>
         <button type="button" onClick={() => pickOnMap('start')} className={`${btn} border-line bg-surface text-paper`}>
-          PARTENZA SULLA CARTA
+          PUNTO SULLA CARTA
+        </button>
+        <button type="button" onClick={() => pickOnMap('line')} className={`${btn} border-line bg-surface text-paper`}>
+          LINEA SULLA CARTA
         </button>
       </div>
 
