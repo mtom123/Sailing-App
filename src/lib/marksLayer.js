@@ -21,13 +21,13 @@ const escapeHtml = (text) => text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<'
 
 function markIcon(mark, showName) {
   const name = showName && mark.name
-    ? `<div style="position:absolute;top:31px;left:50%;transform:translateX(-50%);width:max-content;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 4px;border-radius:3px;background:rgba(10,22,32,0.8);color:#fff;font-size:11px;font-weight:600">${escapeHtml(mark.name)}</div>`
+    ? `<div style="position:absolute;top:39px;left:50%;transform:translateX(-50%);width:max-content;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 4px;border-radius:3px;background:rgba(10,22,32,0.8);color:#fff;font-size:11px;font-weight:600">${escapeHtml(mark.name)}</div>`
     : ''
   return L.divIcon({
     className: 'timone-marker',
-    html: `<div style="position:relative">${markIconHtml(mark.type)}${name}</div>`,
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
+    html: `<div style="position:relative">${markIconHtml(mark.type, 30, true)}${name}</div>`,
+    iconSize: [30, 36],
+    iconAnchor: [15, 36], // la punta sotto il bollo sta sul punto esatto
   })
 }
 

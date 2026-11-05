@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronLeft, Download, MapPin, Navigation2, Plus, Search, Trash2, Upload } from 'lucide-react'
+import MarkPhotos from './MarkPhotos.jsx'
 import { importMarks, removeMark, saveMark } from '../hooks/useMarks.js'
+import { deletePhotos } from '../lib/markStore.js'
 import { depthAt } from '../lib/depthAt.js'
 import { formatCoord, formatDeg, bearing, haversine, metersToNm } from '../lib/geo.js'
 import { gpxToMarks, marksFileName, marksToGpx, newMarksOnly } from '../lib/markGpx.js'
@@ -25,14 +27,20 @@ const btn = 'touch flex items-center justify-center gap-1.5 rounded-md border py
 // L'HTML viene da una tabella dell'app, mai da testo scritto dall'utente
 export const MarkIcon = ({ type, size }) => <span className="flex-none" dangerouslySetInnerHTML={{ __html: markIconHtml(type, size) }} />
 
-const editDraft = (patch) => useAppStore.setState((s) => ({ markEdit: { ...s.markEdit, ...patch } }))
+const editDraft = (patch) => useAppStore.setState((s) => (s.markEdit ? { markEdit: { ...s.markEdit, ...patch } } : s))
 
 export function MarkEditor({ mark, geo, depthLive, draftM }) {
   const [error, setError] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  const [photosBusy, setPhotosBusy] = useState(false)
   const isAnchor = mark.type === 'anchor'
   const sighting = isSighting(mark)
   const close = () => useAppStore.setState({ markEdit: null })
+  // Uscendo senza salvare le foto appena aggiunte non hanno più un mark
+  const cancel = () => {
+    if (mark.newPhotos?.length) deletePhotos(mark.newPhotos).catch(() => {})
+    close()
+  }
 
   // Profondità proposta: ecoscandaglio se la barca è lì, altrimenti la carta
   useEffect(() => {
@@ -66,7 +74,11 @@ export function MarkEditor({ mark, geo, depthLive, draftM }) {
     const label = markType(mark.type).label
     const name = sighting ? label : mark.name.trim() || `${label} ${marks.filter((m) => m.type === mark.type).length + 1}`
     try {
-      await saveMark({ ...mark, name, depth: mark.depth.trim() })
+      const { newPhotos, ...toSave } = mark
+      const before = marks.find((m) => m.id === mark.id)?.photos ?? []
+      await saveMark({ ...toSave, name, depth: mark.depth.trim() })
+      const gone = before.filter((id) => !mark.photos?.includes(id))
+      if (gone.length) deletePhotos(gone).catch(() => {})
       close()
     } catch {
       setError('Marker non salvato: spazio sul dispositivo non disponibile')
@@ -78,13 +90,16 @@ export function MarkEditor({ mark, geo, depthLive, draftM }) {
       setDeleting(true)
       return
     }
+    const saved = useAppStore.getState().marks.find((m) => m.id === mark.id)
     await removeMark(mark.id)
+    const photos = [...new Set([...(saved?.photos ?? []), ...(mark.photos ?? [])])]
+    if (photos.length) deletePhotos(photos).catch(() => {})
     close()
   }
 
   return (
     <div className="p-2">
-      <button type="button" onClick={close} className="touch flex items-center gap-1 pb-2 text-[calc(11px*var(--fs))] font-semibold text-fog">
+      <button type="button" onClick={cancel} className="touch flex items-center gap-1 pb-2 text-[calc(11px*var(--fs))] font-semibold text-fog">
         <ChevronLeft size={14} /> {!mark.id ? 'Annulla' : sighting ? 'Avvistamenti' : 'Marker'}
       </button>
 
@@ -208,9 +223,11 @@ export function MarkEditor({ mark, geo, depthLive, draftM }) {
       <div className="label pb-1 pt-3">Note</div>
       <textarea value={mark.notes} onChange={(e) => editDraft({ notes: e.target.value })} rows={4} className={`${input} resize-none`} />
 
+      {sighting && <MarkPhotos mark={mark} onBusy={setPhotosBusy} />}
+
       {error && <div className="pt-1 text-[calc(10px*var(--fs))] text-danger">{error}</div>}
-      <button type="button" onClick={save} className={`${btn} mt-3 w-full border-phos bg-phos/15 text-phos`}>
-        {sighting ? 'SALVA AVVISTAMENTO' : 'SALVA MARKER'}
+      <button type="button" disabled={photosBusy} onClick={save} className={`${btn} mt-3 w-full border-phos bg-phos/15 text-phos disabled:opacity-40`}>
+        {photosBusy ? 'ATTENDI LE FOTO…' : sighting ? 'SALVA AVVISTAMENTO' : 'SALVA MARKER'}
       </button>
       {mark.id && (
         <div className="mt-1.5 grid grid-cols-2 gap-1.5">
@@ -287,7 +304,7 @@ function MarksBackup({ marks }) {
       </div>
       {message && <div className={`pt-1 text-[calc(10px*var(--fs))] font-semibold ${failed ? 'text-danger' : 'text-phos'}`}>{message}</div>}
       <div className="pt-1 text-[calc(10px*var(--fs))] text-fog">
-        Marker e avvistamenti stanno solo su questo iPad: salva ogni tanto il file su iCloud. È un GPX, lo legge anche Navionics.
+        Marker e avvistamenti stanno solo su questo iPad: salva ogni tanto il file su iCloud. È un GPX, lo legge anche Navionics. Le foto non sono nel file.
       </div>
     </div>
   )

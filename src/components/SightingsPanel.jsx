@@ -46,6 +46,7 @@ function SpeciesCard({ species, onBack, onLog }) {
         SEGNA AVVISTAMENTO
       </button>
       <div className="pt-2 text-[calc(10px*var(--fs))] leading-relaxed text-fog">{SIGHTING_RULES}</div>
+      <div className="pt-1 text-[calc(9px*var(--fs))] text-fog-dim">Fonti: RAC/SPA, ACCOBAMS, Pelagos, Archipelagos. Dati indicativi.</div>
     </div>
   )
 }
@@ -96,7 +97,8 @@ export default function SightingsPanel({ geo, depthLive, draftM }) {
       ))}
       {seen.length > 0 && (
         <>
-          <div className="label pb-1 pt-3">{seen.length} avvistamenti segnati</div>
+          <div className="label pt-3">{seen.length} avvistamenti segnati</div>
+          <div className="pb-1 text-[calc(10px*var(--fs))] text-fog">Tocca una riga, o il segno sulla carta, per modificarlo o aggiungere foto.</div>
           <div className="relative">
             <Search size={13} className="absolute left-2.5 top-3 text-fog" />
             <input
