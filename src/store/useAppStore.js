@@ -37,6 +37,7 @@ export const useAppStore = create(
         current: false,
         offlineZones: true,
         marks: true,
+        sightings: true,
       },
       toggleLayer: (key) =>
         set((s) => ({ layers: { ...s.layers, [key]: !s.layers[key] } })),

@@ -1,11 +1,14 @@
 import { haversine } from './geo.js'
+import { SPECIES, isSighting } from './sightings.js'
 
 /*
  * Mark personali sulla carta, come su Navionics: tipo, nome, note. Quelli di
- * ancoraggio tengono anche profondità, data e tipo di fondale.
+ * ancoraggio tengono anche profondità, data e tipo di fondale. Gli avvistamenti
+ * (sightings.js) sono mark con la specie come tipo, più quanti e l'ora.
  *
  * Mark: { id, type, lat, lon, name, notes, date, depth, depthSource, seabed,
- * updatedAt }. depth è il testo scritto ("9,1"), date è "aaaa-mm-gg".
+ * count, time, updatedAt }. depth è il testo scritto ("9,1"), date è
+ * "aaaa-mm-gg", time "hh:mm".
  */
 
 export const MARK_TYPES = [
@@ -30,12 +33,22 @@ export const MARK_TYPES = [
 
 export const SEABEDS = ['Sabbia', 'Fango', 'Alghe', 'Posidonia', 'Roccia', 'Ghiaia', 'Misto']
 
-export const markType = (id) => MARK_TYPES.find((t) => t.id === id) ?? MARK_TYPES[0]
+export const markType = (id) => MARK_TYPES.find((t) => t.id === id) ?? SPECIES.find((t) => t.id === id) ?? MARK_TYPES[0]
 
 // Data di oggi sull'ora locale: toISOString è in UTC e sbaglia giorno di notte
 const today = () => new Date().toLocaleDateString('sv')
 
 export const newMark = (type, { lat, lon }) => ({ type, lat, lon, name: '', notes: '', date: today(), depth: '', depthSource: '', seabed: '' })
+
+export const newSighting = (type, p) => ({
+  ...newMark(type, p),
+  name: markType(type).label,
+  count: '1',
+  time: new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
+})
+
+/** Scheda del pannello che apre questo mark. */
+export const markDrawer = (mark) => (mark && isSighting(mark) ? 'sightings' : 'marks')
 
 export const validDepth = (text) => text === '' || /^\d+([.,]\d+)?$/.test(text.trim())
 
@@ -43,6 +56,9 @@ export const fmtMarkDate = (date) => (date ? new Date(`${date}T12:00`).toLocaleD
 
 /** Riga di dettaglio di un ancoraggio: "9,1 m · Sabbia · 05/11/2026". */
 export function markDetail(mark) {
+  if (isSighting(mark)) {
+    return [mark.count > 1 && `${mark.count} esemplari`, fmtMarkDate(mark.date), mark.time].filter(Boolean).join(' · ')
+  }
   if (mark.type !== 'anchor') return mark.notes || fmtMarkDate(mark.date)
   return [mark.depth && `${mark.depth} m`, mark.seabed, fmtMarkDate(mark.date)].filter(Boolean).join(' · ')
 }

@@ -1,4 +1,5 @@
 import { markType } from './marks.js'
+import { SPECIES_GLYPHS } from './sightingIcons.js'
 
 /*
  * Icone dei mark: tassello colorato con il disegno in bianco, una stringa SVG
@@ -37,5 +38,5 @@ const GLYPHS = {
 /** Tassello del mark, come HTML (il tipo sconosciuto diventa una spilla). */
 export function markIconHtml(typeId, size = 30) {
   const { id, color } = markType(typeId)
-  return `<div style="width:${size}px;height:${size}px;border-radius:${Math.round(size / 4)}px;background:${color};border:1.5px solid #fff;box-sizing:border-box;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.5)"><svg viewBox="0 0 24 24" width="${Math.round(size * 0.74)}" height="${Math.round(size * 0.74)}">${GLYPHS[id]}</svg></div>`
+  return `<div style="width:${size}px;height:${size}px;border-radius:${Math.round(size / 4)}px;background:${color};border:1.5px solid #fff;box-sizing:border-box;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.5)"><svg viewBox="0 0 24 24" width="${Math.round(size * 0.74)}" height="${Math.round(size * 0.74)}">${GLYPHS[id] ?? SPECIES_GLYPHS[id]}</svg></div>`
 }

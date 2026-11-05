@@ -6,6 +6,7 @@ import { formatCoord, formatDeg, bearing, haversine, metersToNm } from '../lib/g
 import { gpxToMarks, marksFileName, marksToGpx, newMarksOnly } from '../lib/markGpx.js'
 import { markIconHtml } from '../lib/markIcons.js'
 import { MARK_TYPES, SEABEDS, markDetail, markType, newMark, searchMarks, validDepth } from '../lib/marks.js'
+import { SIGHTING_GROUPS, SPECIES, isSighting } from '../lib/sightings.js'
 import { shareFile } from '../lib/route.js'
 import { useAppStore } from '../store/useAppStore.js'
 
@@ -22,14 +23,15 @@ const input = 'w-full min-w-0 rounded-md border border-line bg-surface px-2.5 py
 const btn = 'touch flex items-center justify-center gap-1.5 rounded-md border py-2.5 text-[calc(10px*var(--fs))] font-semibold tracking-widest'
 
 // L'HTML viene da una tabella dell'app, mai da testo scritto dall'utente
-const MarkIcon = ({ type, size }) => <span className="flex-none" dangerouslySetInnerHTML={{ __html: markIconHtml(type, size) }} />
+export const MarkIcon = ({ type, size }) => <span className="flex-none" dangerouslySetInnerHTML={{ __html: markIconHtml(type, size) }} />
 
 const editDraft = (patch) => useAppStore.setState((s) => ({ markEdit: { ...s.markEdit, ...patch } }))
 
-function MarkEditor({ mark, geo, depthLive, draftM }) {
+export function MarkEditor({ mark, geo, depthLive, draftM }) {
   const [error, setError] = useState(null)
   const [deleting, setDeleting] = useState(false)
   const isAnchor = mark.type === 'anchor'
+  const sighting = isSighting(mark)
   const close = () => useAppStore.setState({ markEdit: null })
 
   // Profondità proposta: ecoscandaglio se la barca è lì, altrimenti la carta
@@ -61,7 +63,8 @@ function MarkEditor({ mark, geo, depthLive, draftM }) {
       return
     }
     const { marks } = useAppStore.getState()
-    const name = mark.name.trim() || `${markType(mark.type).label} ${marks.filter((m) => m.type === mark.type).length + 1}`
+    const label = markType(mark.type).label
+    const name = sighting ? label : mark.name.trim() || `${label} ${marks.filter((m) => m.type === mark.type).length + 1}`
     try {
       await saveMark({ ...mark, name, depth: mark.depth.trim() })
       close()
@@ -82,11 +85,46 @@ function MarkEditor({ mark, geo, depthLive, draftM }) {
   return (
     <div className="p-2">
       <button type="button" onClick={close} className="touch flex items-center gap-1 pb-2 text-[calc(11px*var(--fs))] font-semibold text-fog">
-        <ChevronLeft size={14} /> {mark.id ? 'Marker' : 'Annulla'}
+        <ChevronLeft size={14} /> {!mark.id ? 'Annulla' : sighting ? 'Avvistamenti' : 'Marker'}
       </button>
 
-      <div className="label pb-1">Tipo</div>
-      <div className="grid grid-cols-4 gap-1">
+      {sighting && (
+        <>
+          <div className="label pb-1">Specie</div>
+          <div className="flex items-center gap-2">
+            <MarkIcon type={mark.type} size={36} />
+            <select value={mark.type} onChange={(e) => editDraft({ type: e.target.value })} className={input}>
+              {SIGHTING_GROUPS.map((g) => (
+                <optgroup key={g.id} label={g.label}>
+                  {SPECIES.filter((s) => s.group === g.id).map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+          <div className="pt-1.5 text-[calc(10px*var(--fs))] leading-relaxed text-fog">{markType(mark.type).look}</div>
+          <div className="grid grid-cols-[56px_1.5fr_1fr] gap-1.5 pt-3">
+            <div className="min-w-0">
+              <div className="label pb-1">Quanti</div>
+              <input type="text" inputMode="numeric" value={mark.count} onChange={(e) => editDraft({ count: e.target.value.replace(/\D/g, '') })} className={input} />
+            </div>
+            <div className="min-w-0">
+              <div className="label pb-1">Data</div>
+              <input type="date" value={mark.date} onChange={(e) => editDraft({ date: e.target.value })} className={input} />
+            </div>
+            <div className="min-w-0">
+              <div className="label pb-1">Ora</div>
+              <input type="time" value={mark.time} onChange={(e) => editDraft({ time: e.target.value })} className={input} />
+            </div>
+          </div>
+        </>
+      )}
+
+      {!sighting && <div className="label pb-1">Tipo</div>}
+      <div className={`grid grid-cols-4 gap-1 ${sighting ? 'hidden' : ''}`}>
         {MARK_TYPES.map((t) => (
           <button
             key={t.id}
@@ -102,14 +140,18 @@ function MarkEditor({ mark, geo, depthLive, draftM }) {
         ))}
       </div>
 
-      <div className="label pb-1 pt-3">Nome</div>
-      <input
-        type="text"
-        value={mark.name}
-        onChange={(e) => editDraft({ name: e.target.value })}
-        placeholder={markType(mark.type).label}
-        className={input}
-      />
+      {!sighting && (
+        <>
+          <div className="label pb-1 pt-3">Nome</div>
+          <input
+            type="text"
+            value={mark.name}
+            onChange={(e) => editDraft({ name: e.target.value })}
+            placeholder={markType(mark.type).label}
+            className={input}
+          />
+        </>
+      )}
 
       <div className="flex items-center gap-2 pt-2">
         <div className="min-w-0 flex-1 font-mono text-[calc(10px*var(--fs))] text-fog">
@@ -168,7 +210,7 @@ function MarkEditor({ mark, geo, depthLive, draftM }) {
 
       {error && <div className="pt-1 text-[calc(10px*var(--fs))] text-danger">{error}</div>}
       <button type="button" onClick={save} className={`${btn} mt-3 w-full border-phos bg-phos/15 text-phos`}>
-        SALVA MARKER
+        {sighting ? 'SALVA AVVISTAMENTO' : 'SALVA MARKER'}
       </button>
       {mark.id && (
         <div className="mt-1.5 grid grid-cols-2 gap-1.5">
@@ -184,7 +226,7 @@ function MarkEditor({ mark, geo, depthLive, draftM }) {
   )
 }
 
-function MarkRow({ mark, onOpen, geo }) {
+export function MarkRow({ mark, onOpen, geo }) {
   const detail = markDetail(mark)
   return (
     <button type="button" onClick={onOpen} className="touch flex w-full items-center gap-2 border-b border-line px-1 py-2 text-left active:bg-raised">
@@ -245,13 +287,14 @@ function MarksBackup({ marks }) {
       </div>
       {message && <div className={`pt-1 text-[calc(10px*var(--fs))] font-semibold ${failed ? 'text-danger' : 'text-phos'}`}>{message}</div>}
       <div className="pt-1 text-[calc(10px*var(--fs))] text-fog">
-        I marker stanno solo su questo iPad: salva ogni tanto il file su iCloud. È un GPX, lo legge anche Navionics.
+        Marker e avvistamenti stanno solo su questo iPad: salva ogni tanto il file su iCloud. È un GPX, lo legge anche Navionics.
       </div>
     </div>
   )
 }
 
-function MarkList({ marks, geo }) {
+function MarkList({ marks: everything, geo }) {
+  const marks = everything.filter((m) => !isSighting(m))
   const [text, setText] = useState('')
   const [type, setType] = useState(null)
   const [limit, setLimit] = useState(PAGE)
@@ -274,7 +317,7 @@ function MarkList({ marks, geo }) {
           <MapPin size={14} /> SULLA CARTA
         </button>
       </div>
-      <MarksBackup marks={marks} />
+      <MarksBackup marks={everything} />
 
       {marks.length === 0 ? (
         <div className="pt-3 text-[calc(11px*var(--fs))] leading-relaxed text-fog">

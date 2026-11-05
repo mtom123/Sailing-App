@@ -32,7 +32,9 @@ import RulerTool from './RulerTool.jsx'
 import { beforeStart, coursePoints, courseTarget, moveCoursePoint, moveLineEnd, pickOnCourse, raceStats, timerShown } from '../../lib/race.js'
 import RaceClock from '../RaceClock.jsx'
 import { MarksLayer } from '../../lib/marksLayer.js'
-import { newMark } from '../../lib/marks.js'
+import { markDrawer, newMark } from '../../lib/marks.js'
+import { isSighting } from '../../lib/sightings.js'
+import { DOLPHIN_BUTTON } from '../../lib/sightingIcons.js'
 import AreaDownloadTool from './AreaDownloadTool.jsx'
 import { setOfflineLayers } from '../../lib/offlinePack.js'
 import { OfflineZonesLayer } from '../../lib/offlineZonesLayer.js'
@@ -547,7 +549,7 @@ export default function MapView({
         const st = useAppStore.getState()
         if (st.markPicking) {
           const p = { lat: e.latlng.lat, lon: e.latlng.lng }
-          useAppStore.setState({ markPicking: false, activeDrawer: 'marks', markEdit: st.markEdit ? { ...st.markEdit, ...p } : newMark('mark', p) })
+          useAppStore.setState({ markPicking: false, activeDrawer: markDrawer(st.markEdit), markEdit: st.markEdit ? { ...st.markEdit, ...p } : newMark('mark', p) })
           return
         }
         if (st.racePicking === 'edit') return
@@ -671,29 +673,28 @@ export default function MapView({
   // Toccarne uno apre la scheda, a meno di non stare mettendo punti sulla carta
   useEffect(() => {
     const map = mapRef.current
-    if (!mapReady || !map || !layers.marks) return undefined
+    if (!mapReady || !map) return undefined
     const layer = new MarksLayer((mark) => {
       const st = useAppStore.getState()
       if (st.routeEditing || st.racePicking || st.markPicking || toolsRef.current.rulerOn || toolsRef.current.areaOn) {
         map.fire('click', { latlng: L.latLng(mark.lat, mark.lon) })
       } else {
-        useAppStore.setState({ markEdit: mark, activeDrawer: 'marks' })
+        useAppStore.setState({ markEdit: mark, activeDrawer: markDrawer(mark) })
       }
     })
-    layer.setMarks(useAppStore.getState().marks)
     marksLayerRef.current = layer.addTo(map)
     return () => {
       map.removeLayer(layer)
       marksLayerRef.current = null
     }
-  }, [layers.marks, mapReady])
+  }, [mapReady])
 
   useEffect(() => {
-    marksLayerRef.current?.setMarks(marks)
-  }, [marks])
+    marksLayerRef.current?.setMarks(marks.filter((m) => (isSighting(m) ? layers.sightings : layers.marks)))
+  }, [marks, layers.marks, layers.sightings, mapReady])
 
   // Mark nuovo non ancora salvato: un pallino dove finirà
-  const markDraftAt = markEdit && !markEdit.id ? [markEdit.lat, markEdit.lon] : null
+  const markDraftAt = markEdit && !markEdit.id && markEdit.lat != null ? [markEdit.lat, markEdit.lon] : null
   useEffect(() => {
     const map = mapRef.current
     if (!mapReady || !map || !markDraftAt) return undefined
@@ -1485,7 +1486,7 @@ export default function MapView({
               type="button"
               title="Rotta, ancore, meteo e registro"
               onClick={() => setActiveDrawer(lastDrawerRef.current)}
-              className="glass mt-2 flex h-14 w-[calc(48px*var(--fs))] flex-col items-center justify-center gap-0.5 rounded-l-lg text-fog hover:text-paper transition-colors"
+              className="glass mt-2 flex h-12 w-[calc(48px*var(--fs))] flex-col items-center justify-center gap-0.5 rounded-l-lg text-fog hover:text-paper transition-colors"
             >
               <Menu size={18} />
               <span className="text-[calc(9px*var(--fs))] font-bold">MENU</span>
@@ -1494,10 +1495,19 @@ export default function MapView({
               type="button"
               title="I miei marker"
               onClick={() => setActiveDrawer('marks')}
-              className="glass mt-2 flex h-14 w-[calc(48px*var(--fs))] flex-col items-center justify-center gap-0.5 rounded-l-lg text-fog hover:text-paper transition-colors"
+              className="mt-1.5 flex h-12 w-[calc(48px*var(--fs))] flex-col items-center justify-center gap-0.5 rounded-l-lg bg-[#FF8A00] text-white shadow-lg transition-colors"
             >
               <Bookmark size={18} />
               <span className="text-[calc(9px*var(--fs))] font-bold">MARKER</span>
+            </button>
+            <button
+              type="button"
+              title="Avvistamenti di cetacei, tartarughe e squali"
+              onClick={() => setActiveDrawer('sightings')}
+              className="mt-1.5 flex h-12 w-[calc(48px*var(--fs))] flex-col items-center justify-center gap-0.5 rounded-l-lg bg-[#00A5B5] text-white shadow-lg transition-colors"
+            >
+              <span dangerouslySetInnerHTML={{ __html: DOLPHIN_BUTTON }} />
+              <span className="text-[calc(9px*var(--fs))] font-bold">CETACEI</span>
             </button>
           </>
         )}
@@ -1575,7 +1585,13 @@ export default function MapView({
           <span className="whitespace-nowrap text-xs font-semibold tracking-wider text-warn">TOCCA IL PUNTO DEL MARKER</span>
           <button
             type="button"
-            onClick={() => useAppStore.setState({ markPicking: false, activeDrawer: 'marks' })}
+            onClick={() =>
+              useAppStore.setState((s) => ({
+                markPicking: false,
+                activeDrawer: markDrawer(s.markEdit),
+                markEdit: s.markEdit?.lat == null ? null : s.markEdit, // senza posizione non c'è niente da salvare
+              }))
+            }
             className="rounded-md border border-warn bg-warn/15 px-3 py-1.5 text-[calc(10px*var(--fs))] font-semibold tracking-widest text-warn touch"
           >
             ANNULLA
@@ -1708,6 +1724,7 @@ function LayerPopover({ onClose, onDownloadArea }) {
       'Navigazione',
       [
         { key: 'marks', label: 'I miei marker' },
+        { key: 'sightings', label: 'I miei avvistamenti' },
         { key: 'seamarks', label: 'Fari e boe' },
         { key: 'ais', label: 'Navi AIS' },
       ],

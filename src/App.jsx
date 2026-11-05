@@ -6,6 +6,7 @@ import ConnectivityIndicator from './components/v2/ConnectivityIndicator.jsx'
 import InstrumentPanel from './components/InstrumentPanel.jsx'
 import RacePanel from './components/RacePanel.jsx'
 import MarksPanel from './components/MarksPanel.jsx'
+import SightingsPanel from './components/SightingsPanel.jsx'
 import AnchoragePanel from './components/AnchoragePanel.jsx'
 import SettingsSheet from './components/SettingsSheet.jsx'
 import TrackPanel from './components/TrackPanel.jsx'
@@ -717,6 +718,7 @@ export default function App() {
               {activeDrawer === 'log' && <TrackPanel track={track} gpsOk={gpsOk} />}
               {activeDrawer === 'race' && <RacePanel geo={geo} ideal={raceIdeal} />}
               {activeDrawer === 'marks' && <MarksPanel geo={geo} depthLive={depthLive} draftM={boat.draftM ?? 1.9} />}
+              {activeDrawer === 'sightings' && <SightingsPanel geo={geo} depthLive={depthLive} draftM={boat.draftM ?? 1.9} />}
             </div>
           </div>
         )}

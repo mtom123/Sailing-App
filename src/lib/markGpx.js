@@ -1,4 +1,5 @@
 import { markDetail, markType, newMark } from './marks.js'
+import { isSighting } from './sightings.js'
 
 /*
  * Mark da e verso GPX. Il nome, le note e il simbolo sono quelli standard che
@@ -7,7 +8,7 @@ import { markDetail, markType, newMark } from './marks.js'
  */
 
 const NS = 'https://mtom123.github.io/Sailing-App/gpx/1'
-const FIELDS = ['id', 'type', 'notes', 'date', 'depth', 'depthSource', 'seabed']
+const FIELDS = ['id', 'type', 'notes', 'date', 'time', 'count', 'depth', 'depthSource', 'seabed']
 // Simboli GPX comuni: quelli usati qui e quelli che arrivano da altri programmi
 const SYMBOLS = {
   mark: 'Waypoint',
@@ -32,7 +33,7 @@ const SYMBOLS = {
 const xml = (text) => String(text).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
 
 // Fuori da TIMONE le note dell'ancoraggio devono dire anche profondità e fondale
-const description = (m) => (m.type === 'anchor' ? [markDetail(m), m.notes] : [m.notes]).filter(Boolean).join('\n')
+const description = (m) => (m.type === 'anchor' || isSighting(m) ? [markDetail(m), m.notes] : [m.notes]).filter(Boolean).join('\n')
 
 export function marksToGpx(marks) {
   const points = marks.map((m) => {
