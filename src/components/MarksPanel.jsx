@@ -4,6 +4,7 @@ import { importMarks, removeMark, saveMark } from '../hooks/useMarks.js'
 import { depthAt } from '../lib/depthAt.js'
 import { formatCoord, formatDeg, bearing, haversine, metersToNm } from '../lib/geo.js'
 import { gpxToMarks, marksFileName, marksToGpx, newMarksOnly } from '../lib/markGpx.js'
+import { markIconHtml } from '../lib/markIcons.js'
 import { MARK_TYPES, SEABEDS, markDetail, markType, newMark, searchMarks, validDepth } from '../lib/marks.js'
 import { shareFile } from '../lib/route.js'
 import { useAppStore } from '../store/useAppStore.js'
@@ -19,6 +20,9 @@ const NEAR_BOAT_M = 100 // qui l'ecoscandaglio vale per il mark
 
 const input = 'w-full min-w-0 rounded-md border border-line bg-surface px-2.5 py-2.5 text-xs text-paper outline-none focus:border-phos'
 const btn = 'touch flex items-center justify-center gap-1.5 rounded-md border py-2.5 text-[calc(10px*var(--fs))] font-semibold tracking-widest'
+
+// L'HTML viene da una tabella dell'app, mai da testo scritto dall'utente
+const MarkIcon = ({ type, size }) => <span className="flex-none" dangerouslySetInnerHTML={{ __html: markIconHtml(type, size) }} />
 
 const editDraft = (patch) => useAppStore.setState((s) => ({ markEdit: { ...s.markEdit, ...patch } }))
 
@@ -92,8 +96,8 @@ function MarkEditor({ mark, geo, depthLive, draftM }) {
               mark.type === t.id ? 'border-phos bg-phos/15 text-phos' : 'border-line bg-surface text-paper'
             }`}
           >
-            <span className="text-base leading-none">{t.glyph}</span>
-            {t.label}
+            <MarkIcon type={t.id} size={30} />
+            <span className="leading-tight">{t.label}</span>
           </button>
         ))}
       </div>
@@ -184,7 +188,7 @@ function MarkRow({ mark, onOpen, geo }) {
   const detail = markDetail(mark)
   return (
     <button type="button" onClick={onOpen} className="touch flex w-full items-center gap-2 border-b border-line px-1 py-2 text-left active:bg-raised">
-      <span className="flex-none text-lg leading-none">{markType(mark.type).glyph}</span>
+      <MarkIcon type={mark.type} size={28} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[calc(12px*var(--fs))] font-bold text-paper">{mark.name}</span>
         {detail && <span className="block truncate text-[calc(10px*var(--fs))] text-fog">{detail}</span>}
@@ -288,9 +292,9 @@ function MarkList({ marks, geo }) {
                 type="button"
                 title={t.label}
                 onClick={() => setType(type === t.id ? null : t.id)}
-                className={`touch h-9 w-9 rounded-md border text-base leading-none ${type === t.id ? 'border-phos bg-phos/15' : 'border-line bg-surface'}`}
+                className={`touch flex h-9 w-9 items-center justify-center rounded-md border ${type === t.id ? 'border-phos bg-phos/15' : 'border-line bg-surface'}`}
               >
-                {t.glyph}
+                <MarkIcon type={t.id} size={24} />
               </button>
             ))}
           </div>

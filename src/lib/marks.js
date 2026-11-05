@@ -9,13 +9,23 @@ import { haversine } from './geo.js'
  */
 
 export const MARK_TYPES = [
-  { id: 'mark', label: 'Segnaposto', glyph: '📍', color: '#FFFFFF' },
-  { id: 'anchor', label: 'Ancoraggio', glyph: '⚓\uFE0F', color: '#4FC3F7' },
-  { id: 'danger', label: 'Pericolo', glyph: '⚠️', color: '#FF5252' },
-  { id: 'fish', label: 'Pesca', glyph: '🐟', color: '#69F0AE' },
-  { id: 'dive', label: 'Immersione', glyph: '🤿', color: '#B388FF' },
-  { id: 'fuel', label: 'Carburante', glyph: '⛽', color: '#FFB74D' },
-  { id: 'star', label: 'Preferito', glyph: '⭐', color: '#FFD54F' },
+  { id: 'mark', label: 'Spilla', color: '#1E88FF' },
+  { id: 'dot', label: 'Punto', color: '#1E88FF' },
+  { id: 'anchor', label: 'Ancoraggio', color: '#F5A623' },
+  { id: 'mob', label: 'Uomo a mare', color: '#F01426' },
+  { id: 'fish', label: 'Pesce A', color: '#2EBD2E' },
+  { id: 'fishB', label: 'Pesce B', color: '#FF8A00' },
+  { id: 'fishC', label: 'Pesce C', color: '#3B5BDB' },
+  { id: 'fishD', label: 'Pesce D', color: '#9B8CFF' },
+  { id: 'danger', label: 'Pericolo', color: '#F01426' },
+  { id: 'rock', label: 'Roccia', color: '#F01426' },
+  { id: 'obstruction', label: 'Ostacolo', color: '#F01426' },
+  { id: 'wreck', label: 'Relitto', color: '#F01426' },
+  { id: 'dive', label: 'Area immersioni', color: '#FF8A00' },
+  { id: 'can', label: 'Boa cilindrica', color: '#FF8A00' },
+  { id: 'cone', label: 'Boa conica', color: '#FF8A00' },
+  { id: 'fuel', label: 'Carburante', color: '#607D8B' },
+  { id: 'star', label: 'Preferito', color: '#E0A800' },
 ]
 
 export const SEABEDS = ['Sabbia', 'Fango', 'Alghe', 'Posidonia', 'Roccia', 'Ghiaia', 'Misto']
@@ -33,7 +43,7 @@ export const fmtMarkDate = (date) => (date ? new Date(`${date}T12:00`).toLocaleD
 
 /** Riga di dettaglio di un ancoraggio: "9,1 m · Sabbia · 05/11/2026". */
 export function markDetail(mark) {
-  if (mark.type !== 'anchor') return mark.notes
+  if (mark.type !== 'anchor') return mark.notes || fmtMarkDate(mark.date)
   return [mark.depth && `${mark.depth} m`, mark.seabed, fmtMarkDate(mark.date)].filter(Boolean).join(' · ')
 }
 

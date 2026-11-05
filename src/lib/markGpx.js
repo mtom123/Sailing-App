@@ -9,7 +9,25 @@ import { markDetail, markType, newMark } from './marks.js'
 const NS = 'https://mtom123.github.io/Sailing-App/gpx/1'
 const FIELDS = ['id', 'type', 'notes', 'date', 'depth', 'depthSource', 'seabed']
 // Simboli GPX comuni: quelli usati qui e quelli che arrivano da altri programmi
-const SYMBOLS = { mark: 'Waypoint', anchor: 'Anchor', danger: 'Danger Area', fish: 'Fishing Area', dive: 'Diver Down Flag 1', fuel: 'Gas Station', star: 'Flag' }
+const SYMBOLS = {
+  mark: 'Waypoint',
+  dot: 'Dot',
+  anchor: 'Anchor',
+  mob: 'Man Overboard',
+  fish: 'Fishing Area',
+  fishB: 'Fishing Area',
+  fishC: 'Fishing Area',
+  fishD: 'Fishing Area',
+  danger: 'Danger Area',
+  rock: 'Rock',
+  obstruction: 'Obstruction',
+  wreck: 'Wreck',
+  dive: 'Diver Down Flag 1',
+  can: 'Buoy, Can',
+  cone: 'Buoy, Cone',
+  fuel: 'Gas Station',
+  star: 'Flag',
+}
 
 const xml = (text) => String(text).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
 
@@ -28,9 +46,15 @@ export function marksToGpx(marks) {
 const typeOfSymbol = (sym) => {
   const s = sym.toLowerCase()
   if (s.includes('anchor')) return 'anchor'
-  if (s.includes('danger') || s.includes('hazard') || s.includes('wreck')) return 'danger'
+  if (s.includes('overboard')) return 'mob'
+  if (s.includes('wreck')) return 'wreck'
+  if (s.includes('rock')) return 'rock'
+  if (s.includes('obstruction')) return 'obstruction'
+  if (s.includes('danger') || s.includes('hazard')) return 'danger'
   if (s.includes('fish')) return 'fish'
   if (s.includes('div')) return 'dive'
+  if (s.includes('can')) return 'can'
+  if (s.includes('cone') || s.includes('nun')) return 'cone'
   if (s.includes('gas') || s.includes('fuel')) return 'fuel'
   return 'mark'
 }

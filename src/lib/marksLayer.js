@@ -1,5 +1,5 @@
 import L from 'leaflet'
-import { markType } from './marks.js'
+import { markIconHtml } from './markIcons.js'
 
 /*
  * Mark sulla carta. Possono essere migliaia: si disegnano solo quelli a vista
@@ -14,13 +14,12 @@ const NAMES_MIN_ZOOM = 13
 const escapeHtml = (text) => text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
 
 function markIcon(mark, showName) {
-  const { glyph, color } = markType(mark.type)
   const name = showName && mark.name
     ? `<div style="position:absolute;top:31px;left:50%;transform:translateX(-50%);width:max-content;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 4px;border-radius:3px;background:rgba(10,22,32,0.8);color:#fff;font-size:11px;font-weight:600">${escapeHtml(mark.name)}</div>`
     : ''
   return L.divIcon({
     className: 'timone-marker',
-    html: `<div style="position:relative;width:30px;height:30px;border-radius:50%;background:#0a1620;border:2.5px solid ${color};color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;box-shadow:0 2px 6px rgba(0,0,0,0.5)">${glyph}${name}</div>`,
+    html: `<div style="position:relative">${markIconHtml(mark.type)}${name}</div>`,
     iconSize: [30, 30],
     iconAnchor: [15, 15],
   })
