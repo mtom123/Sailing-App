@@ -126,7 +126,7 @@ window.addEventListener('unhandledrejection', (e) => {
 window.addEventListener('load', () => {
   setTimeout(() => {
     hideLoadingScreen()
-  }, 1000)
+  }, 150)
 })
 
 // Force hide after 8s无论如何
