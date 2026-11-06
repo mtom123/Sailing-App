@@ -20,6 +20,7 @@ export default function useGrib(bounds, enabled) {
   const [grib, setGrib] = useState(null)
   const [currentField, setCurrentField] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [settledKey, setSettledKey] = useState(null) // ultima area per cui si è finito di provare
   const abortRef = useRef(null)
 
   const key =
@@ -59,6 +60,7 @@ export default function useGrib(bounds, enabled) {
         // If cache is fresh (< 30 min), skip network fetch
         if (Date.now() - cached.updatedAt < REFRESH_MS) {
           setLoading(false)
+          setSettledKey(key)
           return
         }
       }
@@ -156,7 +158,10 @@ export default function useGrib(bounds, enabled) {
       } catch (e) {
         // mantieni ultimo
       } finally {
-        if (!controller.signal.aborted) setLoading(false)
+        if (!controller.signal.aborted) {
+          setLoading(false)
+          setSettledKey(key)
+        }
       }
     }
 
@@ -169,5 +174,8 @@ export default function useGrib(bounds, enabled) {
     }
   }, [key])
 
-  return enabled ? { grib, currentField, loading } : null
+  // Cambiata l'area, grib resta quello vecchio finché non arriva il nuovo
+  const b = grib?.bounds
+  const current = !!b && [b.south.toFixed(1), b.west.toFixed(1), b.north.toFixed(1), b.east.toFixed(1)].join(',') === key
+  return enabled ? { grib, currentField, loading, current, settled: settledKey === key } : null
 }

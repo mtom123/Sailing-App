@@ -29,6 +29,7 @@ import useAutopilot from './hooks/useAutopilot.js'
 import useTrack from './hooks/useTrack.js'
 import useRainRadar from './hooks/useRainRadar.js'
 import useGrib from './hooks/useGrib.js'
+import { routeForecastBounds } from './routing/isochroneEngine.js'
 import useWeatherRouting from './hooks/useWeatherRouting.js'
 import useRouteHazards from './hooks/useRouteHazards.js'
 import useCoastBandAt, { useWaypointBands } from './hooks/useCoastBandAt.js'
@@ -284,11 +285,18 @@ export default function App() {
   const goal = route.waypoints.length >= 2
     ? { lat: route.waypoints[route.waypoints.length - 1].lat, lon: route.waypoints[route.waypoints.length - 1].lon }
     : null
+  // Le previsioni della rotta sono quelle dell'area che attraversa, non di ciò
+  // che la carta inquadra: con la carta altrove il vento era di un altro mare
+  const routeBounds = useMemo(() => routeForecastBounds(start, route.waypoints), [start?.lat, start?.lon, route.waypoints])
+  const routeGribData = useGrib(routeBounds, !!routeBounds)
+  const routeGridOk = !!routeGribData?.current
+  const useViewGrib = !routeGridOk && !!routeGribData?.settled // senza rete: l'ultima previsione che c'è
   const { routeOptions, computing, duration } = useWeatherRouting({
     start,
     goal,
-    grib,
-    currentField,
+    grib: routeGridOk ? routeGribData.grib : useViewGrib ? grib : null,
+    currentField: routeGridOk ? routeGribData.currentField : currentField,
+    gribKey: routeGridOk ? `${routeBounds.south.toFixed(1)},${routeBounds.west.toFixed(1)},${routeBounds.north.toFixed(1)},${routeBounds.east.toFixed(1)}` : 'carta',
     enabled: route.waypoints.length >= 2,
   })
 

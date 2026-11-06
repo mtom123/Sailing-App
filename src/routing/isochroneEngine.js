@@ -11,11 +11,11 @@
  * 6. Pruning: mantiene solo i punti Pareto-ottimali (frontiera efficiente)
  * 7. Quando raggiunge il goal, fa backtrack per ricostruire la rotta
  *
- * Output: rotta ottimale con ETA, comfort score, safety score
+ * Output: rotta con ETA, distanza e condizioni percorrendo la linea finale (sailLine)
  */
 
 import { solvePolar } from './polarSolver.js'
-import { haversine, destination } from '../lib/geo.js'
+import { bearing, haversine, destination } from '../lib/geo.js'
 import { crossesLand, isLandCached } from '../lib/landMask.js'
 
 const R_EARTH = 6371000
@@ -160,17 +160,92 @@ function sampleSea(grib, lat, lon, timeMs) {
   return { wave: near.wave?.[best] ?? 0, gust: near.gust?.[best] ?? 0 }
 }
 
-function legPenalty(speed, twa, waveHeight, gustFactor) {
-  let p = 0
-  if (speed > 28) p += 4
-  else if (speed > 22) p += 2.5
-  else if (speed > 16) p += 1
-  if (gustFactor > 1.4) p += 1.5
-  if (waveHeight > 2.5) p += 3
-  else if (waveHeight > 1.5) p += 1.5
-  else if (waveHeight > 1) p += 0.5
-  if (twa < 45 && speed > 12) p += 1
+// Scomodità di un tratto: 0 mare piatto e vento leggero, 1 già si sente, oltre 5 duro.
+// Continua, perché la ricerca deve poter preferire un po' meno onda o bolina
+function legPenalty(tws, twa, wave, gust) {
+  let p = Math.max(0, (tws - 12) / 6) + Math.max(0, (wave - 0.7) / 0.6)
+  if (twa != null && twa < 60 && tws > 8) p += ((60 - twa) / 15) * Math.min(1, tws / 14)
+  if (gust > 18 && gust / Math.max(tws, 1) > 1.4) p += 1
   return p
+}
+
+// Velocità utile lungo una rotta: se la prua diretta non conviene (bolina
+// stretta, poppa piena) si bordeggia attorno alla linea
+function madeGoodKn(polarKey, tws, twa) {
+  if (tws < 1) return MOTOR_KN
+  let best = 0
+  for (let a = 0; a <= 180; a += 10) {
+    const off = Math.abs(a - twa)
+    if (off < 90) best = Math.max(best, solvePolar(polarKey, tws, a) * Math.cos((off * Math.PI) / 180))
+  }
+  return Math.max(best, solvePolar(polarKey, tws, twa), 1)
+}
+
+/*
+ * Percorre la linea disegnata con vento, onda e corrente di ogni ora: tempi,
+ * distanza e condizioni sono quelli della rotta che si vede, non della ricerca.
+ * cost: le ore, più le ore scomode pesate con `weight` e quelle oltre i limiti.
+ */
+function sailLine(points, { grib, currentField, polarKey, departureMs }, weight, limits) {
+  let t = departureMs
+  let distNm = 0
+  let rough = 0
+  let overH = 0
+  let maxWind = 0
+  let maxWave = 0
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1]
+    const b = points[i]
+    const legNm = haversine(a.lat, a.lon, b.lat, b.lon) / 1852
+    const course = bearing(a.lat, a.lon, b.lat, b.lon)
+    distNm += legNm
+    let pos = a
+    let left = legNm
+    while (left > 0.001) {
+      const wind = sampleWind(grib, pos.lat, pos.lon, t)
+      const { wave, gust } = sampleSea(grib, pos.lat, pos.lon, t)
+      const current = currentField ? sampleCurrent(currentField, pos.lat, pos.lon, t) : { speed: 0, dir: 0 }
+      const twa = Math.abs(((wind.dir - course + 540) % 360) - 180)
+      const drift = current.speed * Math.cos(((current.dir - course) * Math.PI) / 180)
+      const ground = Math.max(0.5, madeGoodKn(polarKey, wind.speed, twa) + drift)
+      const stepNm = Math.min(left, ground * 0.5)
+      const hours = stepNm / ground
+      rough += legPenalty(wind.speed, twa, wave, gust) * hours
+      if (wind.speed > limits.maxWindKn || wave > limits.maxWaveM) overH += hours
+      maxWind = Math.max(maxWind, wind.speed)
+      maxWave = Math.max(maxWave, wave)
+      pos = destination(pos.lat, pos.lon, course, stepNm * 1852)
+      left -= stepNm
+      t += hours * 3600000
+      if (t - departureMs > MAX_SAIL_MS) return null
+    }
+  }
+  const hours = (t - departureMs) / 3600000
+  return { etaMs: t, hours, distNm, comfort: rough / Math.max(hours, 0.01), maxWind, maxWave, cost: hours + weight * rough + overH * 50 }
+}
+
+// Toglie le spezzate che non servono: un punto resta solo se senza costa di più
+function straighten(points, land, ctx, weight, limits) {
+  const pts = [...points]
+  let line = sailLine(pts, ctx, weight, limits)
+  for (;;) {
+    if (!line || pts.length < 3) return { pts, line }
+    let best = -1
+    let bestLine = null
+    let bestCost = line.cost * 1.003
+    for (let i = 1; i < pts.length - 1; i++) {
+      if (land.leg(pts[i - 1], pts[i + 1])) continue
+      const next = sailLine([...pts.slice(0, i), ...pts.slice(i + 1)], ctx, weight, limits)
+      if (next && next.cost < bestCost) {
+        best = i
+        bestLine = next
+        bestCost = next.cost
+      }
+    }
+    if (best < 0) return { pts, line }
+    pts.splice(best, 1)
+    line = bestLine
+  }
 }
 
 const MERC_R = 6378137
@@ -181,6 +256,9 @@ const mercY = (lat) => MERC_R * Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) 
 const PORT_FREE_NM = 0.3
 const PORT_FREE_WIDE_NM = 1
 const MAX_SEARCH_MS = 20000 // tetto per ogni rotta: sull'iPad il worker non deve girare per minuti
+const MOTOR_KN = 6.5 // senza vento si va a motore
+const MAX_SAIL_MS = 120 * 3600000
+const OVER_LIMIT_SLOW = 4 // oltre i limiti dell'opzione un passo rende un quinto
 
 /*
  * Controllo della terra. Con la griglia della costa OSM (routeLandGrid) vede
@@ -246,6 +324,26 @@ function simplifyRoute(points, tolNm, land) {
 }
 
 /**
+ * Area delle previsioni per una rotta: partenza e punti, con margine per i
+ * bordi e gli aggiramenti. Arrotondata, così la barca che si muove non chiede
+ * ogni volta una griglia nuova.
+ */
+export function routeForecastBounds(start, waypoints = []) {
+  const pts = [start, ...waypoints].filter(Boolean)
+  if (pts.length < 2) return null
+  const lats = pts.map((p) => p.lat)
+  const lons = pts.map((p) => p.lon)
+  const south = Math.min(...lats)
+  const north = Math.max(...lats)
+  const west = Math.min(...lons)
+  const east = Math.max(...lons)
+  const pad = Math.max(0.3, Math.max(north - south, east - west) * 0.2)
+  const down = (v) => Math.floor(v * 5) / 5
+  const up = (v) => Math.ceil(v * 5) / 5
+  return { south: down(south - pad), west: down(west - pad), north: up(north + pad), east: up(east + pad) }
+}
+
+/**
  * Calcola rotta ottimale via isocrone
  */
 export function computeRoute(opts) {
@@ -264,6 +362,8 @@ export function computeRoute(opts) {
   } = opts
 
   const land = makeLandCheck(landGrid, start, goal, isLandFn, portFreeNm)
+  const comfortWeight = constraints.comfortWeight ?? 0
+  const softLimits = constraints.soft ?? { maxWindKn: Infinity, maxWaveM: Infinity }
 
   const directDist = haversine(start.lat, start.lon, goal.lat, goal.lon) / 1852
   // Passi di mezz'ora sulle traversate, più corti sulle rotte brevi: tra le
@@ -286,11 +386,8 @@ export function computeRoute(opts) {
       lon: start.lon,
       parent: null,
       time: departureMs,
-      cost: 0,
-      depth: 0,
+      clock: departureMs,
       pathDist: 0,
-      comfortPenalty: 0,
-      safetyPenalty: 0,
       goalDist: directDist,
     },
   ]
@@ -308,24 +405,24 @@ export function computeRoute(opts) {
 
     for (const point of frontier) {
       // Stesso punto e stessa ora per tutte le direzioni: una lettura sola
-      const wind = sampleWind(grib, point.lat, point.lon, point.time)
-      const current = currentField ? sampleCurrent(currentField, point.lat, point.lon, point.time) : { speed: 0, dir: 0 }
-      const { wave, gust } = sampleSea(grib, point.lat, point.lon, point.time)
+      const wind = sampleWind(grib, point.lat, point.lon, point.clock)
+      const current = currentField ? sampleCurrent(currentField, point.lat, point.lon, point.clock) : { speed: 0, dir: 0 }
+      const { wave, gust } = sampleSea(grib, point.lat, point.lon, point.clock)
       if (constraints.maxWindKn && wind.speed > constraints.maxWindKn) continue
       if (constraints.maxWaveM && wave > constraints.maxWaveM) continue
-      const gustFactor = wind.speed > 1 ? gust / wind.speed : 1
+      // I limiti della comoda e della sicura si evitano, non chiudono la strada:
+      // un fronte che passa fermerebbe tutta la ricerca
+      const overSoft = wind.speed > softLimits.maxWindKn || wave > softLimits.maxWaveM
 
       for (let d = 0; d < NUM_DIRECTIONS; d++) {
         const courseDeg = (d * 360) / NUM_DIRECTIONS
 
         let boatSpeedKn
-        let motoring = false
         let twa = null
 
         if (!wind.speed || wind.speed < 1) {
           // vento zero: usa motore
-          boatSpeedKn = 6.5
-          motoring = true
+          boatSpeedKn = MOTOR_KN
         } else {
           twa = Math.abs(((wind.dir - courseDeg + 540) % 360) - 180)
           boatSpeedKn = solvePolar(polarKey, wind.speed, twa)
@@ -336,8 +433,11 @@ export function computeRoute(opts) {
         // La barca naviga a boatSpeedKn lungo courseDeg
         // La corrente spinge a current.speed lungo current.dir
         // Risultato: posizione finale = barca + corrente
-        const boatDistM = (boatSpeedKn * 1852 * dtSec) / 3600
-        const currentDistM = (current.speed * 1852 * dtSec) / 3600
+        // Nella ricerca i tratti scomodi "rendono" meno: un passo copre meno
+        // strada e l'orologio delle previsioni avanza meno. Tempi veri: sailLine
+        const slow = 1 + comfortWeight * (twa == null ? 0 : legPenalty(wind.speed, twa, wave, gust)) + (overSoft ? OVER_LIMIT_SLOW : 0)
+        const boatDistM = (boatSpeedKn * 1852 * dtSec) / 3600 / slow
+        const currentDistM = (current.speed * 1852 * dtSec) / 3600 / slow
 
         // Prima la barca lungo la rotta
         let newPos = destination(point.lat, point.lon, courseDeg, boatDistM)
@@ -349,14 +449,6 @@ export function computeRoute(opts) {
         // Il passo intero deve stare in acqua, non solo il punto d'arrivo
         if (land.point(newPos.lat, newPos.lon) || land.leg(point, newPos)) continue
 
-        const comfortP = motoring ? 0 : legPenalty(wind.speed, twa, wave, gustFactor)
-
-        let safetyP = 0
-        const hour = new Date(point.time).getHours()
-        if (constraints.nightAvoidance && (hour < 6 || hour > 20)) safetyP += 1.5
-        if (wind.speed > 25) safetyP += 1.5
-        if (wind.speed > 30) safetyP += 2
-
         const newPathDist = point.pathDist + boatDistM + currentDistM
         if (newPathDist > maxDistM) continue
 
@@ -367,15 +459,6 @@ export function computeRoute(opts) {
             ...newPos,
             parent: point,
             time: point.time + dt + (distToGoal / Math.max(boatSpeedKn, 1)) * 3600000,
-            cost: point.cost + comfortP,
-            depth: point.depth + 1,
-            pathDist: newPathDist + distToGoal * 1852,
-            twa,
-            speed: boatSpeedKn,
-            comfortPenalty: point.comfortPenalty + comfortP,
-            safetyPenalty: point.safetyPenalty + safetyP,
-            motoring,
-            reachedGoal: true,
           }
           if (!goalReached || candidate.time < goalReached.time) {
             goalReached = candidate
@@ -387,14 +470,8 @@ export function computeRoute(opts) {
           ...newPos,
           parent: point,
           time: point.time + dt,
-          cost: point.cost + comfortP + safetyP * 0.5,
-          depth: point.depth + 1,
+          clock: point.clock + dt / slow,
           pathDist: newPathDist,
-          twa,
-          speed: boatSpeedKn,
-          comfortPenalty: point.comfortPenalty + comfortP,
-          safetyPenalty: point.safetyPenalty + safetyP,
-          motoring,
           goalDist: distToGoal,
         })
       }
@@ -414,21 +491,20 @@ export function computeRoute(opts) {
   for (let cur = goalReached; cur; cur = cur.parent) path.unshift({ lat: cur.lat, lon: cur.lon })
   path[0] = { lat: start.lat, lon: start.lon }
   path.push({ lat: goal.lat, lon: goal.lon })
-  const waypoints = simplifyRoute(path, Math.max(0.2, directDist * 0.02), land).map((p, i) => ({ ...p, name: `WP${i + 1}` }))
-
-  const totalDistNm = goalReached.pathDist / 1852
-  const etaMs = goalReached.time
-  const comfortScore = goalReached.comfortPenalty
-  const safetyScore = goalReached.safetyPenalty
+  const ctx = { grib, currentField, polarKey, departureMs }
+  const { pts, line } = straighten(simplifyRoute(path, Math.max(0.2, directDist * 0.02), land), land, ctx, comfortWeight, softLimits)
+  if (!line) return null
 
   return {
-    waypoints,
-    etaMs,
-    distNm: totalDistNm,
-    comfortScore,
-    safetyScore,
-    durationH: (etaMs - departureMs) / 3600000,
-    avgSpeedKn: totalDistNm / ((etaMs - departureMs) / 3600000),
+    waypoints: pts.map((p, i) => ({ lat: p.lat, lon: p.lon, name: `WP${i + 1}` })),
+    etaMs: line.etaMs,
+    distNm: line.distNm,
+    comfortScore: line.comfort,
+    maxWindKn: line.maxWind,
+    maxWaveM: line.maxWave,
+    overLimits: line.maxWind > softLimits.maxWindKn * 1.05 || line.maxWave > softLimits.maxWaveM * 1.05, // uno sfioramento non conta
+    durationH: line.hours,
+    avgSpeedKn: line.distNm / line.hours,
     iterations,
     coarseLand: !landGrid,
     widePorts: portFreeNm > PORT_FREE_NM,
@@ -454,31 +530,69 @@ function pruneFrontier(frontier, max, cellDeg, seen) {
   return result.slice(0, max)
 }
 
-const samePath = (a, b) => !!a && !!b && a.waypoints.length === b.waypoints.length && a.waypoints.every((w, i) => w.lat === b.waypoints[i].lat && w.lon === b.waypoints[i].lon)
+// Punto a una frazione della linea
+function alongLine(pts, frac) {
+  const legs = pts.slice(1).map((p, i) => haversine(pts[i].lat, pts[i].lon, p.lat, p.lon))
+  let left = legs.reduce((sum, l) => sum + l, 0) * frac
+  for (let i = 0; i < legs.length; i++) {
+    if (left <= legs[i] && legs[i] > 0) {
+      const k = left / legs[i]
+      return { lat: pts[i].lat + (pts[i + 1].lat - pts[i].lat) * k, lon: pts[i].lon + (pts[i + 1].lon - pts[i].lon) * k }
+    }
+    left -= legs[i]
+  }
+  return pts[pts.length - 1]
+}
+
+// Due rotte sono la stessa se non si scostano di più del 2% (almeno mezzo miglio)
+function sameRoute(a, b) {
+  if (!a || !b) return false
+  const tolNm = Math.max(0.5, a.distNm * 0.02)
+  for (let i = 1; i < 20; i++) {
+    const p = alongLine(a.waypoints, i / 20)
+    const q = alongLine(b.waypoints, i / 20)
+    if (haversine(p.lat, p.lon, q.lat, q.lon) / 1852 > tolNm) return false
+  }
+  return true
+}
 
 /**
- * Calcola 3 opzioni di rotta: fastest, comfortable, safest. Con vento e onda
- * sotto i limiti coincidono: allSame lo dice, invece di far credere a tre scelte.
+ * Tre rotte con obiettivi diversi. Veloce: il tempo. Comoda: meno bolina, onda
+ * e vento forte, anche allungando. Sicura: ancora di più, con limiti più
+ * stretti. Con mare calmo possono coincidere: sameAs lo dice.
  */
 export function computeRouteOptions(opts) {
   const baseOpts = { ...opts, maxHours: 72 }
-  const fastestLimits = { maxWindKn: 35, maxWaveM: 4 }
+  const fastestLimits = { maxWindKn: 35, maxWaveM: 4 } // valgono per tutte
 
   let fastest = computeRoute({ ...baseOpts, constraints: fastestLimits })
   if (!fastest && opts.landGrid) {
     baseOpts.portFreeNm = PORT_FREE_WIDE_NM
     fastest = computeRoute({ ...baseOpts, constraints: fastestLimits })
   }
-  const comfortable = computeRoute({
+  let comfortable = computeRoute({
     ...baseOpts,
-    constraints: { maxWindKn: 22, maxWaveM: 1.5 },
+    constraints: { ...fastestLimits, soft: { maxWindKn: 22, maxWaveM: 1.5 }, comfortWeight: 0.4 },
   })
-  const safest = computeRoute({
+  let safest = computeRoute({
     ...baseOpts,
-    constraints: { maxWindKn: 18, maxWaveM: 1.0, nightAvoidance: true },
+    constraints: { ...fastestLimits, soft: { maxWindKn: 18, maxWaveM: 1 }, comfortWeight: 1 },
   })
 
-  return { fastest, comfortable, safest, allSame: samePath(fastest, comfortable) && samePath(comfortable, safest) }
+  // La ricerca è approssimata: l'opzione che non batte quella prima di lei
+  // sul suo terreno prende il suo posto, così i nomi dicono il vero
+  if (comfortable && (!fastest || comfortable.etaMs < fastest.etaMs)) fastest = comfortable
+  if (safest && fastest && safest.etaMs < fastest.etaMs) fastest = safest
+  if (comfortable && safest && safest.comfortScore > comfortable.comfortScore) safest = comfortable
+  if (comfortable && fastest && comfortable.comfortScore > fastest.comfortScore) comfortable = fastest
+
+  return {
+    fastest,
+    comfortable,
+    safest,
+    allSame: sameRoute(fastest, comfortable) && sameRoute(comfortable, safest),
+    sameAs: { comfortable: sameRoute(fastest, comfortable), safest: sameRoute(fastest, safest) || sameRoute(comfortable, safest) },
+  }
 }
 
 export default {

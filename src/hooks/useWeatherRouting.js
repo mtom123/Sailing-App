@@ -9,7 +9,7 @@ import { routeLandGrid } from '../lib/routeHazards.js'
  *
  * Output: routeOptions { fastest, comfortable, safest } | null
  */
-export default function useWeatherRouting({ start, goal, grib, currentField, enabled }) {
+export default function useWeatherRouting({ start, goal, grib, currentField, gribKey, enabled }) {
   const [routeOptions, setRouteOptions] = useState(null)
   const [computing, setComputing] = useState(false)
   const [duration, setDuration] = useState(null)
@@ -17,11 +17,11 @@ export default function useWeatherRouting({ start, goal, grib, currentField, ena
   const reqIdRef = useRef(0)
   const { boat, departureOffsetH } = useAppStore()
 
-  // Niente grib nella chiave: segue l'area della carta, e ogni zoom farebbe
-  // ripartire il calcolo. Basta che ci sia
+  // Del grib conta solo l'area (gribKey): se seguisse la carta, ogni zoom farebbe
+  // ripartire il calcolo
   const key =
     enabled && start && goal && grib
-      ? `${start.lat.toFixed(3)},${start.lon.toFixed(3)};${goal.lat.toFixed(3)},${goal.lon.toFixed(3)}`
+      ? `${start.lat.toFixed(3)},${start.lon.toFixed(3)};${goal.lat.toFixed(3)},${goal.lon.toFixed(3)};${gribKey}`
       : null
 
   useEffect(() => {

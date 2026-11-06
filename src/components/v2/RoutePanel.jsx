@@ -314,8 +314,8 @@ function RouteHazards({ route }) {
 
 const ROUTE_TYPES = [
   { key: 'fastest', label: 'VELOCE', icon: Zap, color: '#5EE6C8', desc: 'Min tempo, max 35kn vento' },
-  { key: 'comfortable', label: 'COMODA', icon: Waves, color: '#4A9EFF', desc: 'Max onda 1.5m, vento 22kn' },
-  { key: 'safest', label: 'SICURA', icon: Shield, color: '#F5A623', desc: 'Max onda 1m, vento 18kn' },
+  { key: 'comfortable', label: 'COMODA', icon: Waves, color: '#4A9EFF', desc: 'Meno bolina e mare formato, max onda 1,5 m e vento 22 kn' },
+  { key: 'safest', label: 'SICURA', icon: Shield, color: '#F5A623', desc: 'Evita vento e onda, max onda 1 m e vento 18 kn' },
 ]
 
 function BigButton({ onClick, disabled, danger, children, primary }) {
@@ -677,7 +677,11 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
                 </div>
                 <div className="flex justify-between">
                   <span>ETA: <b className="text-phos font-mono">{fmtDayTime(routeOptions[activeRouteOption].etaMs)}</b></span>
-                  <span>VMG: <b className="text-paper font-mono">{routeOptions[activeRouteOption].avgSpeedKn.toFixed(1)}kn</b></span>
+                  <span>Media: <b className="text-paper font-mono">{routeOptions[activeRouteOption].avgSpeedKn.toFixed(1)}kn</b></span>
+                </div>
+                <div className="mt-1 flex justify-between">
+                  <span>Vento max: <b className="text-paper font-mono">{routeOptions[activeRouteOption].maxWindKn.toFixed(0)}kn</b></span>
+                  <span>Onda max: <b className="text-paper font-mono">{routeOptions[activeRouteOption].maxWaveM.toFixed(1)}m</b></span>
                 </div>
               </div>
             )}
@@ -719,7 +723,22 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
             )}
             {routeOptions?.allSame && (
               <div className="mt-2 text-[calc(10px*var(--fs))] leading-relaxed text-fog">
-                Le tre rotte coincidono: con queste previsioni vento e onda restano sotto tutti i limiti.
+                Le tre rotte coincidono: con queste previsioni non c'è un percorso più comodo di quello veloce.
+              </div>
+            )}
+            {!routeOptions?.allSame && routeOptions?.sameAs?.[activeRouteOption] && (
+              <div className="mt-2 text-[calc(10px*var(--fs))] leading-relaxed text-fog">
+                Coincide con un'altra opzione: con queste previsioni non c'è di meglio.
+              </div>
+            )}
+            {routeOptions?.fastest && !routeOptions[activeRouteOption] && (
+              <div className="mt-2 text-[calc(10px*var(--fs))] font-semibold leading-relaxed text-warn">
+                A questa andatura si incontra vento oltre 35 kn o onda oltre 4 m: meglio rimandare.
+              </div>
+            )}
+            {routeOptions?.[activeRouteOption]?.overLimits && (
+              <div className="mt-2 text-[calc(10px*var(--fs))] font-semibold leading-relaxed text-warn">
+                Anche questa rotta supera i limiti dell'opzione in un tratto: valuta di partire in un altro momento.
               </div>
             )}
             {routeOptions?.[activeRouteOption]?.coarseLand && (
