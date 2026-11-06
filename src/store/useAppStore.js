@@ -108,6 +108,20 @@ export const useAppStore = create(
       // RoutePanel (annulla ultimo WP, salva) passa una funzione
       setRouteDraft: (routeDraft) =>
         set((s) => ({ routeDraft: typeof routeDraft === 'function' ? routeDraft(s.routeDraft) : routeDraft })),
+      // Opzione meteo presa come rotta: la linea tracciata resta in `previous`
+      routeApplied: null, // { option, waypoints, previous } | null
+      applyRouteOption: (option, optionWaypoints) =>
+        set((s) => {
+          const current = s.routeDraft.waypoints
+          const stamp = Date.now().toString(36)
+          const waypoints = optionWaypoints.map((w, i) => ({ id: `w${stamp}${i}`, lat: w.lat, lon: w.lon, name: `WP${i + 1}` }))
+          const previous = s.routeApplied?.waypoints === current ? s.routeApplied.previous : current
+          return { routeDraft: { ...s.routeDraft, waypoints }, activeWaypointIdx: 1, routeApplied: { option, waypoints, previous } }
+        }),
+      restoreDrawnRoute: () =>
+        set((s) =>
+          s.routeApplied ? { routeDraft: { ...s.routeDraft, waypoints: s.routeApplied.previous }, activeWaypointIdx: 1, routeApplied: null } : s
+        ),
       moveWaypointUp: (id) =>
         set((s) => {
           const wps = [...s.routeDraft.waypoints]

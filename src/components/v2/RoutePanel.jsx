@@ -313,7 +313,7 @@ function RouteHazards({ route }) {
 }
 
 const ROUTE_TYPES = [
-  { key: 'fastest', label: 'VELOCE', icon: Zap, color: '#5EE6C8', desc: 'Min tempo, max 35kn vento' },
+  { key: 'fastest', label: 'VELOCE', icon: Zap, color: '#C77DFF', desc: 'Min tempo, max 35kn vento' },
   { key: 'comfortable', label: 'COMODA', icon: Waves, color: '#4A9EFF', desc: 'Meno bolina e mare formato, max onda 1,5 m e vento 22 kn' },
   { key: 'safest', label: 'SICURA', icon: Shield, color: '#F5A623', desc: 'Evita vento e onda, max onda 1 m e vento 18 kn' },
 ]
@@ -409,9 +409,14 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
     setActiveWaypointIdx,
     deleteSavedRoute,
     savedRoutes,
+    routeApplied,
+    applyRouteOption,
+    restoreDrawnRoute,
   } = useAppStore()
 
   const { waypoints, totalNm, nav } = route
+  // Vale finché la rotta è quella presa dall'opzione: una modifica la rende di nuovo tua
+  const applied = routeApplied?.waypoints === routeDraft.waypoints ? routeApplied : null
 
   const undoWaypoint = () =>
     setRouteDraft((d) => ({ ...d, waypoints: d.waypoints.slice(0, -1) }))
@@ -683,6 +688,18 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
                   <span>Vento max: <b className="text-paper font-mono">{routeOptions[activeRouteOption].maxWindKn.toFixed(0)}kn</b></span>
                   <span>Onda max: <b className="text-paper font-mono">{routeOptions[activeRouteOption].maxWaveM.toFixed(1)}m</b></span>
                 </div>
+              </div>
+            )}
+            {routeOptions?.[activeRouteOption] && (
+              <div className="mt-2 space-y-1.5">
+                <BigButton
+                  primary
+                  disabled={applied?.option === activeRouteOption}
+                  onClick={() => applyRouteOption(activeRouteOption, routeOptions[activeRouteOption].waypoints)}
+                >
+                  {applied?.option === activeRouteOption ? 'ROTTA IN USO' : 'USA QUESTA ROTTA'}
+                </BigButton>
+                {applied && <BigButton onClick={restoreDrawnRoute}>TORNA ALLA MIA ROTTA</BigButton>}
               </div>
             )}
 

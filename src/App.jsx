@@ -276,18 +276,20 @@ export default function App() {
   const autopilot = useAutopilot({ wsUrl, nav: route.nav, waypoints: route.waypoints, geo })
   const track = useTrack(geo)
 
-  // Weather routing computation: start = boat (or first WP), goal = last WP
-  const start = geo.lat != null
+  // Weather routing: in navigazione dalla barca, in preparazione dal primo punto
+  // (la rotta scelta prende il posto di quella tracciata: deve partire da lì)
+  const firstWp = route.waypoints[0]
+  const start = firstWp && !(route.navigating && geo.lat != null)
+    ? { lat: firstWp.lat, lon: firstWp.lon }
+    : geo.lat != null
     ? { lat: geo.lat, lon: geo.lon }
-    : route.waypoints[0]
-    ? { lat: route.waypoints[0].lat, lon: route.waypoints[0].lon }
     : null
   const goal = route.waypoints.length >= 2
     ? { lat: route.waypoints[route.waypoints.length - 1].lat, lon: route.waypoints[route.waypoints.length - 1].lon }
     : null
   // Le previsioni della rotta sono quelle dell'area che attraversa, non di ciò
   // che la carta inquadra: con la carta altrove il vento era di un altro mare
-  const routeBounds = useMemo(() => routeForecastBounds(start, route.waypoints), [start?.lat, start?.lon, route.waypoints])
+  const routeBounds = useMemo(() => routeForecastBounds(start, goal ? [goal] : []), [start?.lat, start?.lon, goal?.lat, goal?.lon])
   const routeGribData = useGrib(routeBounds, !!routeBounds)
   const routeGridOk = !!routeGribData?.current
   const useViewGrib = !routeGridOk && !!routeGribData?.settled // senza rete: l'ultima previsione che c'è

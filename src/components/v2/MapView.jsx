@@ -1221,7 +1221,7 @@ export default function MapView({
     group.clearLayers()
     if (!routeOptions || mob) return // col MOB solo la rotta verso il naufrago
     const colors = {
-      fastest: '#5EE6C8',
+      fastest: '#C77DFF',
       comfortable: '#4A9EFF',
       safest: '#F5A623',
     }
