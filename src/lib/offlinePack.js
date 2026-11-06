@@ -23,7 +23,8 @@ const OFFLINE_CACHE = 'timone-offline'
 const META_KEY = 'timone.offline'
 const BUFFER_M = 1852 // un miglio per lato
 const NEAR_M = 926 // al massimo dettaglio dei segnalamenti, mezzo miglio
-const PARALLEL = 6
+const PARALLEL = 3 // pochi: i tasselli che la carta sta chiedendo non devono fare la coda dietro a questi
+const HOLD_MS = 2500
 const rad = Math.PI / 180
 
 /*
@@ -232,6 +233,13 @@ async function dataJobs(plan) {
   return jobs
 }
 
+// Mentre si zooma o si trascina lo scaricamento aspetta: sull'iPad centinaia di
+// richieste insieme al gesto bloccavano la carta
+let holdUntil = 0
+export const holdDownloads = () => {
+  holdUntil = Date.now() + HOLD_MS
+}
+
 async function downloadPlan(plan, { onProgress = () => {}, signal } = {}) {
   navigator.storage?.persist?.().catch(() => {}) // Safari: non cancellare i dati da solo
   const cache = await caches.open(OFFLINE_CACHE)
@@ -253,6 +261,7 @@ async function downloadPlan(plan, { onProgress = () => {}, signal } = {}) {
   let next = 0
   const worker = async () => {
     while (next < jobs.length) {
+      while (Date.now() < holdUntil && !signal?.aborted) await new Promise((resolve) => setTimeout(resolve, 250))
       if (signal?.aborted) return
       const job = jobs[next++]
       try {

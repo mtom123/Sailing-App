@@ -8,7 +8,7 @@ import { downloadCorridor, offlineInfo } from '../lib/offlinePack.js'
  */
 
 const AUTO_DELAY_MS = 3000
-const PROGRESS_EVERY_MS = 300 // aggiornamenti a schermo, non uno per tassello
+const PROGRESS_EVERY_MS = 1000 // ogni aggiornamento ridisegna l'app: non uno per tassello
 
 export default function useOfflineRoute(waypoints, { editing }) {
   const points = useMemo(() => waypoints.map((w) => ({ lat: w.lat, lon: w.lon })), [waypoints])

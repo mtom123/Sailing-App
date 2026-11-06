@@ -36,7 +36,7 @@ import { markDrawer, newMark } from '../../lib/marks.js'
 import { isSighting } from '../../lib/sightings.js'
 import { DOLPHIN_BUTTON } from '../../lib/sightingIcons.js'
 import AreaDownloadTool from './AreaDownloadTool.jsx'
-import { setOfflineLayers } from '../../lib/offlinePack.js'
+import { setOfflineLayers, holdDownloads } from '../../lib/offlinePack.js'
 import { OfflineZonesLayer } from '../../lib/offlineZonesLayer.js'
 import {
   Anchor,
@@ -557,6 +557,8 @@ export default function MapView({
       // restava vuota e frecce del vento e previsioni a griglia non partivano
       emitView()
       map.on('dragstart', () => setFollow(false))
+      // Solo gesti dell'utente: "segui barca" sposta la carta senza zoom né trascinamento
+      map.on('zoom drag', holdDownloads)
       map.on('click', (e) => {
         const st = useAppStore.getState()
         if (st.markPicking) {

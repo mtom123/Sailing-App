@@ -8,7 +8,9 @@
  * - Aree marine protette (protectedAreas.js): le zone vietate (zone A) sono
  *   pericoli e l'aggiramento le evita; AMP e zone B/C solo avviso.
  * - Aggiramento: A* su una griglia attorno alla tratta, con un margine dalla
- *   costa e dai bassi fondali, poi semplificato in pochi waypoint.
+ *   costa e dai bassi fondali, poi semplificato in pochi waypoint. Le aree
+ *   protette non sono vietate, ma costano di più: ci passa solo se girarci
+ *   attorno è molto più lungo (a motore hanno limiti di velocità).
  *
  * Ausilio alla pianificazione: dati indicativi, non sostituisce le carte.
  */
@@ -24,6 +26,8 @@ const MAX_CELLS = 250000 // celle della griglia per l'aggiramento
 const SHORE_BUFFER_M = 40 // distanza minima da terra e bassi fondali nell'aggiramento
 const ENDPOINT_FREE_M = 500 // aggiramento, attorno ai waypoint: solo la terra blocca (porti e baie)
 const ENDPOINT_SHALLOW_OK_M = 150 // controllo: bassi fondali accanto a un waypoint non segnalati
+const PARK_COST = 3 // aggiramento: un miglio dentro un'area protetta pesa come tre fuori
+const PARK_MARGIN = 2 // celle di rispetto attorno alle aree protette
 
 const project = (lat, lon) => L.CRS.EPSG3857.project(L.latLng(lat, lon))
 // Metri Web Mercator per metro reale alla latitudine data (≈1,4 a 44° N):
@@ -247,6 +251,7 @@ export async function detourLeg(a, b, minDepth, debug = null) {
   }
   const [isWater, sample, areas] = await Promise.all([waterRaster(box, res), prepareDepth(probe), protectedAreas(boxDeg(box))])
   const nogoAreas = areas.filter((z) => z.kind === 'nogo')
+  const parkAreas = areas.filter((z) => z.kind === 'protected')
 
   // Vicino ai due waypoint (porti, baie) niente margine né limite di profondità:
   // con le celle di una tratta lunga l'imboccatura di un porto risulterebbe chiusa
@@ -316,6 +321,32 @@ export async function detourLeg(a, b, minDepth, debug = null) {
     return unsafe
   }
 
+  // Celle in area protetta, tranne attorno ai waypoint (un porto dentro il parco
+  // si raggiunge), allargate di PARK_MARGIN celle: con le celle larghe delle
+  // tratte lunghe la rotta tagliava gli angoli
+  const park = new Uint8Array(w * h)
+  const parkBoxes = parkAreas.map(({ bbox: [s, west, n, e] }) => {
+    const sw = project(s, west)
+    const ne = project(n, e)
+    return [sw.x, sw.y, ne.x, ne.y]
+  })
+  for (let r = 0; r < h; r++) {
+    for (let c = 0; c < w; c++) {
+      const x = cx(c)
+      const y = cy(r)
+      if (!parkBoxes.some((b) => x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3]) || nearEnd(x, y)) continue
+      const ll = unproject(x, y)
+      if (!parkAreas.some((z) => inArea(z, ll.lat, ll.lng))) continue
+      for (let dr = -PARK_MARGIN; dr <= PARK_MARGIN; dr++) {
+        for (let dc = -PARK_MARGIN; dc <= PARK_MARGIN; dc++) {
+          const rr = r + dr
+          const cc = c + dc
+          if (rr >= 0 && cc >= 0 && rr < h && cc < w) park[rr * w + cc] = 1
+        }
+      }
+    }
+  }
+
   const toCell = (p) => [Math.min(w - 1, Math.max(0, Math.floor((p.x - minX) / res))), Math.min(h - 1, Math.max(0, Math.floor((maxY - p.y) / res)))]
   const DIRS = [
     [1, 0, 1],
@@ -380,7 +411,7 @@ export async function detourLeg(a, b, minDepth, debug = null) {
         if (nc < 0 || nr < 0 || nc >= w || nr >= h) continue
         const ni = nr * w + nc
         if (unsafe[ni] || closed[ni]) continue
-        const t = gScore[cur] + cost
+        const t = gScore[cur] + (park[ni] ? cost * PARK_COST : cost)
         if (t < gScore[ni]) {
           gScore[ni] = t
           came[ni] = cur
@@ -411,10 +442,12 @@ export async function detourLeg(a, b, minDepth, debug = null) {
   // 2. si tolgono i punti il cui precedente vede direttamente il successivo.
   const clear = ([c0, r0], [c1, r1]) => {
     const n = Math.max(Math.abs(c1 - c0), Math.abs(r1 - r0)) * 2
+    // Una scorciatoia non entra in un'area protetta, se non ci era già dentro
+    const parkOk = park[r0 * w + c0] || park[r1 * w + c1]
     for (let i = 0; i <= n; i++) {
       const c = Math.round(c0 + ((c1 - c0) * i) / (n || 1))
       const r = Math.round(r0 + ((r1 - r0) * i) / (n || 1))
-      if (unsafe[r * w + c]) return false
+      if (unsafe[r * w + c] || (park[r * w + c] && !parkOk)) return false
     }
     return true
   }
@@ -488,12 +521,14 @@ export async function detourLegRefined(a, b, minDepth, onProgress = () => {}) {
     pts = out.slice(1)
     if (!changed) break
   }
-  // Waypoint superflui: via se la tratta diretta tra i vicini è sicura
+  // Waypoint superflui: via se la tratta diretta tra i vicini è sicura e non
+  // entra in un'area protetta (quei punti servono proprio a girarci attorno)
   for (let k = 0; k < pts.length; ) {
     onProgress(`semplifico ${k + 1}/${pts.length}`)
     const prev = k === 0 ? a : pts[k - 1]
     const next = k === pts.length - 1 ? b : pts[k + 1]
-    if ((await checkLeg(prev, next, minDepth)).ok) pts.splice(k, 1)
+    const direct = await checkLeg(prev, next, minDepth)
+    if (direct.ok && !direct.protected.length) pts.splice(k, 1)
     else k++
   }
   return pts.map((p) => [p.lat, p.lon])
