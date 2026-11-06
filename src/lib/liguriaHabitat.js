@@ -5,6 +5,7 @@
  * (seagrass.js). Poligoni via WFS a blocchi fissi, tenuti in memoria.
  */
 import L from 'leaflet'
+import { MaskedCanvas } from './isobathLayer.js'
 import { LIGURIA_HABITAT_WFS_URL, LIGURIA_HABITAT_LAYER, LIGURIA_BOUNDS, liguriaHabitatStyle } from './seagrass.js'
 
 const PANE = 'habitatPane'
@@ -62,7 +63,7 @@ export const LiguriaHabitatLayer = L.Layer.extend({
       pane.style.zIndex = 245 // sopra il rilievo Shom, sotto le isobate
       pane.style.pointerEvents = 'none'
     }
-    this._renderer = L.canvas({ pane: PANE, padding: 0.1 })
+    this._renderer = new MaskedCanvas({ pane: PANE, padding: 0.1, lowRes: true })
     this._group = L.layerGroup()
     this._cellGroups = new Map() // "i,j" -> layerGroup dei poligoni del blocco
     map.on('moveend', this._update, this)

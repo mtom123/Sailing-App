@@ -39,8 +39,8 @@ export function ensurePane(map, name, zIndex) {
 // ciò che sta dentro
 //
 // Con `lowRes: true` disegna a risoluzione normale anche sugli schermi Retina:
-// per i veli di colore (terra) il dettaglio doppio non serve e su iPad la
-// memoria dei canvas è poca (zoom veloce col pizzico = app bloccata)
+// per veli di colore e linee sottili il dettaglio doppio non serve e su iPad
+// la memoria dei canvas è poca (zoom veloce col pizzico = app bloccata)
 export const MaskedCanvas = L.Canvas.extend({
   _update() {
     if (!this.options.lowRes) return L.Canvas.prototype._update.call(this)
@@ -162,7 +162,7 @@ export const IsobathLayer = L.Layer.extend({
   onAdd(map) {
     ensurePane(map, PANE, 250) // sopra le carte, sotto fari/boe e rotte
     ensurePane(map, LABEL_PANE, 255)
-    this._renderer = new MaskedCanvas({ pane: PANE, padding: CANVAS_PAD })
+    this._renderer = new MaskedCanvas({ pane: PANE, padding: CANVAS_PAD, lowRes: true })
     this._group = L.layerGroup().addTo(map)
     this._labels = L.layerGroup().addTo(map)
     map.on('moveend', this._update, this)

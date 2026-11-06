@@ -37,6 +37,7 @@ import { isSighting } from '../../lib/sightings.js'
 import { DOLPHIN_BUTTON } from '../../lib/sightingIcons.js'
 import AreaDownloadTool from './AreaDownloadTool.jsx'
 import { setOfflineLayers, holdDownloads } from '../../lib/offlinePack.js'
+import { startStallLog } from '../../lib/stallLog.js'
 import { OfflineZonesLayer } from '../../lib/offlineZonesLayer.js'
 import {
   Anchor,
@@ -559,6 +560,7 @@ export default function MapView({
       map.on('dragstart', () => setFollow(false))
       // Solo gesti dell'utente: "segui barca" sposta la carta senza zoom né trascinamento
       map.on('zoom drag', holdDownloads)
+      startStallLog(map, () => Object.keys(useAppStore.getState().layers).filter((k) => useAppStore.getState().layers[k]))
       map.on('click', (e) => {
         const st = useAppStore.getState()
         if (st.markPicking) {
@@ -1223,14 +1225,15 @@ export default function MapView({
       comfortable: '#4A9EFF',
       safest: '#F5A623',
     }
-    for (const [key, r] of Object.entries(routeOptions)) {
-      if (!r || !r.waypoints || r.waypoints.length < 2) continue
-      if (key === activeRouteOption) continue // skip active (it's the main)
-      L.polyline(r.waypoints.map((w) => [w.lat, w.lon]), {
-        color: colors[key] || '#8FA0AE',
-        weight: 2.5,
-        opacity: 0.75,
-        dashArray: '4 3',
+    // L'opzione scelta nel suo colore; la linea piena resta la rotta tracciata
+    const chosen = routeOptions[activeRouteOption]
+    if (chosen?.waypoints?.length >= 2) {
+      L.polyline(chosen.waypoints.map((w) => [w.lat, w.lon]), {
+        color: colors[activeRouteOption] || '#8FA0AE',
+        weight: 3.5,
+        opacity: 0.95,
+        dashArray: '8 6',
+        interactive: false,
       }).addTo(group)
     }
   }, [routeOptions, activeRouteOption, mob, mapReady])

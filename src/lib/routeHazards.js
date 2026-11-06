@@ -28,6 +28,8 @@ const ENDPOINT_FREE_M = 500 // aggiramento, attorno ai waypoint: solo la terra b
 const ENDPOINT_SHALLOW_OK_M = 150 // controllo: bassi fondali accanto a un waypoint non segnalati
 const PARK_COST = 3 // aggiramento: un miglio dentro un'area protetta pesa come tre fuori
 const PARK_MARGIN = 2 // celle di rispetto attorno alle aree protette
+const LAND_GRID_CELLS = 1e6 // griglia di terra per il weather routing
+const LAND_GRID_PAD_NM = 12
 
 const project = (lat, lon) => L.CRS.EPSG3857.project(L.latLng(lat, lon))
 // Metri Web Mercator per metro reale alla latitudine data (≈1,4 a 44° N):
@@ -176,6 +178,38 @@ export async function checkLeg(a, b, minDepth) {
     military: [...military],
     ordinances: ordinances.map((o) => ({ id: o.id, n: o.n, office: o.office, title: o.title, url: o.url, military: isMilitary(o) })),
   }
+}
+
+/**
+ * Griglia di terra dalla costa OSM attorno alla tratta, per il weather routing
+ * nel worker (dove i tasselli e i canvas non ci sono): { minX, maxY, res, w, h,
+ * land } in metri Web Mercator, terra allargata di una cella. null senza costa.
+ */
+export async function routeLandGrid(a, b) {
+  const pa = project(a.lat, a.lon)
+  const pb = project(b.lat, b.lon)
+  const m = mercPerM((a.lat + b.lat) / 2)
+  const box = legBox(a, b, Math.max(LAND_GRID_PAD_NM * 1852 * m, 0.5 * Math.hypot(pb.x - pa.x, pb.y - pa.y)))
+  const [minX, minY, maxX, maxY] = box
+  const res = Math.max(40, Math.sqrt(((maxX - minX) * (maxY - minY)) / LAND_GRID_CELLS))
+  const isWater = await waterRaster(box, res)
+  if (!isWater) return null
+  const w = Math.ceil((maxX - minX) / res)
+  const h = Math.ceil((maxY - minY) / res)
+  const land = new Uint8Array(w * h)
+  for (let r = 0; r < h; r++) {
+    for (let c = 0; c < w; c++) {
+      if (isWater(minX + (c + 0.5) * res, maxY - (r + 0.5) * res)) continue
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const rr = r + dr
+          const cc = c + dc
+          if (rr >= 0 && cc >= 0 && rr < h && cc < w) land[rr * w + cc] = 1
+        }
+      }
+    }
+  }
+  return { minX, maxY, res, w, h, land }
 }
 
 // ---------------------------------------------------------------- A*

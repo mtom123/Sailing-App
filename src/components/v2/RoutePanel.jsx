@@ -717,6 +717,21 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
                 })}
               </div>
             )}
+            {routeOptions?.allSame && (
+              <div className="mt-2 text-[calc(10px*var(--fs))] leading-relaxed text-fog">
+                Le tre rotte coincidono: con queste previsioni vento e onda restano sotto tutti i limiti.
+              </div>
+            )}
+            {routeOptions?.[activeRouteOption]?.coarseLand && (
+              <div className="mt-2 text-[calc(10px*var(--fs))] font-semibold leading-relaxed text-warn">
+                Costa dettagliata non disponibile: la rotta può passare su terra, controllala sulla carta.
+              </div>
+            )}
+            {routeOptions?.[activeRouteOption]?.widePorts && (
+              <div className="mt-2 text-[calc(10px*var(--fs))] font-semibold leading-relaxed text-warn">
+                Uscita dal porto o arrivo da controllare a vista: qui la rotta può tagliare moli e costa.
+              </div>
+            )}
             {!routeOptions && !computing && (
               <div className="mt-2 text-[calc(10px*var(--fs))] text-fog-dim text-center">
                 In attesa dati vento (GRIB)…

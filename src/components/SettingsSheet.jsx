@@ -4,6 +4,7 @@ import { useAppStore } from '../store/useAppStore.js'
 import { BOAT_LIBRARY, registerCustomPolar, listAvailablePolars } from '../routing/polarSolver.js'
 import { parsePolarFile, saveCustomPolar, listCustomPolars } from '../lib/polarParser.js'
 import PolarViewer from './PolarViewer.jsx'
+import { clearStalls, readStalls } from '../lib/stallLog.js'
 
 /*
  * Foglio impostazioni: tutto ciò che si configura una volta e poi si dimentica
@@ -30,6 +31,43 @@ function signalKSummary(data, vessels) {
   if (data.hdg != null || data.hdgMag != null) parts.push('prua')
   if (vessels) parts.push(`${vessels} navi AIS`)
   return parts.length ? parts.join(' · ') : 'collegato, in attesa dei dati'
+}
+
+// Blocchi registrati sull'iPad: si copiano e si mandano per capirne la causa
+function StallsSection() {
+  const [stalls, setStalls] = useState(readStalls)
+  const [copied, setCopied] = useState(false)
+  const btn = 'touch flex-1 rounded-md border border-line bg-surface py-2 text-[calc(10px*var(--fs))] font-semibold tracking-widest text-paper disabled:opacity-40'
+  const copy = async () => {
+    await navigator.clipboard.writeText(JSON.stringify(stalls, null, 1))
+    setCopied(true)
+  }
+  return (
+    <Section title="Blocchi della carta">
+      <div className="pb-1.5 text-[calc(10px*var(--fs))] leading-relaxed text-fog">
+        {stalls.length
+          ? `${stalls.length} registrati, il più lungo di ${(Math.max(...stalls.map((s) => s.ms)) / 1000).toFixed(1).replace('.', ',')} s. Ultimo a scala ${stalls[0].scale}.`
+          : 'Nessun blocco registrato.'}
+      </div>
+      <div className="flex gap-1.5">
+        <button type="button" disabled={!stalls.length} onClick={copy} className={btn}>
+          {copied ? 'COPIATI' : 'COPIA'}
+        </button>
+        <button
+          type="button"
+          disabled={!stalls.length}
+          onClick={() => {
+            clearStalls()
+            setStalls([])
+            setCopied(false)
+          }}
+          className={btn}
+        >
+          AZZERA
+        </button>
+      </div>
+    </Section>
+  )
 }
 
 function Section({ title, icon: Icon, children }) {
@@ -582,6 +620,8 @@ export default function SettingsSheet({
               <div className="text-[calc(10px*var(--fs))] text-warn">{weatherError}</div>
             </Section>
           )}
+
+          <StallsSection />
 
           <Section title="Informazioni">
             <div className="text-[calc(10px*var(--fs))] leading-relaxed text-fog">
