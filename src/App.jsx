@@ -514,7 +514,7 @@ export default function App() {
 
           {/* Avvisi sulla posizione GPS: zone vietate, militari, AMP, fascia dalla costa */}
           {!mob && (gpsAlerts.zone || (gpsAlerts.band?.inside && (gpsAlerts.band.warn || gpsAlerts.band.france))) && (
-            <div className="absolute bottom-8 left-1/2 z-[900] flex -translate-x-1/2 flex-col items-center gap-1">
+            <div className={`absolute left-1/2 z-[900] flex -translate-x-1/2 flex-col items-center gap-1 ${route.nav && !route.editing ? 'bottom-28' : 'bottom-8'}`}>
               {gpsAlerts.zone && (
                 <div
                   className={`glass flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs slide-up ${
@@ -557,7 +557,7 @@ export default function App() {
 
           {/* Allarme raffica (Impostazioni): in basso al centro, lontano dalla scala */}
           {windAlarmActive && !mob && (
-            <div className="glass-strong absolute bottom-3 left-1/2 z-[900] -translate-x-1/2 rounded-lg border border-warn/60 px-3 py-1.5 text-center text-warn">
+            <div className={`glass-strong absolute left-1/2 z-[900] -translate-x-1/2 rounded-lg border border-warn/60 px-3 py-1.5 text-center text-warn ${route.nav && !route.editing ? 'bottom-28' : 'bottom-3'}`}>
               <div className="text-[calc(12px*var(--fs))] font-bold tracking-wide">⚠ RAFFICHE PREVISTE {Math.round(gustNow)} kn</div>
               <div className="text-[calc(10px*var(--fs))] opacity-80">sopra la soglia di {windAlarm.threshold} kn · allarme in Impostazioni</div>
             </div>
@@ -565,7 +565,7 @@ export default function App() {
 
           {/* Anchor alarm banner */}
           {anchorAlarmActive && (
-            <div className="alarm-flash glass-strong absolute left-1/2 bottom-20 z-[1100] flex -translate-x-1/2 items-center gap-3 rounded-lg border-2 border-danger px-4 py-2 text-center">
+            <div className={`alarm-flash glass-strong absolute left-1/2 z-[1100] ${route.nav && !route.editing ? 'bottom-28' : 'bottom-20'} flex -translate-x-1/2 items-center gap-3 rounded-lg border-2 border-danger px-4 py-2 text-center`}>
               <div>
                 <div className="text-sm font-bold tracking-widest text-danger">
                   ⊕ ANCORA SCARROCCIA

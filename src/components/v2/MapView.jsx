@@ -238,6 +238,18 @@ const NauticalScale = L.Control.Scale.extend({
   },
 })
 
+function NavValue({ label, value, unit }) {
+  return (
+    <div className="text-center">
+      <div className="text-[calc(28px*var(--fs))] font-bold leading-none text-paper">
+        {value}
+        {unit && <span className="pl-1 text-[calc(13px*var(--fs))] font-semibold text-fog">{unit}</span>}
+      </div>
+      <div className="pt-0.5 text-[calc(10px*var(--fs))] font-semibold text-fog">{label}</div>
+    </div>
+  )
+}
+
 export default function MapView({
   geo,
   weather,
@@ -1609,18 +1621,20 @@ export default function MapView({
 
       {/* NAV banner */}
       {route.nav && !route.editing && !rulerOn && !areaOn && !mob && (
-        <div className="glass absolute left-1/2 top-3 z-[900] flex -translate-x-1/2 items-center gap-2 rounded-lg px-4 py-2 slide-up">
-          <span className="text-xs font-semibold text-phos">→ {route.nav.dest.name}</span>
-          <span className="text-xs text-paper tabular">
-            {route.nav.dtwNm.toFixed(1)} nm · {formatDeg(route.nav.btw)}°
-          </span>
-          <span className="text-xs text-fog tabular">
-            · ETA{' '}
-            {new Date(route.nav.etaMs).toLocaleTimeString('it-IT', {
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
-          </span>
+        <div
+          className="glass-strong absolute z-[900] max-w-[calc(100%-24px)] -translate-x-1/2 rounded-xl px-4 py-2 slide-up"
+          // Con il pannello aperto la carta a vista è stretta: si centra lì, sopra scala e legenda
+          style={activeDrawer && activeDrawer !== 'layers' ? { left: 'calc((100% - 380px) / 2)', bottom: 156 } : { left: '50%', bottom: 12 }}
+        >
+          <div className="truncate text-center text-[calc(13px*var(--fs))] font-bold text-phos">→ {route.nav.dest.name}</div>
+          <div className="flex items-baseline justify-center gap-5 whitespace-nowrap tabular-nums">
+            <NavValue label="Distanza" value={route.nav.dtwNm.toFixed(1).replace('.', ',')} unit="nm" />
+            <NavValue label="Rotta" value={`${formatDeg(route.nav.btw)}°`} />
+            <NavValue
+              label="Arrivo"
+              value={new Date(route.nav.etaMs).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+            />
+          </div>
         </div>
       )}
 
