@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronLeft, Download, MapPin, Navigation2, Plus, Search, Trash2, Upload } from 'lucide-react'
 import MarkPhotos from './MarkPhotos.jsx'
+import SightingReport from './SightingReport.jsx'
 import { importMarks, removeMark, saveMark } from '../hooks/useMarks.js'
 import { deletePhotos } from '../lib/markStore.js'
 import { depthAt } from '../lib/depthAt.js'
@@ -239,6 +240,7 @@ export function MarkEditor({ mark, geo, depthLive, draftM }) {
           </button>
         </div>
       )}
+      {sighting && <SightingReport mark={mark} />}
     </div>
   )
 }
