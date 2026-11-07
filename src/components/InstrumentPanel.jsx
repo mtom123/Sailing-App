@@ -3,7 +3,7 @@ import { useAppStore } from '../store/useAppStore.js'
 import { Copy, Satellite } from 'lucide-react'
 import WindCompass from './WindCompass.jsx'
 import ForecastChart from './ForecastChart.jsx'
-import TideChart from './TideChart.jsx'
+import CurrentChart from './CurrentChart.jsx'
 import { cardinal, formatCoord, formatDeg } from '../lib/geo.js'
 import { trueWind } from '../lib/boatData.js'
 
@@ -228,7 +228,7 @@ export default function InstrumentPanel({ geo, weather, sun, moon, boatData, dep
           <ForecastChart hourly={hourly} />
         </div>
         <div className="border-t border-line px-1.5 pb-4 pt-2">
-          <TideChart hourly={hourly} />
+          <CurrentChart hourly={hourly} />
         </div>
       </div>
     </div>

@@ -3,12 +3,13 @@ import { useEffect, useRef, useState } from 'react'
 /*
  * Meteo marino da Open-Meteo (gratuito, senza chiave):
  * - Forecast API: vento a 10 m (velocità, direzione, raffiche) in nodi.
- * - Marine API: onde (altezza, direzione, periodo) e livello del mare (marea).
+ * - Marine API: onde (altezza, direzione, periodo) e corrente (km/h, in nodi qui).
  * Aggiornamento quando il centro mappa si sposta in modo significativo
  * (griglia ~0.1°) oppure ogni 15 minuti.
  */
 
 const REFRESH_MS = 15 * 60 * 1000
+const KMH_TO_KN = 0.539956
 
 function buildForecastUrl(lat, lon) {
   const p = new URLSearchParams({
@@ -28,7 +29,7 @@ function buildMarineUrl(lat, lon) {
     latitude: lat.toFixed(3),
     longitude: lon.toFixed(3),
     current: 'wave_height,wave_direction,wave_period',
-    hourly: 'wave_height,wave_direction,wave_period,sea_level_height_msl',
+    hourly: 'wave_height,wave_direction,wave_period,ocean_current_velocity,ocean_current_direction',
     forecast_days: '3',
     timezone: 'auto',
   })
@@ -40,7 +41,7 @@ export default function useOpenMeteo(lat, lon) {
     wind: null, // { speed, dir, gust } in kn / gradi
     wave: null, // { height, dir, period }
     pressure: null, // { value hPa, trend3h hPa }
-    hourly: null, // [{ t, wind, gust, windDir, wave, seaLevel }]
+    hourly: null, // [{ t, wind, gust, windDir, wave, current, currentDir }]
     updatedAt: null,
     error: null,
     loading: false,
@@ -134,7 +135,8 @@ export default function useOpenMeteo(lat, lon) {
           gust: fh?.wind_gusts_10m?.[i] ?? null,
           windDir: fh?.wind_direction_10m?.[i] ?? null,
           wave: mh?.wave_height?.[i] ?? null,
-          seaLevel: mh?.sea_level_height_msl?.[i] ?? null,
+          current: mh?.ocean_current_velocity?.[i] != null ? mh.ocean_current_velocity[i] * KMH_TO_KN : null,
+          currentDir: mh?.ocean_current_direction?.[i] ?? null,
         }))
       }
 

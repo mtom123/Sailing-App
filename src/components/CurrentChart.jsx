@@ -1,32 +1,36 @@
 import { useMemo, useState } from 'react'
+import { cardinal } from '../lib/geo.js'
 
 /*
- * Curva di marea (livello del mare MSL, Marine API di Open-Meteo) a 3 giorni.
+ * Corrente prevista a 3 giorni (Marine API di Open-Meteo): la velocità è la
+ * curva, le frecce dicono verso dove spinge. Da noi la marea è quasi nulla.
  * Serie singola: il titolo la identifica, nessuna legenda necessaria.
  */
 
-const C_TIDE = '#3A86EA'
+const C_CURRENT = '#2EC4B6'
 const C_GRID = '#242424'
 const C_TEXT = '#9BA0A6'
 
 const W = 320
 const PAD_L = 30
 const PAD_R = 6
-const PAD_T = 10
+const PAD_T = 26 // sopra la curva, la fila delle frecce
 const PAD_B = 40 // ore 06/12/18 e, sotto, i giorni (come la previsione)
-const H = 76 + PAD_B
+const H = 76 + PAD_T + PAD_B - 10
+const ARROW_Y = 12
+const MIN_SCALE_KN = 0.5 // una corrente debole non deve sembrare forte
 
-export default function TideChart({ hourly }) {
+const fmtKn = (v) => v.toFixed(1).replace('.', ',')
+
+export default function CurrentChart({ hourly }) {
   const [hoverIdx, setHoverIdx] = useState(null)
 
   const data = useMemo(() => {
     if (!hourly) return null
-    const levels = hourly.map((h) => h.seaLevel)
-    const valid = levels.filter((v) => v != null)
+    const speeds = hourly.map((h) => h.current)
+    const valid = speeds.filter((v) => v != null)
     if (valid.length < 2) return null
-    const min = Math.min(...valid)
-    const max = Math.max(...valid)
-    const span = Math.max(max - min, 0.2)
+    const max = Math.max(...valid, MIN_SCALE_KN)
     let nowIdx = 0
     const now = Date.now()
     hourly.forEach((h, i) => {
@@ -39,25 +43,20 @@ export default function TideChart({ hourly }) {
       const hh = h.t.slice(11, 13)
       if (h.t.endsWith(':00') && ['06', '12', '18'].includes(hh)) hours.push({ i, label: hh })
     })
-    return { levels, min, max, span, nowIdx, n: hourly.length, days, hours }
+    return { speeds, max, nowIdx, n: hourly.length, days, hours }
   }, [hourly])
 
   if (!data) {
-    return (
-      <div className="label p-2">
-        Marea non disponibile per questa zona
-      </div>
-    )
+    return <div className="label p-2">Corrente non disponibile per questa zona</div>
   }
 
   const sx = (i) => PAD_L + (i / (data.n - 1)) * (W - PAD_L - PAD_R)
-  const sy = (v) =>
-    PAD_T + (1 - (v - data.min) / data.span) * (H - PAD_T - PAD_B)
+  const sy = (v) => PAD_T + (1 - v / data.max) * (H - PAD_T - PAD_B)
 
   let lineD = ''
   let areaD = ''
   let pen = false
-  data.levels.forEach((v, i) => {
+  data.speeds.forEach((v, i) => {
     if (v == null) {
       pen = false
       return
@@ -77,14 +76,16 @@ export default function TideChart({ hourly }) {
   }
 
   const idx = hoverIdx != null ? hoverIdx : data.nowIdx
-  const level = data.levels[idx]
+  const speed = data.speeds[idx]
+  const dir = hourly[idx].currentDir
 
   return (
     <div>
       <div className="flex items-center justify-between px-1 pb-1">
-        <span className="label">Marea (msl)</span>
+        <span className="label">Corrente</span>
         <span className="text-[calc(10px*var(--fs))] text-paper tabular-nums">
-          {level != null ? `${level >= 0 ? '+' : ''}${level.toFixed(2)} m` : '--'}
+          {speed != null ? `${fmtKn(speed)} kn` : '--'}
+          {dir != null ? ` verso ${Math.round(dir)}° ${cardinal(dir)}` : ''}
           {' · '}
           {new Date(hourly[idx].t).toLocaleString('it-IT', {
             weekday: 'short',
@@ -103,10 +104,10 @@ export default function TideChart({ hourly }) {
         <line x1={PAD_L} x2={W - PAD_R} y1={H - PAD_B} y2={H - PAD_B} stroke={C_GRID} />
         <line x1={PAD_L} x2={W - PAD_R} y1={PAD_T} y2={PAD_T} stroke={C_GRID} />
         <text x={PAD_L - 3} y={PAD_T + 3} textAnchor="end" fontSize="7" fill={C_TEXT}>
-          {data.max.toFixed(1)}
+          {fmtKn(data.max)}
         </text>
         <text x={PAD_L - 3} y={H - PAD_B + 3} textAnchor="end" fontSize="7" fill={C_TEXT}>
-          {data.min.toFixed(1)}
+          0
         </text>
         {data.hours.map((h) => (
           <g key={`h${h.i}`}>
@@ -115,18 +116,25 @@ export default function TideChart({ hourly }) {
             <text x={sx(h.i)} y={H - PAD_B + 14} textAnchor="middle" fontSize="10.5" fill={C_TEXT}>
               {h.label}
             </text>
+            {hourly[h.i].currentDir != null && (
+              <path
+                d="M0,-7 L4,1 L1,0 L1,7 L-1,7 L-1,0 L-4,1 Z"
+                fill={C_CURRENT}
+                transform={`translate(${sx(h.i).toFixed(1)},${ARROW_Y}) rotate(${hourly[h.i].currentDir})`}
+              />
+            )}
           </g>
         ))}
         {data.days.map((d) => (
           <g key={`d${d.i}`}>
             <line x1={sx(d.i)} x2={sx(d.i)} y1={PAD_T} y2={H - PAD_B + 18} stroke={C_TEXT} strokeOpacity="0.45" />
-            <text x={sx(d.i) + 3} y={H - PAD_B + 31} fontSize="11.5" fontWeight="bold" fill={C_TEXT} style={{ textTransform: 'uppercase' }}>
+            <text x={sx(d.i) + 3} y={H - PAD_B + 31} fontSize="11.5" fontWeight="bold" fill={C_TEXT} style={{ textTransform: 'capitalize' }}>
               {d.label}
             </text>
           </g>
         ))}
-        <path d={areaD} fill={C_TIDE} opacity="0.16" />
-        <path d={lineD} fill="none" stroke={C_TIDE} strokeWidth="2" strokeLinejoin="round" />
+        <path d={areaD} fill={C_CURRENT} opacity="0.16" />
+        <path d={lineD} fill="none" stroke={C_CURRENT} strokeWidth="2" strokeLinejoin="round" />
         <line
           x1={sx(data.nowIdx)}
           x2={sx(data.nowIdx)}
@@ -137,17 +145,13 @@ export default function TideChart({ hourly }) {
           strokeDasharray="2 3"
           opacity="0.6"
         />
-        {hoverIdx != null && level != null && (
-          <circle
-            cx={sx(hoverIdx)}
-            cy={sy(level)}
-            r="3.5"
-            fill={C_TIDE}
-            stroke="#121212"
-            strokeWidth="2"
-          />
+        {hoverIdx != null && speed != null && (
+          <circle cx={sx(hoverIdx)} cy={sy(speed)} r="3.5" fill={C_CURRENT} stroke="#121212" strokeWidth="2" />
         )}
       </svg>
+      <div className="px-1 text-[calc(9px*var(--fs))] leading-relaxed text-fog-dim">
+        Previsione al largo: vicino a costa e nei porti è solo indicativa.
+      </div>
     </div>
   )
 }
