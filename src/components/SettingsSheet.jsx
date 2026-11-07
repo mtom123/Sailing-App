@@ -36,6 +36,12 @@ function signalKSummary(data, vessels) {
 }
 
 // Blocchi registrati sull'iPad: si copiano e si mandano per capirne la causa
+const PROPULSION = [
+  { key: 'sail', label: 'VELA', hint: 'Polari, vento, onda e corrente. Motore solo senza vento.' },
+  { key: 'hybrid', label: 'VELA E MOTORE', hint: 'A vela; a motore quando verso la rotta si andrebbe più piano della soglia.' },
+  { key: 'motor', label: 'MOTORE', hint: 'Velocità del motore, frenata dall\'onda, più la corrente. Il vento conta solo come limite di sicurezza.' },
+]
+
 const BACKUP_DUE_DAYS = 14
 
 function BackupSection() {
@@ -392,6 +398,47 @@ export default function SettingsSheet({
                 La polar viene salvata localmente (IndexedDB) e usata dal routing engine.
               </div>
             </div>
+            <div className="label pt-3 pb-1 flex items-center gap-1.5">
+              <Gauge size={11} /> Propulsione nel weather routing
+            </div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {PROPULSION.map((p) => (
+                <button
+                  key={p.key}
+                  type="button"
+                  onClick={() => setBoat({ propulsion: p.key })}
+                  className={`touch rounded-md border py-2 text-[calc(10px*var(--fs))] font-semibold tracking-wider ${
+                    boat.propulsion === p.key ? 'border-phos bg-phos/15 text-phos' : 'border-line bg-surface text-paper'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <div className="pt-1 text-[calc(10px*var(--fs))] leading-relaxed text-fog">
+              {PROPULSION.find((p) => p.key === boat.propulsion)?.hint}
+            </div>
+            {boat.propulsion === 'hybrid' && (
+              <>
+                <div className="label pt-3 pb-1 flex items-center gap-1.5">
+                  <Gauge size={11} /> Motore sotto i
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min="2"
+                    max="6"
+                    step="0.5"
+                    value={boat.motorBelowKn}
+                    onChange={(e) => setBoat({ motorBelowKn: Number(e.target.value) })}
+                    className="flex-1"
+                  />
+                  <span className="font-mono text-xs font-bold text-paper w-16 text-right">
+                    {boat.motorBelowKn.toFixed(1)} kn
+                  </span>
+                </div>
+              </>
+            )}
             <div className="label pt-3 pb-1 flex items-center gap-1.5">
               <Gauge size={11} /> Velocità motore
             </div>

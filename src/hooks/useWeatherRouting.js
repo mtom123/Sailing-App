@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store/useAppStore.js'
-import { routeLandGrid } from '../lib/routeHazards.js'
+import { checkOptions, markObstacles, routeLandGrid } from '../lib/routeHazards.js'
+import { mapAtRest } from '../lib/offlinePack.js'
+
+const MAX_OBSTACLE_ROUNDS = 3
+const OBSTACLE_BUDGET_MS = 30000 // oltre non si ricalcola: resta l'avviso sull'opzione
 
 /**
  * Hook: usa il routing isocrone via Web Worker per non bloccare la UI.
@@ -44,15 +48,34 @@ export default function useWeatherRouting({ start, goal, grib, currentField, gri
   useEffect(() => {
     if (!key) {
       setRouteOptions(null)
+      setComputing(false)
       return undefined
     }
 
-    const reqId = ++reqIdRef.current
     setComputing(true)
     let alive = true
-    let stop = () => {}
+
+    const solve = (opts) =>
+      new Promise((resolve, reject) => {
+        const worker = workerRef.current
+        if (!worker) {
+          // Senza worker si calcola qui, bloccando la pagina
+          import('../routing/isochroneEngine.js').then(({ computeRouteOptions }) => resolve(computeRouteOptions(opts)), reject)
+          return
+        }
+        const id = ++reqIdRef.current
+        const onMessage = (e) => {
+          if (e.data.id !== id) return
+          worker.removeEventListener('message', onMessage)
+          if (e.data.type === 'success') resolve(e.data.result)
+          else reject(new Error(e.data.error))
+        }
+        worker.addEventListener('message', onMessage)
+        worker.postMessage({ id, opts })
+      })
 
     const run = async () => {
+      const t0 = Date.now()
       // La costa vera: senza, il motore ha solo una maschera grossolana
       const landGrid = await routeLandGrid(start, goal).catch(() => null)
       if (!alive) return
@@ -62,53 +85,41 @@ export default function useWeatherRouting({ start, goal, grib, currentField, gri
         grib,
         currentField,
         polarKey: boat.polarProfile,
+        propulsion: { mode: boat.propulsion, motorKn: boat.motoringSpeedKn, motorBelowKn: boat.motorBelowKn },
         departureMs: Date.now() + departureOffsetH * 3600 * 1000,
         maxHours: 48,
         landGrid,
       }
-
-      const worker = workerRef.current
-      if (worker) {
-        // Use worker
-        const onMessage = (e) => {
-          if (e.data.id !== reqId) return // stale response
-          if (e.data.type === 'success') {
-            setRouteOptions(e.data.result)
-            setDuration(e.data.duration)
-          } else {
-            console.error('Worker routing error:', e.data.error)
-            setRouteOptions(null)
+      const minDepth = (boat.draftM ?? 1.9) + (boat.safetyMarginM ?? 1)
+      try {
+        // La griglia del calcolo è larga: ciò che il controllo fine trova sulle
+        // rotte diventa terra, e si ricalcola
+        let result = await solve(opts)
+        for (let round = 0; alive; round++) {
+          const check = await checkOptions(result, minDepth, { mapAtRest, isAlive: () => alive })
+          if (!check) return
+          if (!check.points.length || !landGrid || round === MAX_OBSTACLE_ROUNDS || Date.now() - t0 > OBSTACLE_BUDGET_MS) {
+            for (const key of Object.keys(check.unsafe)) result[key] = { ...result[key], unsafe: true }
+            break
           }
-          setComputing(false)
+          markObstacles(landGrid, check.points)
+          result = await solve(opts)
         }
-        worker.addEventListener('message', onMessage)
-        worker.postMessage({ id: reqId, opts })
-        stop = () => worker.removeEventListener('message', onMessage)
-      } else {
-        // Fallback: inline (block UI)
-        console.warn('Worker not available, using inline routing')
-        import('../routing/isochroneEngine.js').then(({ computeRouteOptions }) => {
-          if (reqId !== reqIdRef.current) return // stale
-          try {
-            const t0 = Date.now()
-            const result = computeRouteOptions(opts)
-            setRouteOptions(result)
-            setDuration(Date.now() - t0)
-          } catch (err) {
-            console.error('Inline routing error:', err)
-            setRouteOptions(null)
-          }
-          setComputing(false)
-        })
+        if (!alive) return
+        setRouteOptions(result)
+        setDuration(Date.now() - t0)
+      } catch (err) {
+        console.error('Weather routing error:', err)
+        if (alive) setRouteOptions(null)
       }
+      if (alive) setComputing(false)
     }
     run()
     return () => {
       alive = false
-      stop()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, boat.polarProfile, departureOffsetH])
+  }, [key, boat.polarProfile, boat.propulsion, boat.motoringSpeedKn, boat.motorBelowKn, boat.draftM, boat.safetyMarginM, departureOffsetH])
 
   return { routeOptions, computing, duration }
 }

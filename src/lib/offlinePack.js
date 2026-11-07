@@ -239,6 +239,10 @@ let holdUntil = 0
 export const holdDownloads = () => {
   holdUntil = Date.now() + HOLD_MS
 }
+/** Per i lavori pesanti: si risolve quando la carta è ferma. */
+export async function mapAtRest() {
+  while (Date.now() < holdUntil) await new Promise((resolve) => setTimeout(resolve, 200))
+}
 
 async function downloadPlan(plan, { onProgress = () => {}, signal } = {}) {
   navigator.storage?.persist?.().catch(() => {}) // Safari: non cancellare i dati da solo

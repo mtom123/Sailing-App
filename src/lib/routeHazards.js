@@ -212,6 +212,59 @@ export async function routeLandGrid(a, b) {
   return { minX, maxY, res, w, h, land }
 }
 
+const OPTION_HAZARDS = ['land', 'shallow', 'nogo']
+const ENDS_FREE_M = 926 // attorno a partenza e arrivo decide chi li ha scelti (moli, porti)
+const OBSTACLE_RADIUS_M = 500
+
+/**
+ * Controllo fine delle opzioni meteo. La griglia di terra del calcolo è larga:
+ * sulle rotte lunghe perde isolotti e secche. Un tratto alla volta, a carta
+ * ferma (checkLeg pesa). Ritorna { points, unsafe: { opzione: true } } oppure
+ * null se isAlive() dice che il risultato non serve più.
+ */
+export async function checkOptions(options, minDepth, { mapAtRest, isAlive }) {
+  const legs = new Map() // "a|b" -> punti pericolosi: le opzioni condividono tratti
+  const points = []
+  const unsafe = {}
+  for (const key of ['fastest', 'comfortable', 'safest']) {
+    const wps = options[key]?.waypoints
+    if (!wps) continue
+    const ends = [wps[0], wps[wps.length - 1]]
+    const farFromEnds = ([lat, lon]) => ends.every((e) => L.latLng(lat, lon).distanceTo([e.lat, e.lon]) > ENDS_FREE_M)
+    for (let i = 1; i < wps.length; i++) {
+      const id = `${wps[i - 1].lat},${wps[i - 1].lon}|${wps[i].lat},${wps[i].lon}`
+      if (!legs.has(id)) {
+        await mapAtRest()
+        if (!isAlive()) return null
+        const result = await checkLeg(wps[i - 1], wps[i], minDepth).catch(() => ({ hazards: [] }))
+        const found = (result.hazards || []).filter((h) => OPTION_HAZARDS.includes(h.kind)).flatMap((h) => h.path || [])
+        legs.set(id, found.filter(farFromEnds))
+        points.push(...legs.get(id))
+        await new Promise((resolve) => setTimeout(resolve, 30))
+      }
+      if (legs.get(id).length) unsafe[key] = true
+    }
+  }
+  return { points, unsafe }
+}
+
+/** Segna i punti come terra nella griglia del calcolo, con un margine. */
+export function markObstacles(grid, points) {
+  for (const [lat, lon] of points) {
+    const p = project(lat, lon)
+    const radius = Math.ceil((OBSTACLE_RADIUS_M * mercPerM(lat)) / grid.res)
+    const c = Math.floor((p.x - grid.minX) / grid.res)
+    const r = Math.floor((grid.maxY - p.y) / grid.res)
+    for (let dr = -radius; dr <= radius; dr++) {
+      for (let dc = -radius; dc <= radius; dc++) {
+        const rr = r + dr
+        const cc = c + dc
+        if (dr * dr + dc * dc <= radius * radius && rr >= 0 && cc >= 0 && rr < grid.h && cc < grid.w) grid.land[rr * grid.w + cc] = 1
+      }
+    }
+  }
+}
+
 // ---------------------------------------------------------------- A*
 
 class Heap {

@@ -688,6 +688,11 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
                   <span>Vento max: <b className="text-paper font-mono">{routeOptions[activeRouteOption].maxWindKn.toFixed(0)}kn</b></span>
                   <span>Onda max: <b className="text-paper font-mono">{routeOptions[activeRouteOption].maxWaveM.toFixed(1)}m</b></span>
                 </div>
+                {routeOptions[activeRouteOption].motorHours > 0.05 && (
+                  <div className="mt-1">
+                    A motore: <b className="text-paper font-mono">{routeOptions[activeRouteOption].motorHours.toFixed(1).replace('.', ',')} h</b> su {routeOptions[activeRouteOption].durationH.toFixed(1).replace('.', ',')} h
+                  </div>
+                )}
               </div>
             )}
             {routeOptions?.[activeRouteOption] && (
@@ -756,6 +761,11 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
             {routeOptions?.[activeRouteOption]?.overLimits && (
               <div className="mt-2 text-[calc(10px*var(--fs))] font-semibold leading-relaxed text-warn">
                 Anche questa rotta supera i limiti dell'opzione in un tratto: valuta di partire in un altro momento.
+              </div>
+            )}
+            {routeOptions?.[activeRouteOption]?.unsafe && (
+              <div className="mt-2 text-[calc(10px*var(--fs))] font-semibold leading-relaxed text-warn">
+                Questa rotta tocca ancora terra o bassi fondali: controllala sulla carta prima di usarla.
               </div>
             )}
             {routeOptions?.[activeRouteOption]?.coarseLand && (

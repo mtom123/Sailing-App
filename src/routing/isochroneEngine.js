@@ -169,25 +169,66 @@ function legPenalty(tws, twa, wave, gust) {
   return p
 }
 
-// Velocità utile lungo una rotta: se la prua diretta non conviene (bolina
-// stretta, poppa piena) si bordeggia attorno alla linea
+// Velocità utile a vela lungo una rotta: dentro l'angolo di bolina o di poppa
+// migliore si bordeggia sulle due mure attorno alla linea, e vale la VMG
 function madeGoodKn(polarKey, tws, twa) {
-  if (tws < 1) return MOTOR_KN
-  let best = 0
-  for (let a = 0; a <= 180; a += 10) {
-    const off = Math.abs(a - twa)
-    if (off < 90) best = Math.max(best, solvePolar(polarKey, tws, a) * Math.cos((off * Math.PI) / 180))
+  const rad = Math.PI / 180
+  let up = { vmg: 0, angle: 0 }
+  let down = { vmg: 0, angle: 180 }
+  for (let a = 30; a <= 180; a += 5) {
+    const vmg = solvePolar(polarKey, tws, a) * Math.cos(a * rad)
+    if (vmg > up.vmg) up = { vmg, angle: a }
+    if (-vmg > down.vmg) down = { vmg: -vmg, angle: a }
   }
-  return Math.max(best, solvePolar(polarKey, tws, twa), 1)
+  let kn = solvePolar(polarKey, tws, twa)
+  if (twa < up.angle) kn = up.vmg / Math.cos(twa * rad)
+  else if (twa > down.angle) kn = down.vmg / -Math.cos(twa * rad)
+  return Math.max(kn, 1)
 }
+
+/*
+ * Come si muove la barca. mode: 'sail' polari, 'motor' sempre a motore, 'hybrid'
+ * a vela, a motore quando verso quella rotta si fa meno di motorBelowKn. A motore
+ * il vento non conta e l'onda frena: stima da tarare, un 12% per metro oltre il
+ * mezzo metro, mai sotto metà velocità.
+ */
+function makeDrive(polarKey, { mode = 'sail', motorKn = MOTOR_KN, motorBelowKn = 4 } = {}) {
+  const motorSpeed = (wave) => motorKn * Math.max(0.5, 1 - 0.12 * Math.max(0, wave - 0.5))
+  const seen = new Map()
+  const madeGood = (tws, twa) => {
+    const key = `${Math.round(tws)}|${Math.round(twa / 5)}`
+    if (!seen.has(key)) seen.set(key, madeGoodKn(polarKey, tws, twa))
+    return seen.get(key)
+  }
+  const usesMotor = (tws, twa) => mode === 'motor' || tws < 1 || (mode === 'hybrid' && madeGood(tws, twa) < motorBelowKn)
+  return {
+    mode,
+    /** Velocità lungo la prua (ricerca); 0 se a vela di lì non si passa. */
+    heading(tws, twa, wave) {
+      if (usesMotor(tws, twa)) return { kn: motorSpeed(wave), motor: true }
+      const kn = solvePolar(polarKey, tws, twa)
+      // Con un filo di vento si avanza piano: scartare tutte le prue chiudeva la ricerca
+      return { kn: tws < LIGHT_AIR_KN ? Math.max(kn, 0.5) : kn, motor: false }
+    },
+    /** Velocità lungo una linea, bordi compresi (tempi finali). */
+    line(tws, twa, wave) {
+      if (usesMotor(tws, twa)) return { kn: motorSpeed(wave), motor: true }
+      return { kn: madeGood(tws, twa), motor: false }
+    },
+  }
+}
+
+// A motore contano solo l'onda e la corrente: niente bolina né vento nel comfort
+const seaPenalty = (motor, tws, twa, wave, gust) => (motor ? legPenalty(0, null, wave, 0) : legPenalty(tws, twa, wave, gust))
 
 /*
  * Percorre la linea disegnata con vento, onda e corrente di ogni ora: tempi,
  * distanza e condizioni sono quelli della rotta che si vede, non della ricerca.
  * cost: le ore, più le ore scomode pesate con `weight` e quelle oltre i limiti.
  */
-function sailLine(points, { grib, currentField, polarKey, departureMs }, weight, limits) {
+function sailLine(points, { grib, currentField, drive, departureMs }, weight, limits) {
   let t = departureMs
+  let motorH = 0
   let distNm = 0
   let rough = 0
   let overH = 0
@@ -207,10 +248,12 @@ function sailLine(points, { grib, currentField, polarKey, departureMs }, weight,
       const current = currentField ? sampleCurrent(currentField, pos.lat, pos.lon, t) : { speed: 0, dir: 0 }
       const twa = Math.abs(((wind.dir - course + 540) % 360) - 180)
       const drift = current.speed * Math.cos(((current.dir - course) * Math.PI) / 180)
-      const ground = Math.max(0.5, madeGoodKn(polarKey, wind.speed, twa) + drift)
+      const move = drive.line(wind.speed, twa, wave)
+      const ground = Math.max(0.5, move.kn + drift)
       const stepNm = Math.min(left, ground * 0.5)
       const hours = stepNm / ground
-      rough += legPenalty(wind.speed, twa, wave, gust) * hours
+      rough += seaPenalty(move.motor, wind.speed, twa, wave, gust) * hours
+      if (move.motor) motorH += hours
       if (wind.speed > limits.maxWindKn || wave > limits.maxWaveM) overH += hours
       maxWind = Math.max(maxWind, wind.speed)
       maxWave = Math.max(maxWave, wave)
@@ -221,7 +264,7 @@ function sailLine(points, { grib, currentField, polarKey, departureMs }, weight,
     }
   }
   const hours = (t - departureMs) / 3600000
-  return { etaMs: t, hours, distNm, comfort: rough / Math.max(hours, 0.01), maxWind, maxWave, cost: hours + weight * rough + overH * 50 }
+  return { etaMs: t, hours, distNm, comfort: rough / Math.max(hours, 0.01), motorH, maxWind, maxWave, cost: hours + weight * rough + overH * 50 }
 }
 
 // Toglie le spezzate che non servono: un punto resta solo se senza costa di più
@@ -257,6 +300,7 @@ const PORT_FREE_NM = 0.3
 const PORT_FREE_WIDE_NM = 1
 const MAX_SEARCH_MS = 20000 // tetto per ogni rotta: sull'iPad il worker non deve girare per minuti
 const MOTOR_KN = 6.5 // senza vento si va a motore
+const LIGHT_AIR_KN = 3
 const MAX_SAIL_MS = 120 * 3600000
 const OVER_LIMIT_SLOW = 4 // oltre i limiti dell'opzione un passo rende un quinto
 
@@ -353,6 +397,7 @@ export function computeRoute(opts) {
     grib,
     currentField = null,
     polarKey = 'dufour-41-classic',
+    propulsion = {},
     departureMs = Date.now(),
     maxHours = 72,
     constraints = {},
@@ -362,6 +407,7 @@ export function computeRoute(opts) {
   } = opts
 
   const land = makeLandCheck(landGrid, start, goal, isLandFn, portFreeNm)
+  const drive = makeDrive(polarKey, propulsion)
   const comfortWeight = constraints.comfortWeight ?? 0
   const softLimits = constraints.soft ?? { maxWindKn: Infinity, maxWaveM: Infinity }
 
@@ -376,9 +422,10 @@ export function computeRoute(opts) {
   const maxDistNm = directDist * 3 + 50
   const maxDistM = maxDistNm * 1852
   const goalThresholdNm = Math.min(2, Math.max(0.3, directDist * 0.05))
-  // Riquadri della frontiera in proporzione alla tratta: un punto ogni 6 miglia
-  // non riusciva a doppiare un capo
-  const cellDeg = Math.max(0.01, directDist / 60 / 15)
+  // Riquadri della frontiera in proporzione alla tratta. Devono stare vicini al
+  // passo della barca: con poco vento un passo per doppiare un capo restava nel suo
+  // riquadro senza avvicinarsi, veniva scartato e la ricerca finiva senza rotta
+  const cellDeg = Math.max(0.01, directDist / 60 / 40)
 
   let frontier = [
     {
@@ -417,17 +464,10 @@ export function computeRoute(opts) {
       for (let d = 0; d < NUM_DIRECTIONS; d++) {
         const courseDeg = (d * 360) / NUM_DIRECTIONS
 
-        let boatSpeedKn
-        let twa = null
-
-        if (!wind.speed || wind.speed < 1) {
-          // vento zero: usa motore
-          boatSpeedKn = MOTOR_KN
-        } else {
-          twa = Math.abs(((wind.dir - courseDeg + 540) % 360) - 180)
-          boatSpeedKn = solvePolar(polarKey, wind.speed, twa)
-          if (boatSpeedKn < 0.5) continue
-        }
+        const twa = Math.abs(((wind.dir - courseDeg + 540) % 360) - 180)
+        const move = drive.heading(wind.speed || 0, twa, wave)
+        const boatSpeedKn = move.kn
+        if (boatSpeedKn < 0.5) continue
 
         // Calcola spostamento tenendo conto della corrente
         // La barca naviga a boatSpeedKn lungo courseDeg
@@ -435,7 +475,7 @@ export function computeRoute(opts) {
         // Risultato: posizione finale = barca + corrente
         // Nella ricerca i tratti scomodi "rendono" meno: un passo copre meno
         // strada e l'orologio delle previsioni avanza meno. Tempi veri: sailLine
-        const slow = 1 + comfortWeight * (twa == null ? 0 : legPenalty(wind.speed, twa, wave, gust)) + (overSoft ? OVER_LIMIT_SLOW : 0)
+        const slow = 1 + comfortWeight * seaPenalty(move.motor, wind.speed, twa, wave, gust) + (overSoft ? OVER_LIMIT_SLOW : 0)
         const boatDistM = (boatSpeedKn * 1852 * dtSec) / 3600 / slow
         const currentDistM = (current.speed * 1852 * dtSec) / 3600 / slow
 
@@ -491,7 +531,7 @@ export function computeRoute(opts) {
   for (let cur = goalReached; cur; cur = cur.parent) path.unshift({ lat: cur.lat, lon: cur.lon })
   path[0] = { lat: start.lat, lon: start.lon }
   path.push({ lat: goal.lat, lon: goal.lon })
-  const ctx = { grib, currentField, polarKey, departureMs }
+  const ctx = { grib, currentField, drive, departureMs }
   const { pts, line } = straighten(simplifyRoute(path, Math.max(0.2, directDist * 0.02), land), land, ctx, comfortWeight, softLimits)
   if (!line) return null
 
@@ -500,6 +540,7 @@ export function computeRoute(opts) {
     etaMs: line.etaMs,
     distNm: line.distNm,
     comfortScore: line.comfort,
+    motorHours: line.motorH,
     maxWindKn: line.maxWind,
     maxWaveM: line.maxWave,
     overLimits: line.maxWind > softLimits.maxWindKn * 1.05 || line.maxWave > softLimits.maxWaveM * 1.05, // uno sfioramento non conta
@@ -564,6 +605,8 @@ function sameRoute(a, b) {
 export function computeRouteOptions(opts) {
   const baseOpts = { ...opts, maxHours: 72 }
   const fastestLimits = { maxWindKn: 35, maxWaveM: 4 } // valgono per tutte
+  // A motore il vento resta solo limite di sicurezza
+  const windLimit = (kn) => (opts.propulsion?.mode === 'motor' ? Infinity : kn)
 
   let fastest = computeRoute({ ...baseOpts, constraints: fastestLimits })
   if (!fastest && opts.landGrid) {
@@ -572,11 +615,11 @@ export function computeRouteOptions(opts) {
   }
   let comfortable = computeRoute({
     ...baseOpts,
-    constraints: { ...fastestLimits, soft: { maxWindKn: 22, maxWaveM: 1.5 }, comfortWeight: 0.4 },
+    constraints: { ...fastestLimits, soft: { maxWindKn: windLimit(22), maxWaveM: 1.5 }, comfortWeight: 0.4 },
   })
   let safest = computeRoute({
     ...baseOpts,
-    constraints: { ...fastestLimits, soft: { maxWindKn: 18, maxWaveM: 1 }, comfortWeight: 1 },
+    constraints: { ...fastestLimits, soft: { maxWindKn: windLimit(18), maxWaveM: 1 }, comfortWeight: 1 },
   })
 
   // La ricerca è approssimata: l'opzione che non batte quella prima di lei
