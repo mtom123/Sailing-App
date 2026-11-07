@@ -519,6 +519,7 @@ export default function App() {
             mob={mob}
             mobEst={mobShowEst ? { ...mobEst, active: mobTarget === 'est' } : null}
             routeOptions={routeOptions}
+            grib={grib}
             onDropMob={dropMob}
           />
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Navigation2, MapPin, Anchor, X, Ship, BarChart3, Bookmark, Fish } from 'lucide-react'
 import { haversine, bearing, formatDeg, metersToNm, cardinal } from '../../lib/geo.js'
 import { depthAt } from '../../lib/depthAt.js'
@@ -6,6 +6,7 @@ import { formatDepth } from './DepthHover.jsx'
 import { bandAt, bandText } from '../../lib/coastBand.js'
 import { isMilitary, ordinancesNear } from '../../lib/ordinances.js'
 import { useAppStore } from '../../store/useAppStore.js'
+import { sampleCurrent, sampleSea, sampleWind } from '../../routing/isochroneEngine.js'
 
 /**
  * Long-press menu su mappa — per iPad/touch UX.
@@ -22,6 +23,26 @@ import { useAppStore } from '../../store/useAppStore.js'
 // Il menu si apre col dito ancora giù: al rilascio l'iPad manda un tocco sul
 // punto, che ora è coperto dal menu e lo chiudeva (o sceglieva una voce)
 const RELEASE_GUARD_MS = 500
+const FORECAST_SLACK_MS = 3600000
+
+const oneDecimal = (v) => v.toFixed(1).replace('.', ',')
+const compass = (deg) => {
+  const d = ((Math.round(deg) % 360) + 360) % 360
+  return `${d}° ${cardinal(d)}`
+}
+
+// Vento, onda e corrente nel punto, all'ora del cursore del tempo
+function forecastAt(point, grib, currentField, timeMs) {
+  const times = grib?.grid?.[0]?.times
+  if (!times?.length) return null
+  const from = new Date(times[0]).getTime()
+  const to = new Date(times[times.length - 1]).getTime()
+  if (timeMs < from - FORECAST_SLACK_MS || timeMs > to + FORECAST_SLACK_MS) return { old: true }
+  const wind = sampleWind(grib, point.lat, point.lon, timeMs)
+  const { wave } = sampleSea(grib, point.lat, point.lon, timeMs)
+  const current = currentField ? sampleCurrent(currentField, point.lat, point.lon, timeMs) : null
+  return { wind, wave, current }
+}
 
 export default function MapContextMenu({
   map,
@@ -34,11 +55,18 @@ export default function MapContextMenu({
   onAddMark,
   onAddSighting,
   boatPosition,
+  grib = null,
+  currentField = null,
 }) {
   const [menu, setMenu] = useState(null) // { lat, lon, x, y }
   const [depth, setDepth] = useState(undefined) // undefined = in arrivo, null = terra / nessun dato
   const [band, setBand] = useState(undefined) // fascia dalla costa: undefined = in arrivo
   const coastBand = useAppStore((s) => s.coastBand)
+  const timeOffset = useAppStore((s) => s.timeOffset)
+  const forecast = useMemo(
+    () => (menu ? forecastAt(menu, grib, currentField, Date.now() + timeOffset * 3600000) : null),
+    [menu, grib, currentField, timeOffset]
+  )
   const [nearby, setNearby] = useState([]) // ordinanze entro 1,5 km
   const pressTimerRef = useRef(null)
   const startPosRef = useRef(null)
@@ -254,7 +282,7 @@ export default function MapContextMenu({
   // Posizione dentro la carta (il menu sta nel suo riquadro, non nella finestra)
   const box = map.getContainer().getBoundingClientRect()
   const menuW = 220
-  const menuH = Math.min(actions.length * 44 + 190, box.height - 20)
+  const menuH = Math.min(actions.length * 44 + 250, box.height - 20)
   const x = Math.max(10, Math.min(menu.x - box.left, box.width - menuW - 10))
   const y = Math.max(10, Math.min(menu.y - box.top, box.height - menuH - 10))
 
@@ -291,6 +319,27 @@ export default function MapContextMenu({
               '— (terra o nessun dato)'
             )}
           </div>
+          {forecast?.old && <div className="mt-1 text-[calc(10px*var(--fs))] text-warn">Previsione scaduta: niente meteo qui</div>}
+          {forecast?.wind?.speed > 0 && (
+            <div className="mt-1 text-[calc(10px*var(--fs))] text-fog">
+              Vento <span className="font-mono text-xs font-semibold text-paper">{Math.round(forecast.wind.speed)} kn</span> da {compass(forecast.wind.dir)}
+            </div>
+          )}
+          {forecast?.wave > 0 && (
+            <div className="text-[calc(10px*var(--fs))] text-fog">
+              Onda <span className="font-mono text-xs font-semibold text-paper">{oneDecimal(forecast.wave)} m</span>
+            </div>
+          )}
+          {forecast?.current?.speed > 0 && (
+            <div className="text-[calc(10px*var(--fs))] text-fog">
+              Corrente <span className="font-mono text-xs font-semibold text-paper">{oneDecimal(forecast.current.speed)} kn</span> verso {compass(forecast.current.dir)}
+            </div>
+          )}
+          {forecast && !forecast.old && timeOffset !== 0 && (
+            <div className="text-[calc(9px*var(--fs))] text-fog-dim">
+              Previsione per le {new Date(Date.now() + timeOffset * 3600000).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+            </div>
+          )}
           {nearby.map((o) => (
             <a
               key={o.id}

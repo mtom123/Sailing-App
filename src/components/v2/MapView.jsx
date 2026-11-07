@@ -271,6 +271,7 @@ export default function MapView({
   onDropMob,
   mobEst = null, // { lat, lon, radiusM, minutes, active } stima di deriva del MOB
   raceRoute = null, // rotta ideale verso la boa (points, legs)
+  grib = null, // previsioni dell'area inquadrata, per il menu della pressione lunga
 }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
@@ -1657,6 +1658,8 @@ export default function MapView({
         onAddSighting={(lat, lon) => useAppStore.setState({ sightingPoint: { lat, lon }, markEdit: null, activeDrawer: 'sightings' })}
         onShowMeteogram={(lat, lon) => setMeteoPoint({ lat, lon })}
         boatPosition={geo.lat != null ? { lat: geo.lat, lon: geo.lon } : null}
+        grib={grib}
+        currentField={currentField}
       />
 
       {/* Meteogram popup */}

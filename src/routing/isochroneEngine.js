@@ -144,7 +144,7 @@ function sampleTimeAtPointCurrent(point, timeMs) {
 }
 
 // Onda e raffica del punto di griglia più vicino: non servono interpolate
-function sampleSea(grib, lat, lon, timeMs) {
+export function sampleSea(grib, lat, lon, timeMs) {
   if (!grib?.grid?.length) return { wave: 0, gust: 0 }
   let near = grib.grid[0]
   let bestD = Infinity
