@@ -46,7 +46,7 @@ function StallsSection() {
     <Section title="Blocchi della carta">
       <div className="pb-1.5 text-[calc(10px*var(--fs))] leading-relaxed text-fog">
         {stalls.length
-          ? `${stalls.length} registrati, il più lungo di ${(Math.max(...stalls.map((s) => s.ms)) / 1000).toFixed(1).replace('.', ',')} s. Ultimo a scala ${stalls[0].scale}.`
+          ? `${stalls.length} registrati, il più lungo di ${(Math.max(...stalls.map((s) => s.ms)) / 1000).toFixed(1).replace('.', ',')} s. Fino alla chiusura dell'app: ${stalls.filter((s) => s.closed).length}. Ultimo a scala ${stalls[0].scale}.`
           : 'Nessun blocco registrato.'}
       </div>
       <div className="flex gap-1.5">
