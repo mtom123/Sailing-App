@@ -1,9 +1,8 @@
 /*
  * TIMONE Service Worker — l'app e la carta anche senza rete.
  *
- * - Pagina (index.html): la rete se risponde subito, così ogni aggiornamento
- *   arriva (niente versioni vecchie bloccate come su Safari 15). Se tarda si
- *   apre la copia e la rete finisce in sottofondo: vale dall'apertura dopo.
+ * - Pagina (index.html): prima la rete, così ogni aggiornamento arriva subito
+ *   (niente versioni vecchie bloccate come su Safari 15); senza rete la copia.
  * - File dell'app con hash nel nome (assets/): dalla copia, non cambiano mai.
  * - Carte raster viste navigando (Esri, OpenSeaMap, EMODnet): dalla copia,
  *   con un tetto di voci. Quelle scaricate per una rotta stanno in
@@ -123,34 +122,6 @@ async function networkFirst(request, cacheName, { timeout, max, fallbackShell = 
   }
 }
 
-// Pagina dell'app: con rete lenta l'attesa era tutta schermo bianco, fino a 6
-// secondi, con la copia già qui. Una sola voce (BASE): la pagina è sempre quella
-const PAGE_WAIT_MS = 1000
-function fastPage(event) {
-  const { request } = event
-  let update = Promise.resolve()
-  const answer = (async () => {
-    const cache = await openCache(SHELL_CACHE)
-    const cached = await cache.match(BASE, { ignoreVary: true })
-    if (!cached) return networkFirst(request, SHELL_CACHE, { timeout: 6000, fallbackShell: true })
-    const network = (async () => {
-      let response = await fetch(request)
-      // Safari rifiuta le pagine arrivate dopo un reindirizzamento: copia pulita
-      if (response.redirected) {
-        response = new Response(await response.blob(), { status: response.status, statusText: response.statusText, headers: response.headers })
-      }
-      if (response.ok) await cache.put(BASE, response.clone())
-      return response
-    })()
-    update = network.catch(() => {})
-    const late = new Promise((resolve) => setTimeout(() => resolve(cached), PAGE_WAIT_MS))
-    return Promise.race([network.catch(() => cached), late])
-  })()
-  safely(event, answer)
-  // L'aggiornamento in sottofondo deve poter finire dopo la risposta
-  event.waitUntil(answer.catch(() => {}).then(() => update))
-}
-
 // Copia se c'è (prima tra le carte scaricate per le rotte, poi nella cache
 // propria), sennò rete
 async function cacheFirst(request, cacheName, { max, url = request.url } = {}) {
@@ -179,9 +150,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url)
 
   if (url.origin === self.location.origin) {
-    if (url.pathname === BASE || url.pathname === `${BASE}index.html`) {
-      fastPage(event)
-    } else if (request.mode === 'navigate') {
+    if (request.mode === 'navigate' || url.pathname === BASE || url.pathname.endsWith('/index.html')) {
       safely(event, networkFirst(request, SHELL_CACHE, { timeout: 6000, fallbackShell: true }))
     } else if (url.pathname.startsWith(`${BASE}assets/`) || url.pathname.startsWith(`${BASE}isobaths-hd/`)) {
       safely(event, cacheFirst(request, url.pathname.includes('/assets/') ? SHELL_CACHE : GEO_CACHE))
