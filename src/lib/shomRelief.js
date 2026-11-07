@@ -67,7 +67,7 @@ export const ShomReliefLayer = L.GridLayer.extend({
           done(null, tile)
           return
         }
-        const ctx = tile.getContext('2d')
+        const ctx = tile.getContext('2d', { willReadFrequently: true })
         ctx.drawImage(img, 0, 0)
         // Nero = nessun rilievo: trasparente
         const data = ctx.getImageData(0, 0, TILE, TILE)

@@ -42,6 +42,63 @@ const unproject = (x, y) => L.CRS.EPSG3857.unproject(L.point(x, y))
  * a `res` metri per pixel. Restituisce isWater(x, y) o null se la costa non
  * si è potuta caricare.
  */
+// Nei lavori lunghi lascia respirare la carta: migliaia di punti di costa di
+// fila tenevano fermo l'iPad per secondi
+const SLICE_MS = 24
+async function breathe(since) {
+  if (performance.now() - since < SLICE_MS) return since
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  return performance.now()
+}
+
+const EARTH_R = 6378137
+const mercX = (lon) => (EARTH_R * lon * Math.PI) / 180
+const mercY = (lat) => EARTH_R * Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360))
+
+/*
+ * Riempie i poligoni dell'acqua riga per riga (regola nonzero: i tasselli vicini
+ * si sovrappongono, le isole girano al contrario). Niente canvas: sull'iPad
+ * rileggerlo dalla scheda grafica ha fermato l'app 30 secondi, e disegnarlo in
+ * memoria è un blocco unico di secondi. Così si può fermare e ripartire.
+ */
+async function fillWater(rings, minX, maxY, res, w, h) {
+  const rows = Array.from({ length: h }, () => [])
+  let slice = performance.now()
+  for (const ring of rings) {
+    let x0 = (mercX(ring[ring.length - 1][1]) - minX) / res
+    let y0 = (maxY - mercY(ring[ring.length - 1][0])) / res
+    for (const [la, lo] of ring) {
+      const x1 = (mercX(lo) - minX) / res
+      const y1 = (maxY - mercY(la)) / res
+      if (y0 !== y1) {
+        const first = Math.max(0, Math.ceil(Math.min(y0, y1) - 0.5))
+        const last = Math.min(h - 1, Math.ceil(Math.max(y0, y1) - 0.5) - 1)
+        const slope = (x1 - x0) / (y1 - y0)
+        const dir = y1 > y0 ? 1 : -1
+        for (let r = first; r <= last; r++) rows[r].push([x0 + (r + 0.5 - y0) * slope, dir])
+      }
+      x0 = x1
+      y0 = y1
+    }
+    slice = await breathe(slice)
+  }
+  const mask = new Uint8Array(w * h)
+  for (let r = 0; r < h; r++) {
+    const crossings = rows[r].sort((p, q) => p[0] - q[0])
+    let winding = 0
+    for (let i = 0; i < crossings.length - 1; i++) {
+      winding += crossings[i][1]
+      if (!winding) continue
+      const from = Math.max(0, Math.ceil(crossings[i][0] - 0.5))
+      const to = Math.min(w, Math.ceil(crossings[i + 1][0] - 0.5))
+      if (to > from) mask.fill(1, r * w + from, r * w + to)
+    }
+    rows[r] = null
+    slice = await breathe(slice)
+  }
+  return mask
+}
+
 async function waterRaster(box, res) {
   const [minX, minY, maxX, maxY] = box
   const w = Math.max(1, Math.ceil((maxX - minX) / res))
@@ -54,30 +111,12 @@ async function waterRaster(box, res) {
   for (; zoom >= 6 && !rings; zoom--) rings = await waterRings(bounds, Math.min(zoom, 15))
   if (!rings) return null
 
-  const canvas = document.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
-  const ctx = canvas.getContext('2d')
-  ctx.fillStyle = '#fff'
-  ctx.beginPath()
-  for (const ring of rings) {
-    ring.forEach(([la, lo], i) => {
-      const p = project(la, lo)
-      const px = (p.x - minX) / res
-      const py = (maxY - p.y) / res
-      if (i === 0) ctx.moveTo(px, py)
-      else ctx.lineTo(px, py)
-    })
-    ctx.closePath()
-  }
-  ctx.fill('nonzero') // tasselli vicini si sovrappongono
-  const alpha = ctx.getImageData(0, 0, w, h).data
-  canvas.width = canvas.height = 0 // Safari iOS: libera subito la memoria dei canvas
+  const mask = await fillWater(rings, minX, maxY, res, w, h)
   return (x, y) => {
     const c = Math.floor((x - minX) / res)
     const r = Math.floor((maxY - y) / res)
     if (c < 0 || r < 0 || c >= w || r >= h) return true // fuori: non sappiamo, non blocchiamo
-    return alpha[(r * w + c) * 4 + 3] > 127
+    return mask[r * w + c] === 1
   }
 }
 
@@ -133,7 +172,10 @@ export async function checkLeg(a, b, minDepth) {
   const military = new Set() // zone militari attraversate
   let current = null
   let shallowest = null
-  pts.forEach(([x, y], i) => {
+  let slice = performance.now()
+  for (let i = 0; i < pts.length; i++) {
+    slice = await breathe(slice)
+    const [x, y] = pts[i]
     const ll = lls[i]
     // Il primo e l'ultimo punto sono i waypoint: lì decide chi li ha messi
     const ends = i === 0 || i === pts.length - 1
@@ -167,7 +209,7 @@ export async function checkLeg(a, b, minDepth) {
       current = null
     }
     if (current && ends) current.endpoint = true // waypoint dentro la zona
-  })
+  }
   // Un punto solo diventa un segmentino visibile
   for (const h of hazards) if (h.path.length === 1) h.path.push(h.path[0])
   return {
@@ -197,7 +239,9 @@ export async function routeLandGrid(a, b) {
   const w = Math.ceil((maxX - minX) / res)
   const h = Math.ceil((maxY - minY) / res)
   const land = new Uint8Array(w * h)
+  let slice = performance.now()
   for (let r = 0; r < h; r++) {
+    slice = await breathe(slice)
     for (let c = 0; c < w; c++) {
       if (isWater(minX + (c + 0.5) * res, maxY - (r + 0.5) * res)) continue
       for (let dr = -1; dr <= 1; dr++) {
