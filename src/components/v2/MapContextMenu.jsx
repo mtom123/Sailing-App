@@ -19,6 +19,10 @@ import { useAppStore } from '../../store/useAppStore.js'
  * - Set come ancora (anchor watch)
  * - Mostra meteogramma (forecast 24h)
  */
+// Il menu si apre col dito ancora giù: al rilascio l'iPad manda un tocco sul
+// punto, che ora è coperto dal menu e lo chiudeva (o sceglieva una voce)
+const RELEASE_GUARD_MS = 500
+
 export default function MapContextMenu({
   map,
   mapReady,
@@ -38,6 +42,7 @@ export default function MapContextMenu({
   const [nearby, setNearby] = useState([]) // ordinanze entro 1,5 km
   const pressTimerRef = useRef(null)
   const startPosRef = useRef(null)
+  const guardUntilRef = useRef(0)
 
   // Profondità del punto toccato (Shom dove c'è, altrimenti EMODnet)
   useEffect(() => {
@@ -93,6 +98,7 @@ export default function MapContextMenu({
           x: t.clientX,
           y: t.clientY,
         })
+        guardUntilRef.current = Infinity // finché il dito non si alza
         // Haptic feedback (iOS)
         if (navigator.vibrate) navigator.vibrate(20)
       }, 500)
@@ -111,6 +117,7 @@ export default function MapContextMenu({
     }
 
     const onTouchEnd = () => {
+      if (guardUntilRef.current === Infinity) guardUntilRef.current = Date.now() + RELEASE_GUARD_MS
       if (pressTimerRef.current) {
         clearTimeout(pressTimerRef.current)
         pressTimerRef.current = null
@@ -132,13 +139,16 @@ export default function MapContextMenu({
 
     container.addEventListener('touchstart', onTouchStart, { passive: true })
     container.addEventListener('touchmove', onTouchMove, { passive: true })
-    container.addEventListener('touchend', onTouchEnd, { passive: true })
+    // Sul documento: il dito può alzarsi fuori dalla carta
+    document.addEventListener('touchend', onTouchEnd, { passive: true })
+    document.addEventListener('touchcancel', onTouchEnd, { passive: true })
     container.addEventListener('contextmenu', onContextMenu)
 
     return () => {
       container.removeEventListener('touchstart', onTouchStart)
       container.removeEventListener('touchmove', onTouchMove)
-      container.removeEventListener('touchend', onTouchEnd)
+      document.removeEventListener('touchend', onTouchEnd)
+      document.removeEventListener('touchcancel', onTouchEnd)
       container.removeEventListener('contextmenu', onContextMenu)
       if (pressTimerRef.current) clearTimeout(pressTimerRef.current)
     }
@@ -147,6 +157,12 @@ export default function MapContextMenu({
   if (!menu) return null
 
   const close = () => setMenu(null)
+  const ignoreRelease = (e) => {
+    if (Date.now() < guardUntilRef.current) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+  }
 
   const actions = []
   if (onAddMark) {
@@ -247,10 +263,12 @@ export default function MapContextMenu({
       <button
         type="button"
         aria-label="Chiudi menu"
+        onClickCapture={ignoreRelease}
         onClick={close}
         className="absolute inset-0 z-[2000] cursor-default"
       />
       <div
+        onClickCapture={ignoreRelease}
         className="glass-strong absolute z-[2001] w-[220px] overflow-y-auto rounded-lg p-1 slide-up"
         style={{ left: x, top: y, maxHeight: box.height - 20 }}
       >
