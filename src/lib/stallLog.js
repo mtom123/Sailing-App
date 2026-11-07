@@ -11,6 +11,8 @@
  * Durante un blocco timerTicks dice se il codice era fermo (zero o quasi) o se si
  * era fermato solo il disegno (circa un tick ogni PROBE_MS). blurred segnala che
  * l'iPad ha coperto l'app (Centro di controllo): non è un blocco vero.
+ * canvasMs, mapMs e jsonMs dicono dove è andato il tempo: disegno sui canvas,
+ * gestori di fine spostamento e zoom della carta, lettura di JSON grandi.
  */
 
 const KEY = 'timone.stalls'
@@ -20,6 +22,7 @@ const BEAT_KEY = 'timone.beat'
 const BEAT_MS = 1000
 const NO_FRAMES_MS = 2000
 const PROBE_MS = 250
+const MAP_EVENTS = new Set(['moveend', 'zoomend', 'viewreset', 'zoomlevelschange', 'resize'])
 
 export function readStalls() {
   try {
@@ -55,10 +58,26 @@ function snapshot(map, ms, layers) {
 }
 
 // Conteggi dall'ultimo fotogramma, azzerati a ogni fotogramma
-const newProbe = () => ({ timerTicks: 0, imageCalls: 0, imageMs: 0, tileErrors: 0, blurred: !document.hasFocus() })
+const newProbe = () => ({ timerTicks: 0, imageCalls: 0, imageMs: 0, canvasMs: 0, mapMs: 0, jsonMs: 0, tileErrors: 0, blurred: !document.hasFocus() })
 let probe = newProbe()
 
-function startProbe() {
+// Sostituisce obj[name] con la stessa funzione, sommando il tempo in probe[field]
+function timed(obj, name, field) {
+  const original = obj[name]
+  obj[name] = function timedCall(...args) {
+    const start = performance.now()
+    try {
+      return original.apply(this, args)
+    } finally {
+      probe[field] += performance.now() - start
+    }
+  }
+  return () => {
+    obj[name] = original
+  }
+}
+
+function startProbe(map) {
   const timer = setInterval(() => {
     probe.timerTicks += 1
   }, PROBE_MS)
@@ -72,6 +91,20 @@ function startProbe() {
       probe.imageMs += performance.now() - start
     }
   }
+  const undo = [
+    ...['fill', 'stroke', 'drawImage', 'fillText', 'strokeText', 'clip'].map((n) => timed(CanvasRenderingContext2D.prototype, n, 'canvasMs')),
+    timed(JSON, 'parse', 'jsonMs'),
+  ]
+  const fire = map.fire
+  map.fire = function timedFire(type, ...args) {
+    if (!MAP_EVENTS.has(type)) return fire.call(this, type, ...args)
+    const start = performance.now()
+    try {
+      return fire.call(this, type, ...args)
+    } finally {
+      probe.mapMs += performance.now() - start
+    }
+  }
   const onError = (e) => {
     if (e.target?.tagName === 'IMG') probe.tileErrors += 1
   }
@@ -83,6 +116,8 @@ function startProbe() {
   return () => {
     clearInterval(timer)
     CanvasRenderingContext2D.prototype.getImageData = read
+    undo.forEach((restore) => restore())
+    map.fire = fire
     document.removeEventListener('error', onError, true)
     window.removeEventListener('blur', onBlur)
   }
@@ -111,7 +146,7 @@ function collectLastBeat() {
 /** Avvia il registro; getLayers() dà i livelli accesi. Ritorna la funzione per fermarlo. */
 export function startStallLog(map, getLayers) {
   collectLastBeat()
-  const stopProbe = startProbe()
+  const stopProbe = startProbe(map)
   let last = performance.now()
   let frame = 0
   let zoomStart = null
@@ -138,10 +173,12 @@ export function startStallLog(map, getLayers) {
     beat(false)
   }
   const onHide = () => beat(true)
-  const tick = (now) => {
+  const tick = () => {
+    // L'orario del fotogramma può essere di prima del blocco: conta l'orario vero
+    const now = performance.now()
     // Con l'app in secondo piano i fotogrammi si fermano: non è un blocco
     if (now - last > MIN_STALL_MS && document.visibilityState === 'visible') {
-      addStall({ ...snapshot(map, now - last, getLayers()), online: navigator.onLine, ...probe, imageMs: Math.round(probe.imageMs) })
+      addStall({ ...snapshot(map, now - last, getLayers()), online: navigator.onLine, ...probe, imageMs: Math.round(probe.imageMs), canvasMs: Math.round(probe.canvasMs), mapMs: Math.round(probe.mapMs), jsonMs: Math.round(probe.jsonMs) })
     }
     last = now
     probe = newProbe()
