@@ -3,7 +3,9 @@ import ReactDOM from 'react-dom/client'
 import './styles/globals.css'
 import App from './App.jsx'
 import { logStep, failStep, hideLoadingScreen } from './lib/debugLogger.js'
+import { recordStart } from './lib/startLog.js'
 
+window.__timoneStart = { main: performance.now() }
 logStep('main.jsx loading')
 
 // ErrorBoundary globale: mostra errori a schermo invece di schermo bianco
@@ -100,6 +102,13 @@ try {
     </React.StrictMode>
   )
   logStep('React render done')
+  // Solo misura: la schermata di caricamento resta com'è
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      window.__timoneStart.ready = performance.now()
+      recordStart()
+    })
+  )
 } catch (err) {
   failStep('React render', err)
 }

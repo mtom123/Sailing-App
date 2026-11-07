@@ -5,6 +5,7 @@ import { BOAT_LIBRARY, registerCustomPolar, listAvailablePolars } from '../routi
 import { parsePolarFile, saveCustomPolar, listCustomPolars } from '../lib/polarParser.js'
 import PolarViewer from './PolarViewer.jsx'
 import { clearStalls, readStalls } from '../lib/stallLog.js'
+import { clearStarts, readStarts } from '../lib/startLog.js'
 import { lastBackupAt, makeBackup, markBackupDone, readBackup, restoreBackup } from '../lib/backup.js'
 import { shareFile } from '../lib/route.js'
 
@@ -113,6 +114,45 @@ function BackupSection() {
         </div>
       )}
       {note && <div className="pt-1.5 text-[calc(10px*var(--fs))] leading-relaxed text-paper">{note}</div>}
+    </Section>
+  )
+}
+
+function StartsSection() {
+  const [starts, setStarts] = useState(readStarts)
+  const [copied, setCopied] = useState(false)
+  const btn = 'touch flex-1 rounded-md border border-line bg-surface py-2 text-[calc(10px*var(--fs))] font-semibold tracking-widest text-paper disabled:opacity-40'
+  const last = starts[0]
+  return (
+    <Section title="Tempi di apertura">
+      <div className="pb-1.5 text-[calc(10px*var(--fs))] leading-relaxed text-fog">
+        {last ? `${starts.length} registrate. Ultima: pronta in ${(last.ready / 1000).toFixed(1).replace('.', ',')} s.` : 'Nessuna apertura registrata.'}
+      </div>
+      <div className="flex gap-1.5">
+        <button
+          type="button"
+          disabled={!starts.length}
+          onClick={async () => {
+            await navigator.clipboard.writeText(JSON.stringify(starts, null, 1))
+            setCopied(true)
+          }}
+          className={btn}
+        >
+          {copied ? 'COPIATI' : 'COPIA'}
+        </button>
+        <button
+          type="button"
+          disabled={!starts.length}
+          onClick={() => {
+            clearStarts()
+            setStarts([])
+            setCopied(false)
+          }}
+          className={btn}
+        >
+          AZZERA
+        </button>
+      </div>
     </Section>
   )
 }
@@ -747,6 +787,7 @@ export default function SettingsSheet({
 
           <BackupSection />
           <StallsSection />
+          <StartsSection />
 
           <Section title="Informazioni">
             <div className="text-[calc(10px*var(--fs))] leading-relaxed text-fog">
