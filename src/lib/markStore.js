@@ -47,6 +47,7 @@ export const deleteMark = (id) => run('readwrite', (s) => s.delete(id))
 
 export const putPhoto = (photo) => run('readwrite', (s) => s.put(photo), PHOTOS)
 export const getPhoto = (id) => run('readonly', (s) => s.get(id), PHOTOS)
+export const listPhotos = async () => (await run('readonly', (s) => s.getAll(), PHOTOS)) || []
 export const deletePhotos = (ids) =>
   run(
     'readwrite',

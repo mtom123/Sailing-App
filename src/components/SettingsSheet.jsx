@@ -5,6 +5,8 @@ import { BOAT_LIBRARY, registerCustomPolar, listAvailablePolars } from '../routi
 import { parsePolarFile, saveCustomPolar, listCustomPolars } from '../lib/polarParser.js'
 import PolarViewer from './PolarViewer.jsx'
 import { clearStalls, readStalls } from '../lib/stallLog.js'
+import { lastBackupAt, makeBackup, markBackupDone, readBackup, restoreBackup } from '../lib/backup.js'
+import { shareFile } from '../lib/route.js'
 
 /*
  * Foglio impostazioni: tutto ciò che si configura una volta e poi si dimentica
@@ -34,6 +36,81 @@ function signalKSummary(data, vessels) {
 }
 
 // Blocchi registrati sull'iPad: si copiano e si mandano per capirne la causa
+const BACKUP_DUE_DAYS = 14
+
+function BackupSection() {
+  const [ready, setReady] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState(null)
+  const [last, setLast] = useState(lastBackupAt)
+  const fileRef = useRef(null)
+  const btn = 'touch flex-1 rounded-md border border-line bg-surface py-2 text-[calc(10px*var(--fs))] font-semibold tracking-widest text-paper disabled:opacity-40'
+  const due = !last || Date.now() - last > BACKUP_DUE_DAYS * 86400000
+  const prepare = async () => {
+    setBusy(true)
+    setNote(null)
+    try {
+      setReady(await makeBackup())
+    } catch (err) {
+      setNote(`Copia non riuscita: ${err.message}`)
+    }
+    setBusy(false)
+  }
+  // Tocco a parte: dopo un'attesa lunga l'iPad non apre il foglio di condivisione
+  const save = async () => {
+    if (await shareFile(ready.filename, ready.blob, 'application/octet-stream')) {
+      markBackupDone()
+      setLast(lastBackupAt())
+      setNote('Copia salvata. Controlla che il file sia in File o iCloud Drive.')
+      setReady(null)
+    }
+  }
+  const load = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setBusy(true)
+    setNote(null)
+    try {
+      const backup = await readBackup(file)
+      const withSettings = window.confirm('Sostituire anche barca e impostazioni con quelle della copia? Annulla per aggiungere solo marker, foto, rotte e tracce.')
+      const n = await restoreBackup(backup, { withSettings })
+      setNote(`Aggiunti: ${n.marks} marker, ${n.photos} foto, ${n.routes} rotte, ${n.tracks} tracce.`)
+    } catch (err) {
+      setNote(`Caricamento non riuscito: ${err.message}`)
+    }
+    setBusy(false)
+  }
+  return (
+    <Section title="Copia di sicurezza">
+      <div className={`pb-1.5 text-[calc(10px*var(--fs))] leading-relaxed ${due ? 'text-warn' : 'text-fog'}`}>
+        {last ? `Ultima copia: ${new Date(last).toLocaleDateString('it-IT')}.` : 'Nessuna copia salvata.'} Marker, foto, rotte, tracce, polari e impostazioni in un file da tenere su File o iCloud Drive. Le carte offline non sono incluse.
+      </div>
+      <div className="flex gap-1.5">
+        {ready ? (
+          <button type="button" onClick={save} className={btn}>
+            SALVA IL FILE ({(ready.blob.size / 1048576).toFixed(1).replace('.', ',')} MB)
+          </button>
+        ) : (
+          <button type="button" disabled={busy} onClick={prepare} className={btn}>
+            {busy ? 'ATTENDI…' : 'PREPARA COPIA'}
+          </button>
+        )}
+        <button type="button" disabled={busy} onClick={() => fileRef.current?.click()} className={btn}>
+          CARICA COPIA
+        </button>
+      </div>
+      <input ref={fileRef} type="file" onChange={load} className="hidden" aria-label="File della copia di sicurezza" />
+      {ready && (
+        <div className="pt-1.5 text-[calc(10px*var(--fs))] leading-relaxed text-fog">
+          Pronta: {ready.counts.marks} marker, {ready.counts.photos} foto, {ready.counts.routes} rotte, {ready.counts.tracks} tracce.
+        </div>
+      )}
+      {note && <div className="pt-1.5 text-[calc(10px*var(--fs))] leading-relaxed text-paper">{note}</div>}
+    </Section>
+  )
+}
+
 function StallsSection() {
   const [stalls, setStalls] = useState(readStalls)
   const [copied, setCopied] = useState(false)
@@ -621,6 +698,7 @@ export default function SettingsSheet({
             </Section>
           )}
 
+          <BackupSection />
           <StallsSection />
 
           <Section title="Informazioni">

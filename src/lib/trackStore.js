@@ -43,6 +43,11 @@ export const getTrack = (id) => run('readonly', (s) => s.get(id))
 export const putTrack = (track) => run('readwrite', (s) => s.put(track))
 export const deleteTrack = (id) => run('readwrite', (s) => s.delete(id))
 
+/** Tracce salvate con tutti i punti (copia di sicurezza) */
+export async function allTracks() {
+  return ((await run('readonly', (s) => s.getAll())) || []).filter((t) => t.id !== CURRENT)
+}
+
 /** Tracce salvate senza i punti (per l'elenco), le più recenti prima */
 export async function listTracks() {
   const all = (await run('readonly', (s) => s.getAll())) || []

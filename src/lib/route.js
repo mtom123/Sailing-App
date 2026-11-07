@@ -94,12 +94,13 @@ export async function shareFile(filename, content, mime = 'application/gpx+xml')
   if (navigator.canShare?.({ files: [file] })) {
     try {
       await navigator.share({ files: [file] })
-      return
+      return true
     } catch (err) {
-      if (err.name === 'AbortError') return // chiuso dall'utente
+      if (err.name === 'AbortError') return false // chiuso dall'utente
     }
   }
   downloadFile(filename, content, mime)
+  return true
 }
 
 export function downloadFile(filename, content, mime = 'application/gpx+xml') {
