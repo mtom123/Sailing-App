@@ -38,6 +38,7 @@ import { DOLPHIN_BUTTON } from '../../lib/sightingIcons.js'
 import AreaDownloadTool from './AreaDownloadTool.jsx'
 import { setOfflineLayers, holdDownloads } from '../../lib/offlinePack.js'
 import { startStallLog } from '../../lib/stallLog.js'
+import { SEA_LAYERS, makeSeaLayer, seaLayerInfo, seaRangeText } from '../../lib/seaLayers.js'
 import { OfflineZonesLayer } from '../../lib/offlineZonesLayer.js'
 import {
   Anchor,
@@ -652,6 +653,28 @@ export default function MapView({
     setVis(refs.seamarks, layers.seamarks)
     setVis(refs.coastBand, layers.coastBand)
   }, [baseStyle, layers.bathy, layers.posidonia, layers.shomRelief, layers.isobaths, layers.seamarks, layers.coastBand, mapReady])
+
+  // === Temperatura del mare e clorofilla, solo se accese ===
+  const [seaInfo, setSeaInfo] = useState({})
+  const seaLayerEffect = (key, on) => () => {
+    const map = mapRef.current
+    if (!mapReady || !map || !on) return undefined
+    let layer = null
+    let alive = true
+    seaLayerInfo(key).then((info) => {
+      if (!alive) return
+      setSeaInfo((s) => ({ ...s, [key]: info ?? 'none' }))
+      if (!info) return
+      layer = makeSeaLayer(key, info).addTo(map)
+    })
+    return () => {
+      alive = false
+      if (layer) map.removeLayer(layer)
+      setSeaInfo((s) => ({ ...s, [key]: undefined }))
+    }
+  }
+  useEffect(seaLayerEffect('seaTemp', layers.seaTemp), [layers.seaTemp, mapReady])
+  useEffect(seaLayerEffect('chlorophyll', layers.chlorophyll), [layers.chlorophyll, mapReady])
 
   // === Carta CHIARA: terra più scura, staccata dal mare ===
   useEffect(() => {
@@ -1412,6 +1435,25 @@ export default function MapView({
         </div>
       )}
 
+      {(seaInfo.seaTemp || seaInfo.chlorophyll) && (
+        <div className="glass absolute bottom-24 left-1/2 z-[800] -translate-x-1/2 rounded-md px-2.5 py-1.5 text-[calc(10px*var(--fs))] text-paper">
+          {Object.keys(SEA_LAYERS)
+            .filter((key) => seaInfo[key])
+            .map((key) =>
+              seaInfo[key] === 'none' ? (
+                <div key={key} className="text-warn">{SEA_LAYERS[key].title}: dati non disponibili</div>
+              ) : (
+                <div key={key} className="flex items-center gap-2 py-0.5">
+                  <span className="text-fog">{SEA_LAYERS[key].title}</span>
+                  <span className="h-2 w-24 rounded-sm" style={{ background: SEA_LAYERS[key].gradient }} />
+                  <span className="tabular-nums">{seaRangeText(key, seaInfo[key])}</span>
+                  <span className="text-fog tabular-nums">{new Date(`${seaInfo[key].date}T12:00:00Z`).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}</span>
+                </div>
+              )
+            )}
+        </div>
+      )}
+
       {/* In alto a sinistra: col pannello strumenti chiuso SOG/COG e posizione
           (come nel pannello), poi stato della rete, REC e carta offline */}
       <div className="absolute left-3 top-3 z-[900] flex flex-col items-start fade-in">
@@ -1741,6 +1783,13 @@ function LayerPopover({ onClose, onDownloadArea }) {
         { key: 'isobaths', label: 'Isobate e bassi fondali' },
         { key: 'shomRelief', label: 'Rilievo HD Francia (Shom)' },
         { key: 'posidonia', label: 'Posidonia e fondali (Liguria)' },
+      ],
+    ],
+    [
+      'Pesca',
+      [
+        { key: 'seaTemp', label: 'Temperatura del mare' },
+        { key: 'chlorophyll', label: 'Clorofilla' },
       ],
     ],
     [

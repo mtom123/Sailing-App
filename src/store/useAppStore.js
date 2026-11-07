@@ -26,6 +26,8 @@ export const useAppStore = create(
         bathy: true,
         isobaths: true,
         posidonia: true,
+        seaTemp: false,
+        chlorophyll: false,
         shomRelief: true,
         seamarks: true,
         wind: true,

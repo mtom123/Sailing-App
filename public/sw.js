@@ -32,6 +32,9 @@ const TILE_HOSTS = [
 // Dati: costa OSM, griglie di profondità (WCS), isobate e habitat (WFS).
 // Le immagini WMS degli stessi server vanno con le carte
 const GEO_HOSTS = ['tiles.openfreemap.org', 'ows.emodnet-bathymetry.eu', 'geoservizi.regione.liguria.it']
+// Temperatura e clorofilla: solo le immagini, l'elenco dei giorni va letto fresco
+const SEA_HOST = 'wmts.marine.copernicus.eu'
+const isSeaTile = (url) => url.hostname === SEA_HOST && url.searchParams.get('REQUEST') === 'GetTile'
 const isWmsImage = (url) => /getmap/i.test(url.searchParams.get('request') || url.searchParams.get('REQUEST') || '')
 const METEO_HOSTS = ['api.open-meteo.com', 'marine-api.open-meteo.com']
 
@@ -180,7 +183,7 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  if (TILE_HOSTS.includes(url.hostname) || (GEO_HOSTS.includes(url.hostname) && isWmsImage(url))) {
+  if (TILE_HOSTS.includes(url.hostname) || isSeaTile(url) || (GEO_HOSTS.includes(url.hostname) && isWmsImage(url))) {
     safely(event, cacheFirst(request, TILE_CACHE, { max: TILE_MAX }))
     return
   }
