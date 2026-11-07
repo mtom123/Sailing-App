@@ -1520,7 +1520,7 @@ export default function MapView({
             <button
               type="button"
               title="Avvistamenti di cetacei, tartarughe e squali"
-              onClick={() => setActiveDrawer('sightings')}
+              onClick={() => useAppStore.setState({ sightingPoint: null, activeDrawer: 'sightings' })}
               className="mt-1.5 flex h-12 w-[calc(48px*var(--fs))] flex-col items-center justify-center gap-0.5 rounded-l-lg bg-[#00A5B5] text-white shadow-lg transition-colors"
             >
               <span dangerouslySetInnerHTML={{ __html: DOLPHIN_BUTTON }} />
@@ -1654,6 +1654,7 @@ export default function MapView({
         onAddWaypoint={(lat, lon) => addWaypoint(lat, lon)}
         onSetDestination={(lat, lon) => useAppStore.getState().routeTo(lat, lon)}
         onAddMark={(type, lat, lon) => useAppStore.setState({ markEdit: newMark(type, { lat, lon }), activeDrawer: 'marks' })}
+        onAddSighting={(lat, lon) => useAppStore.setState({ sightingPoint: { lat, lon }, markEdit: null, activeDrawer: 'sightings' })}
         onShowMeteogram={(lat, lon) => setMeteoPoint({ lat, lon })}
         boatPosition={geo.lat != null ? { lat: geo.lat, lon: geo.lon } : null}
       />

@@ -102,6 +102,9 @@ export const useAppStore = create(
       coastBand: { ...BAND_DEFAULTS },
       setCoastBand: (coastBand) => set((s) => ({ coastBand: { ...s.coastBand, ...coastBand } })),
 
+      // Punto della carta per il prossimo avvistamento (pressione lunga)
+      sightingPoint: null,
+
       // === Route draft ===
       routeDraft: { name: '', waypoints: [] },
       // Valore o funzione (bozza precedente → nuova), come lo useState di React:

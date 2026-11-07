@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Navigation2, MapPin, Anchor, X, Ship, BarChart3, Bookmark } from 'lucide-react'
+import { Navigation2, MapPin, Anchor, X, Ship, BarChart3, Bookmark, Fish } from 'lucide-react'
 import { haversine, bearing, formatDeg, metersToNm, cardinal } from '../../lib/geo.js'
 import { depthAt } from '../../lib/depthAt.js'
 import { formatDepth } from './DepthHover.jsx'
@@ -28,6 +28,7 @@ export default function MapContextMenu({
   onSetAnchor,
   onShowMeteogram,
   onAddMark,
+  onAddSighting,
   boatPosition,
 }) {
   const [menu, setMenu] = useState(null) // { lat, lon, x, y }
@@ -167,6 +168,16 @@ export default function MapContextMenu({
         },
       }
     )
+  }
+  if (onAddSighting) {
+    actions.push({
+      icon: Fish,
+      label: 'Segna avvistamento',
+      onClick: () => {
+        onAddSighting(menu.lat, menu.lon)
+        close()
+      },
+    })
   }
   if (onShowMeteogram) {
     actions.push({

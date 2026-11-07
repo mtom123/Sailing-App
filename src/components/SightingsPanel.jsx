@@ -1,14 +1,15 @@
 import { useState } from 'react'
 import { ChevronLeft, Search } from 'lucide-react'
 import { MarkEditor, MarkIcon, MarkRow } from './MarksPanel.jsx'
+import { formatCoord } from '../lib/geo.js'
 import { newSighting, searchMarks } from '../lib/marks.js'
 import { SIGHTING_GROUPS, SIGHTING_RULES, SPECIES, isSighting } from '../lib/sightings.js'
 import { useAppStore } from '../store/useAppStore.js'
 
 /*
  * Avvistamenti: si sceglie la specie, si legge la scheda di identificazione e
- * si segna dove la barca è adesso (o sulla carta, senza GPS). Sotto, quelli
- * già segnati, dal più recente.
+ * si segna dove la barca è adesso, o nel punto scelto con la pressione lunga
+ * (senza GPS sulla carta). Sotto, quelli già segnati, dal più recente.
  */
 
 const PAGE = 100
@@ -24,9 +25,30 @@ function Fact({ label, text }) {
   )
 }
 
-function SpeciesCard({ species, onBack, onLog }) {
+function PointNote({ point }) {
+  return (
+    <div className="mb-2 flex items-center gap-2 rounded-md border border-phos/50 bg-phos/10 p-2">
+      <div className="min-w-0 flex-1 text-[calc(10px*var(--fs))] leading-relaxed text-paper">
+        Punto scelto sulla carta
+        <div className="font-mono text-fog">
+          {formatCoord(point.lat, true)} {formatCoord(point.lon, false)}
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={() => useAppStore.setState({ sightingPoint: null })}
+        className="touch flex-none rounded-md border border-line bg-surface px-2.5 py-2 text-[calc(10px*var(--fs))] font-semibold tracking-widest text-paper"
+      >
+        ANNULLA
+      </button>
+    </div>
+  )
+}
+
+function SpeciesCard({ species, point, onBack, onLog }) {
   return (
     <div className="p-2">
+      {point && <PointNote point={point} />}
       <button type="button" onClick={onBack} className="touch flex items-center gap-1 pb-2 text-[calc(11px*var(--fs))] font-semibold text-fog">
         <ChevronLeft size={14} /> Specie
       </button>
@@ -54,6 +76,7 @@ function SpeciesCard({ species, onBack, onLog }) {
 export default function SightingsPanel({ geo, depthLive, draftM }) {
   const marks = useAppStore((s) => s.marks)
   const markEdit = useAppStore((s) => s.markEdit)
+  const point = useAppStore((s) => s.sightingPoint)
   const [card, setCard] = useState(null)
   const [text, setText] = useState('')
   const [limit, setLimit] = useState(PAGE)
@@ -62,10 +85,11 @@ export default function SightingsPanel({ geo, depthLive, draftM }) {
 
   const log = (species) => {
     setCard(null)
-    if (geo.lat != null) useAppStore.setState({ markEdit: newSighting(species.id, geo) })
+    const at = point ?? (geo.lat != null ? geo : null)
+    if (at) useAppStore.setState({ markEdit: newSighting(species.id, at), sightingPoint: null })
     else useAppStore.setState({ markEdit: newSighting(species.id, {}), markPicking: true, activeDrawer: null })
   }
-  if (card) return <SpeciesCard species={card} onBack={() => setCard(null)} onLog={() => log(card)} />
+  if (card) return <SpeciesCard species={card} point={point} onBack={() => setCard(null)} onLog={() => log(card)} />
 
   const seen = marks.filter(isSighting)
   const found = searchMarks(seen, { type: null, text }, { lat: null })
@@ -75,6 +99,7 @@ export default function SightingsPanel({ geo, depthLive, draftM }) {
 
   return (
     <div className="p-2">
+      {point && <PointNote point={point} />}
       <div className="text-[calc(14px*var(--fs))] font-bold text-paper">Avvistamenti</div>
       <div className="pb-1 text-[calc(10px*var(--fs))] text-fog">Tocca una specie per la scheda di identificazione.</div>
       {SIGHTING_GROUPS.map((g) => (
