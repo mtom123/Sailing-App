@@ -122,6 +122,17 @@ async function networkFirst(request, cacheName, { timeout, max, fallbackShell = 
   }
 }
 
+// Tassello che manca e non può arrivare: trasparente, subito. Senza rete sull'iPad
+// la carta smetteva di disegnarsi fino a un minuto, con il codice che girava e
+// i tasselli che fallivano. Solo per le immagini della carta: lo scaricamento
+// offline passa da fetch e deve vedere gli errori veri
+const TILE_WAIT_MS = 8000
+const BLANK_PNG = Uint8Array.from(
+  atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII='),
+  (c) => c.charCodeAt(0)
+)
+const blankTile = () => new Response(BLANK_PNG, { headers: { 'Content-Type': 'image/png' } })
+
 // Copia se c'è (prima tra le carte scaricate per le rotte, poi nella cache
 // propria), sennò rete
 async function cacheFirst(request, cacheName, { max, url = request.url } = {}) {
@@ -130,14 +141,22 @@ async function cacheFirst(request, cacheName, { max, url = request.url } = {}) {
     const cached = await (await openCache(name)).match(url, { ignoreVary: true })
     if (cached) return cached
   }
+  const mapImage = cacheName === TILE_CACHE && request.destination === 'image'
+  if (mapImage && self.navigator.onLine === false) return blankTile()
   // Carte richieste da <img>: si riscaricano in CORS per salvarle leggibili
-  const response = await fetch(url, { mode: 'cors', credentials: 'omit' }).catch(() => fetch(request))
-  if (usable(response)) {
-    const cache = await openCache(cacheName)
-    cache.put(url, response.clone())
-    if (max) trimCache(cacheName, max)
-  }
-  return response
+  const stored = fetch(url, { mode: 'cors', credentials: 'omit' })
+    .catch(() => fetch(request))
+    .then(async (response) => {
+      if (usable(response)) {
+        const cache = await openCache(cacheName)
+        cache.put(url, response.clone())
+        if (max) trimCache(cacheName, max)
+      }
+      return response
+    })
+  if (!mapImage) return stored
+  const late = new Promise((resolve) => setTimeout(() => resolve(blankTile()), TILE_WAIT_MS))
+  return Promise.race([stored.catch(blankTile), late])
 }
 
 // Qualunque errore del service worker: la richiesta va in rete come se non

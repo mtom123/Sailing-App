@@ -62,6 +62,11 @@ export const ShomReliefLayer = L.GridLayer.extend({
 
     Promise.all([loadImage(url), waterRings(bounds, coords.z, { oceanOnly: true })])
       .then(([img, rings]) => {
+        // Senza rete il service worker manda un tassello vuoto da 1 pixel
+        if (img.naturalWidth < TILE) {
+          done(null, tile)
+          return
+        }
         const ctx = tile.getContext('2d')
         ctx.drawImage(img, 0, 0)
         // Nero = nessun rilievo: trasparente
