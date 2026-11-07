@@ -7,6 +7,10 @@
  * del fotogramma dopo. Per questi resta un battito (BEAT_KEY) con lo stato
  * dell'ultimo secondo, letto all'apertura successiva: `closed`. Con `hidden` il
  * codice girava ancora alla chiusura; senza, era fermo già da prima.
+ *
+ * Durante un blocco timerTicks dice se il codice era fermo (zero o quasi) o se si
+ * era fermato solo il disegno (circa un tick ogni PROBE_MS). blurred segnala che
+ * l'iPad ha coperto l'app (Centro di controllo): non è un blocco vero.
  */
 
 const KEY = 'timone.stalls'
@@ -15,6 +19,7 @@ const MAX_ENTRIES = 20
 const BEAT_KEY = 'timone.beat'
 const BEAT_MS = 1000
 const NO_FRAMES_MS = 2000
+const PROBE_MS = 250
 
 export function readStalls() {
   try {
@@ -49,6 +54,40 @@ function snapshot(map, ms, layers) {
   }
 }
 
+// Conteggi dall'ultimo fotogramma, azzerati a ogni fotogramma
+const newProbe = () => ({ timerTicks: 0, imageCalls: 0, imageMs: 0, tileErrors: 0, blurred: !document.hasFocus() })
+let probe = newProbe()
+
+function startProbe() {
+  const timer = setInterval(() => {
+    probe.timerTicks += 1
+  }, PROBE_MS)
+  const read = CanvasRenderingContext2D.prototype.getImageData
+  CanvasRenderingContext2D.prototype.getImageData = function timedRead(...args) {
+    const start = performance.now()
+    try {
+      return read.apply(this, args)
+    } finally {
+      probe.imageCalls += 1
+      probe.imageMs += performance.now() - start
+    }
+  }
+  const onError = (e) => {
+    if (e.target?.tagName === 'IMG') probe.tileErrors += 1
+  }
+  const onBlur = () => {
+    probe.blurred = true
+  }
+  document.addEventListener('error', onError, true)
+  window.addEventListener('blur', onBlur)
+  return () => {
+    clearInterval(timer)
+    CanvasRenderingContext2D.prototype.getImageData = read
+    document.removeEventListener('error', onError, true)
+    window.removeEventListener('blur', onBlur)
+  }
+}
+
 function addStall(entry) {
   try {
     localStorage.setItem(KEY, JSON.stringify([entry, ...readStalls()].slice(0, MAX_ENTRIES)))
@@ -72,6 +111,7 @@ function collectLastBeat() {
 /** Avvia il registro; getLayers() dà i livelli accesi. Ritorna la funzione per fermarlo. */
 export function startStallLog(map, getLayers) {
   collectLastBeat()
+  const stopProbe = startProbe()
   let last = performance.now()
   let frame = 0
   let zoomStart = null
@@ -101,9 +141,10 @@ export function startStallLog(map, getLayers) {
   const tick = (now) => {
     // Con l'app in secondo piano i fotogrammi si fermano: non è un blocco
     if (now - last > MIN_STALL_MS && document.visibilityState === 'visible') {
-      addStall(snapshot(map, now - last, getLayers()))
+      addStall({ ...snapshot(map, now - last, getLayers()), online: navigator.onLine, ...probe, imageMs: Math.round(probe.imageMs) })
     }
     last = now
+    probe = newProbe()
     frame = requestAnimationFrame(tick)
   }
   const onVisible = () => {
@@ -120,6 +161,7 @@ export function startStallLog(map, getLayers) {
   return () => {
     cancelAnimationFrame(frame)
     clearInterval(beats)
+    stopProbe()
     document.removeEventListener('visibilitychange', onVisible)
     window.removeEventListener('pagehide', onHide)
     map.off('zoomstart', onZoomStart)
