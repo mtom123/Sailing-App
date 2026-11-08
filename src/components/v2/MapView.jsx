@@ -58,6 +58,13 @@ import {
   CloudDownload,
 } from 'lucide-react'
 
+// Tempo che manca all'arrivo: "2h 15m", "45m"
+const timeLeft = (ms) => {
+  const mins = Math.max(0, Math.round(ms / 60000))
+  const h = Math.floor(mins / 60)
+  return h > 0 ? `${h}h ${String(mins % 60).padStart(2, '0')}m` : `${mins}m`
+}
+
 // "2026-11-07" → "7 nov"
 const dayText = (date) => new Date(`${date}T12:00:00Z`).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })
 
@@ -1742,13 +1749,14 @@ export default function MapView({
           style={activeDrawer && activeDrawer !== 'layers' ? { left: 'calc((100% - 380px) / 2)', bottom: 156 } : { left: '50%', bottom: 12 }}
         >
           <div className="truncate text-center text-[calc(13px*var(--fs))] font-bold text-phos">→ {route.nav.dest.name}</div>
-          <div className="flex items-baseline justify-center gap-5 whitespace-nowrap tabular-nums">
+          <div className="flex items-baseline justify-center gap-4 whitespace-nowrap tabular-nums">
             <NavValue label="Distanza" value={route.nav.dtwNm.toFixed(1).replace('.', ',')} unit="nm" />
             <NavValue label="Rotta" value={`${formatDeg(route.nav.btw)}°`} />
             <NavValue
               label="Arrivo"
               value={new Date(route.nav.etaMs).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
             />
+            <NavValue label="Manca" value={timeLeft(route.nav.etaMs - Date.now())} />
           </div>
         </div>
       )}
