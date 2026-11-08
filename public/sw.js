@@ -104,15 +104,53 @@ async function trimCache(name, max) {
 
 const usable = (r) => r && (r.ok || r.type === 'opaque')
 
+// Lavoro che finisce dopo la risposta (salvare la copia): il service worker
+// resta acceso fino alla fine
+function keepAlive(event, promise) {
+  const done = promise.catch(() => {})
+  try {
+    event?.waitUntil(done)
+  } catch {
+    // evento già chiuso: si salva se c'è tempo
+  }
+}
+
+// File dell'app (nome con hash, non cambiano): dalla copia se risponde
+// subito; se l'archivio è lento (avvio a freddo) dalla rete, e la copia
+// solo se la rete manca
+const ASSET_WAIT_MS = 300
+const SLOW = Symbol('slow')
+async function shellAsset(request, event) {
+  const cacheP = openCache(SHELL_CACHE)
+  const hit = cacheP.then((cache) => cache.match(request.url, { ignoreVary: true })).catch(() => undefined)
+  const first = await Promise.race([hit, new Promise((resolve) => setTimeout(() => resolve(SLOW), ASSET_WAIT_MS))])
+  if (first && first !== SLOW) return first
+  try {
+    const response = await fetch(request)
+    if (usable(response)) {
+      const copy = response.clone()
+      keepAlive(event, cacheP.then((cache) => cache.put(request, copy)))
+    }
+    return response
+  } catch (err) {
+    const cached = await hit
+    if (cached) return cached
+    throw err
+  }
+}
+
 // Tempi dell'ultima apertura della pagina, chiesti dall'app per il registro
-// "Tempi di apertura" (startLog.js): solo misure, la logica non cambia
+// "Tempi di apertura" (startLog.js)
 let lastNav = null
 const since = (t0) => Math.round(performance.now() - t0)
 
-async function networkFirst(request, cacheName, { timeout, max, fallbackShell = false, timing = null }) {
+async function networkFirst(request, cacheName, { timeout, max, fallbackShell = false, timing = null, event = null }) {
   const t0 = performance.now()
-  const cache = await openCache(cacheName)
-  if (timing) timing.openMs = since(t0)
+  // L'archivio si apre intanto, senza aspettarlo: dopo un avvio a freddo il
+  // primo accesso agli archivi costava all'iPad ~10 s (Tempi di apertura,
+  // 8/11/2026: openMs 9816, rete 2 ms). Con la rete la pagina non lo aspetta
+  const cacheP = openCache(cacheName)
+  if (timing) cacheP.then(() => (timing.openMs = since(t0)), () => {})
   try {
     const t1 = performance.now()
     let response = await fetchWithTimeout(request, timeout)
@@ -125,8 +163,13 @@ async function networkFirst(request, cacheName, { timeout, max, fallbackShell = 
       response = new Response(await response.blob(), { status: response.status, statusText: response.statusText, headers: response.headers })
     }
     if (usable(response)) {
-      cache.put(request, response.clone())
-      if (max) trimCache(cacheName, max)
+      const copy = response.clone()
+      keepAlive(
+        event,
+        cacheP
+          .then((cache) => cache.put(request, copy))
+          .then(() => max && trimCache(cacheName, max))
+      )
     }
     return response
   } catch (err) {
@@ -205,12 +248,14 @@ self.addEventListener('fetch', (event) => {
     if (request.mode === 'navigate' || url.pathname === BASE || url.pathname.endsWith('/index.html')) {
       // swUpMs: da quanto era acceso il service worker (pochi ms = appena avviato da iOS)
       lastNav = { at: Date.now(), swUpMs: Math.round(performance.now()) }
-      safely(event, networkFirst(request, SHELL_CACHE, { timeout: 6000, fallbackShell: true, timing: lastNav }))
-    } else if (url.pathname.startsWith(`${BASE}assets/`) || url.pathname.startsWith(`${BASE}isobaths-hd/`)) {
-      safely(event, cacheFirst(request, url.pathname.includes('/assets/') ? SHELL_CACHE : GEO_CACHE))
+      safely(event, networkFirst(request, SHELL_CACHE, { timeout: 6000, fallbackShell: true, timing: lastNav, event }))
+    } else if (url.pathname.startsWith(`${BASE}assets/`)) {
+      safely(event, shellAsset(request, event))
+    } else if (url.pathname.startsWith(`${BASE}isobaths-hd/`)) {
+      safely(event, cacheFirst(request, GEO_CACHE))
     } else if (url.pathname.endsWith('.json') || url.pathname.endsWith('.webmanifest')) {
       // Aree protette e ordinanze si aggiornano: rete, poi copia
-      safely(event, networkFirst(request, GEO_CACHE, { timeout: 6000 }))
+      safely(event, networkFirst(request, GEO_CACHE, { timeout: 6000, event }))
     }
     return
   }
@@ -226,13 +271,13 @@ self.addEventListener('fetch', (event) => {
   if (GEO_HOSTS.includes(url.hostname)) {
     // Il TileJSON di OpenFreeMap porta la versione dei dati: rete, poi copia
     if (url.hostname === 'tiles.openfreemap.org' && url.pathname === '/planet') {
-      safely(event, networkFirst(request, GEO_CACHE, { timeout: 5000 }))
+      safely(event, networkFirst(request, GEO_CACHE, { timeout: 5000, event }))
     } else {
       safely(event, cacheFirst(request, GEO_CACHE))
     }
     return
   }
   if (METEO_HOSTS.includes(url.hostname)) {
-    safely(event, networkFirst(request, METEO_CACHE, { timeout: 8000, max: METEO_MAX }))
+    safely(event, networkFirst(request, METEO_CACHE, { timeout: 8000, max: METEO_MAX, event }))
   }
 })
