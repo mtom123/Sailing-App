@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { BAND_DEFAULTS } from '../lib/coastBand.js'
 import { EMPTY_COURSE } from '../lib/race.js'
+import { DEFAULT_DEPTH_ZONES } from '../lib/isobaths.js'
 
 /**
  * App store — single source of truth per stato globale
@@ -29,6 +30,7 @@ export const useAppStore = create(
         seaTemp: false,
         chlorophyll: false,
         fronts: false,
+        depthZones: true,
         shomRelief: true,
         seamarks: true,
         wind: true,
@@ -211,6 +213,9 @@ export const useAppStore = create(
       setAnchorWatch: (anchorWatch) => set({ anchorWatch }),
       anchorRadius: 40,
       setAnchorRadius: (anchorRadius) => set({ anchorRadius }),
+      // Fasce di profondità colorate (impostazioni): [{ id, name, from, to, color, on }]
+      depthZones: DEFAULT_DEPTH_ZONES,
+      setDepthZones: (depthZones) => set({ depthZones }),
       alarmMuted: false,
       setAlarmMuted: (alarmMuted) => set({ alarmMuted }),
     }),
@@ -243,6 +248,7 @@ export const useAppStore = create(
         dayTheme: s.dayTheme,
         textScale: s.textScale,
         anchorRadius: s.anchorRadius,
+        depthZones: s.depthZones,
       }),
     }
   )

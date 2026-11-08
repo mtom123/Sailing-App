@@ -1,4 +1,4 @@
-import { Radio, Ship, Wifi, X, Sailboat, Gauge, Database, Activity, Upload, FileText, Trash, Type, Cable } from 'lucide-react'
+import { Radio, Ship, Wifi, X, Sailboat, Gauge, Database, Activity, Upload, FileText, Trash, Type, Cable, Layers, Plus } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { useAppStore } from '../store/useAppStore.js'
 import { BOAT_LIBRARY, registerCustomPolar, listAvailablePolars } from '../routing/polarSolver.js'
@@ -8,6 +8,7 @@ import { clearStalls, readStalls } from '../lib/stallLog.js'
 import { clearStarts, readStarts } from '../lib/startLog.js'
 import { lastBackupAt, makeBackup, markBackupDone, readBackup, restoreBackup } from '../lib/backup.js'
 import { shareFile } from '../lib/route.js'
+import { DEFAULT_DEPTH_ZONES } from '../lib/isobaths.js'
 
 /*
  * Foglio impostazioni: tutto ciò che si configura una volta e poi si dimentica
@@ -193,6 +194,87 @@ function StallsSection() {
   )
 }
 
+// Fasce di profondità colorate sulla carta (ancoraggio), come le "aree di
+// pesca" di Navionics: nome, da–a metri, colore, accesa o spenta
+function DepthZonesSection() {
+  const zones = useAppStore((s) => s.depthZones)
+  const setZones = useAppStore((s) => s.setDepthZones)
+  const layerOn = useAppStore((s) => s.layers.depthZones)
+  const toggleLayer = useAppStore((s) => s.toggleLayer)
+  const update = (id, patch) => setZones(zones.map((z) => (z.id === id ? { ...z, ...patch } : z)))
+  const num = (v) => {
+    const n = Number(String(v).replace(',', '.'))
+    return Number.isFinite(n) ? Math.max(0, n) : 0
+  }
+  const add = () => {
+    const last = zones.reduce((m, z) => Math.max(m, z.to), 0)
+    setZones([...zones, { id: `z${Date.now()}`, name: 'Nuova fascia', from: last, to: last + 5, color: '#22b8e6', on: true }])
+  }
+  const field = 'min-w-0 rounded-md border border-line bg-surface px-1.5 py-2 text-xs text-paper outline-none focus:border-phos'
+  return (
+    <Section title="Fasce di profondità" icon={Layers}>
+      <label className="mb-2 flex items-center justify-between gap-2 text-xs text-paper">
+        <span>Mostra sulla carta (da circa 3 miglia di scala)</span>
+        <input type="checkbox" checked={!!layerOn} onChange={() => toggleLayer('depthZones')} className="h-5 w-5 accent-[var(--color-phos)]" />
+      </label>
+      <div className="space-y-1.5">
+        {zones.map((z) => (
+          <div key={z.id} className="flex items-center gap-1.5">
+            <input type="checkbox" checked={z.on} onChange={() => update(z.id, { on: !z.on })} className="h-5 w-5 flex-none accent-[var(--color-phos)]" />
+            <input
+              type="color"
+              value={z.color}
+              onChange={(e) => update(z.id, { color: e.target.value })}
+              className="h-8 w-8 flex-none cursor-pointer rounded border border-line bg-transparent p-0"
+              aria-label={`Colore ${z.name}`}
+            />
+            <input type="text" value={z.name} onChange={(e) => update(z.id, { name: e.target.value })} className={`${field} flex-1`} />
+            <input
+              type="text"
+              inputMode="decimal"
+              value={z.from}
+              onChange={(e) => update(z.id, { from: num(e.target.value) })}
+              className={`${field} w-11 text-right tabular-nums`}
+              aria-label="Da metri"
+            />
+            <span className="text-fog">–</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={z.to}
+              onChange={(e) => update(z.id, { to: num(e.target.value) })}
+              className={`${field} w-11 text-right tabular-nums`}
+              aria-label="A metri"
+            />
+            <span className="text-[calc(10px*var(--fs))] text-fog">m</span>
+            <button
+              type="button"
+              onClick={() => setZones(zones.filter((x) => x.id !== z.id))}
+              className="flex h-8 w-8 flex-none items-center justify-center rounded-md border border-line text-fog hover:text-danger"
+              aria-label={`Togli ${z.name}`}
+            >
+              <Trash size={13} />
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 flex gap-1.5">
+        <button type="button" onClick={add} className="flex flex-1 items-center justify-center gap-1 rounded-md border border-line py-2 text-xs text-paper hover:bg-raised">
+          <Plus size={13} /> Aggiungi fascia
+        </button>
+        <button type="button" onClick={() => setZones(DEFAULT_DEPTH_ZONES)} className="flex-1 rounded-md border border-line py-2 text-xs text-fog hover:bg-raised">
+          Ripristina le predefinite
+        </button>
+      </div>
+      <div className="pt-1 text-[calc(10px*var(--fs))] text-fog-dim">
+        In Liguria, dove la Regione ha i rilievi multibeam, fasce di dettaglio (griglia di ~10 m ricostruita dalle isobate ogni 5 m):
+        sotto i 5 m la profondità è stimata tra la riva e l'isobata dei 5 m. Altrove griglia europea EMODnet (~115 m), indicativa sotto
+        costa. Controlla sempre lo scandaglio: fanno fede le carte ufficiali.
+      </div>
+    </Section>
+  )
+}
+
 function Section({ title, icon: Icon, children }) {
   return (
     <div className="border-b border-line p-3">
@@ -314,6 +396,8 @@ export default function SettingsSheet({
             </div>
             <div className="pt-1 text-[calc(10px*var(--fs))] text-fog-dim">Ingrandisce menu, pannelli e schede della carta</div>
           </Section>
+
+          <DepthZonesSection />
 
           <Section title="Configurazione barca" icon={Sailboat}>
             <div className="label pb-1">Nome, nominativo radio e MMSI</div>

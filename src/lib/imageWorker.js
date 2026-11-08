@@ -13,6 +13,9 @@
  * - 'fronts' ({ sst, chl, kmPerPx }): fronti termici e di clorofilla di un
  *   tassello → { id, bitmap } | { id, empty: true }
  * - 'raster' ({ w, h, layers }): poligoni e cerchi → { id, masks } (Uint8Array)
+ * - 'fineZones' ({ key, bbox, lines?, water, zones, opacity }): griglia fine dalle
+ *   isobate, colorata per fasce → { id, blob } (PNG) | { id, empty } | { id, missing }
+ * - 'fineDepth' ({ key, bbox, lat, lon }): profondità nella griglia fine → { id, depth }
  * - 'tint' ({ rgb, alpha }): immagine ricolorata → { id, bitmap } | { id, empty: true }
  * - 'migrate': carte salvate in Cache Storage → archivio IndexedDB
  *   (tileStore.js) → { id, moved, skipped }
@@ -303,6 +306,191 @@ function raster(id, { w, h, layers }) {
   self.postMessage({ id, masks }, masks.map((m) => m.buffer))
 }
 
+// ------------------------------------------------ fondali fini dalle isobate
+// Griglia di profondità a ~10 m ricostruita dalle isobate (es. Regione
+// Liguria, ogni 5 m) e dalla costa: in ogni cella d'acqua la profondità si
+// interpola tra le due isobate più vicine (o la riva, profondità 0), in base
+// alle distanze. Poi colorata con le fasce di profondità dell'utente.
+// Calcolata una volta per blocco (key) e tenuta; ricolorarla costa poco.
+const GRID_STEP = 1e-4 // gradi (~8 × 11 m)
+const fineGrids = new Map() // key -> { w, h, depth: Float32Array } (NaN = terra o fuori)
+const MAX_FINE = 12
+
+function chamfer(dist, w, h) {
+  // Distanza chamfer 3-4 (in unità di cella ×3) in due passate
+  const INF = 1e9
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x
+      let d = dist[i]
+      if (d === 0) continue
+      if (x > 0) d = Math.min(d, dist[i - 1] + 3)
+      if (y > 0) {
+        d = Math.min(d, dist[i - w] + 3)
+        if (x > 0) d = Math.min(d, dist[i - w - 1] + 4)
+        if (x < w - 1) d = Math.min(d, dist[i - w + 1] + 4)
+      }
+      dist[i] = d
+    }
+  }
+  for (let y = h - 1; y >= 0; y--) {
+    for (let x = w - 1; x >= 0; x--) {
+      const i = y * w + x
+      let d = dist[i]
+      if (d === 0) continue
+      if (x < w - 1) d = Math.min(d, dist[i + 1] + 3)
+      if (y < h - 1) {
+        d = Math.min(d, dist[i + w] + 3)
+        if (x < w - 1) d = Math.min(d, dist[i + w + 1] + 4)
+        if (x > 0) d = Math.min(d, dist[i + w - 1] + 4)
+      }
+      dist[i] = d
+    }
+  }
+  return INF
+}
+
+// bbox [s, w, n, e]; lines [{ depth, path: [[lat, lon]] }]; water: anelli [[lat, lon]] (mare)
+function buildFineGrid({ bbox, lines, water }) {
+  const [s, wLon, n, e] = bbox
+  const w = Math.max(2, Math.round((e - wLon) / GRID_STEP))
+  const h = Math.max(2, Math.round((n - s) / GRID_STEP))
+  const toPx = (lat, lon) => [((lon - wLon) / (e - wLon)) * w, ((n - lat) / (n - s)) * h]
+  // Mare secondo la costa OSM
+  const canvas = new OffscreenCanvas(w, h)
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  ctx.fillStyle = '#fff'
+  ctx.beginPath()
+  for (const ring of water) {
+    ring.forEach(([lat, lon], i) => {
+      const [x, y] = toPx(lat, lon)
+      if (i === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    })
+    ctx.closePath()
+  }
+  ctx.fill('nonzero')
+  const px = ctx.getImageData(0, 0, w, h).data
+  const sea = new Uint8Array(w * h)
+  for (let i = 0; i < sea.length; i++) sea[i] = px[i * 4 + 3] > 127 ? 1 : 0
+
+  // Livelli: 0 = riva, poi le profondità delle isobate presenti
+  const levels = [0, ...[...new Set(lines.map((l) => l.depth))].sort((a, b) => a - b)]
+  const INF = 1e9
+  const fields = levels.map(() => new Float32Array(w * h).fill(INF))
+  // Riva: le celle di terra
+  for (let i = 0; i < sea.length; i++) if (!sea[i]) fields[0][i] = 0
+  // Isobate: segmenti tracciati cella per cella
+  const mark = (field, x0, y0, x1, y1) => {
+    const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 2))
+    for (let k = 0; k <= steps; k++) {
+      const x = Math.floor(x0 + ((x1 - x0) * k) / steps)
+      const y = Math.floor(y0 + ((y1 - y0) * k) / steps)
+      if (x >= 0 && y >= 0 && x < w && y < h) field[y * w + x] = 0
+    }
+  }
+  const covered = new Uint8Array(w * h)
+  for (const { depth, path } of lines) {
+    const field = fields[levels.indexOf(depth)]
+    for (let k = 1; k < path.length; k++) {
+      const [x0, y0] = toPx(path[k - 1][0], path[k - 1][1])
+      const [x1, y1] = toPx(path[k][0], path[k][1])
+      mark(field, x0, y0, x1, y1)
+    }
+  }
+  for (const f of fields) chamfer(f, w, h)
+  // Area rilevata: entro ~400 m da un'isobata (oltre, la stima non regge)
+  const NEAR = (400 / 9) * 3
+  for (let i = 0; i < w * h; i++) {
+    for (let k = 1; k < fields.length; k++) {
+      if (fields[k][i] <= NEAR) {
+        covered[i] = 1
+        break
+      }
+    }
+  }
+  const depth = new Float32Array(w * h).fill(NaN)
+  for (let i = 0; i < w * h; i++) {
+    if (!sea[i] || !covered[i]) continue
+    // Livello più vicino, poi il più vicino tra i due adiacenti
+    let k1 = 0
+    for (let k = 1; k < fields.length; k++) if (fields[k][i] < fields[k1][i]) k1 = k
+    const d1 = fields[k1][i]
+    if (d1 === 0) {
+      depth[i] = levels[k1]
+      continue
+    }
+    const up = k1 > 0 ? fields[k1 - 1][i] : INF
+    const down = k1 < fields.length - 1 ? fields[k1 + 1][i] : INF
+    if (up >= INF && down >= INF) {
+      depth[i] = levels[k1]
+      continue
+    }
+    const k2 = up <= down ? k1 - 1 : k1 + 1
+    const d2 = fields[k2][i]
+    depth[i] = levels[k1] + ((levels[k2] - levels[k1]) * d1) / (d1 + d2)
+  }
+  return { w, h, depth }
+}
+
+function hexRgb(hex) {
+  const v = parseInt(String(hex).replace('#', ''), 16)
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255]
+}
+
+async function fineZones(id, { key, bbox, lines, water, zones, opacity }) {
+  let grid = fineGrids.get(key)
+  if (!grid) {
+    if (!lines) {
+      self.postMessage({ id, missing: true })
+      return
+    }
+    grid = buildFineGrid({ bbox, lines, water })
+    fineGrids.set(key, grid)
+    if (fineGrids.size > MAX_FINE) fineGrids.delete(fineGrids.keys().next().value)
+  }
+  const { w, h, depth } = grid
+  const on = zones.filter((z) => z.on && z.to > z.from).map((z) => ({ ...z, rgb: hexRgb(z.color) }))
+  const canvas = new OffscreenCanvas(w, h)
+  const ctx = canvas.getContext('2d')
+  const img = ctx.createImageData(w, h)
+  const out = img.data
+  const a = Math.round(255 * opacity)
+  let any = false
+  for (let i = 0; i < w * h; i++) {
+    const d = depth[i]
+    if (Number.isNaN(d)) continue
+    for (const z of on) {
+      if (d >= z.from && d < z.to) {
+        out[i * 4] = z.rgb[0]
+        out[i * 4 + 1] = z.rgb[1]
+        out[i * 4 + 2] = z.rgb[2]
+        out[i * 4 + 3] = a
+        any = true
+        break
+      }
+    }
+  }
+  if (!any) {
+    self.postMessage({ id, empty: true })
+    return
+  }
+  ctx.putImageData(img, 0, 0)
+  const blob = await canvas.convertToBlob({ type: 'image/png' })
+  self.postMessage({ id, blob })
+}
+
+/** Profondità della griglia fine nel punto, o null (per il puntatore) */
+function fineDepth(id, { key, bbox, lat, lon }) {
+  const grid = fineGrids.get(key)
+  if (!grid) return self.postMessage({ id, depth: null })
+  const [s, wLon, n, e] = bbox
+  const x = Math.floor(((lon - wLon) / (e - wLon)) * grid.w)
+  const y = Math.floor(((n - lat) / (n - s)) * grid.h)
+  const v = x >= 0 && y >= 0 && x < grid.w && y < grid.h ? grid.depth[y * grid.w + x] : NaN
+  self.postMessage({ id, depth: Number.isNaN(v) ? null : v })
+}
+
 self.onmessage = async ({ data: { id, kind, url, ...rest } }) => {
   if (kind === 'migrate') {
     migrate(id).catch((err) => self.postMessage({ id, error: String(err?.message || err) }))
@@ -318,6 +506,8 @@ self.onmessage = async ({ data: { id, kind, url, ...rest } }) => {
     else if (kind === 'fronts') await fronts(id, rest)
     else if (kind === 'tint') await tint(id, url, rest)
     else if (kind === 'raster') raster(id, rest)
+    else if (kind === 'fineZones') await fineZones(id, rest)
+    else if (kind === 'fineDepth') fineDepth(id, rest)
     else throw new Error(`lavoro sconosciuto: ${kind}`)
   } catch (err) {
     self.postMessage({ id, error: String(err?.message || err) })

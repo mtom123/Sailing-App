@@ -27,6 +27,17 @@ export const SHALLOW_BANDS = [
   [20, '#c3ddf1', 0.3],
 ]
 
+// Fasce di profondità personali (per l'ancoraggio, come le "aree di pesca"
+// di Navionics): nome, da–a metri, colore. Valori di partenza dell'utente
+export const DEFAULT_DEPTH_ZONES = [
+  { id: 'pericolo', name: 'Pericolo', from: 1, to: 3, color: '#e8384f', on: true },
+  { id: 'rischio', name: 'Ancoraggio rischio', from: 3, to: 5, color: '#f39a37', on: true },
+  { id: 'ok', name: 'Ancoraggio ok', from: 5, to: 10, color: '#5ed3c1', on: true },
+  { id: 'profondo', name: 'Ancoraggio profondo', from: 10, to: 20, color: '#5b57d8', on: true },
+  { id: 'cento', name: '100 metri', from: 96, to: 100, color: '#ee2f8e', on: true },
+]
+export const DEPTH_ZONE_OPACITY = 0.55
+
 const lit = (v) => `<ogc:Literal>${v}</ogc:Literal>`
 const css = (name, value) => `<CssParameter name="${name}">${value}</CssParameter>`
 const vendor = (name, value) => `<VendorOption name="${name}">${value}</VendorOption>`

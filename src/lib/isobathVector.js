@@ -96,5 +96,12 @@ export function buildIsobaths(grid) {
     if (ringsBand.length) bands.push({ color, opacity, rings: ringsBand })
     upper = depth
   }
-  return { lines, bands }
+  // Anelli lisci (lat, lon) dell'area meno profonda di `depth` (terra compresa),
+  // per le fasce personali: calcolati alla prima richiesta e tenuti
+  const smooth = new Map()
+  const ringsLatLng = (depth) => {
+    if (!smooth.has(depth)) smooth.set(depth, rings(depth).map((r) => chaikin(r, true).map(toLatLng)))
+    return smooth.get(depth)
+  }
+  return { lines, bands, ringsLatLng }
 }

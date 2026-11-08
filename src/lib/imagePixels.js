@@ -32,7 +32,9 @@ function run(kind, url, extra = {}, transfer = []) {
       pending.delete(data.id)
       if (data.unsupported) unsupported = true
       if (data.error) job.reject(new Error(data.error))
-      else job.resolve(data.bitmap || data.heights || data.masks || null)
+      else if ('depth' in data) job.resolve(data.depth)
+      else if (data.missing) job.resolve('missing')
+      else job.resolve(data.bitmap || data.heights || data.masks || data.blob || null)
     }
     worker.onerror = () => {
       unsupported = true
@@ -77,4 +79,14 @@ export function rasterMasks(w, h, layers) {
   const transfer = layers.flatMap((l) => (l.rings ? l.rings.map((r) => r.buffer) : [l.circles.buffer]))
   return runTransfer('raster', { w, h, layers }, transfer)
 }
+
+/**
+ * Fasce di profondità dalla griglia fine ricostruita dalle isobate, per un
+ * blocco: → Blob PNG, null (nessuna fascia) o 'missing' (il worker non ha
+ * più la griglia: rimandare con lines e water)
+ */
+export const fineZonesImage = (job) => run('fineZones', null, job)
+
+/** Profondità della griglia fine del blocco nel punto, o null */
+export const fineDepthAt = (key, bbox, lat, lon) => run('fineDepth', null, { key, bbox, lat, lon })
 

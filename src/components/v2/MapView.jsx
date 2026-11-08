@@ -6,7 +6,8 @@ import { useAppStore } from '../../store/useAppStore.js'
 import { logStep, failStep, hideLoadingScreen } from '../../lib/debugLogger.js'
 import { EMODNET_WMS_URL, EMODNET_DEPTH_LAYER, isobathSld } from '../../lib/isobaths.js'
 import { SEAGRASS_WMS_URL, SEAGRASS_LAYER, seagrassSld } from '../../lib/seagrass.js'
-import { IsobathLayer } from '../../lib/isobathLayer.js'
+import { DepthZoneLayer, IsobathLayer } from '../../lib/isobathLayer.js'
+import { FineDepthZoneLayer } from '../../lib/fineDepthZones.js'
 import { ShomReliefLayer } from '../../lib/shomRelief.js'
 import { HdIsobathLayer } from '../../lib/hdIsobathLayer.js'
 import { LIGURIA_ISOBATH_SOURCE } from '../../lib/liguriaIsobaths.js'
@@ -657,6 +658,31 @@ export default function MapView({
     setVis(refs.seamarks, layers.seamarks)
     setVis(refs.coastBand, layers.coastBand)
   }, [baseStyle, layers.bathy, layers.posidonia, layers.shomRelief, layers.isobaths, layers.seamarks, layers.coastBand, mapReady])
+
+  // === Fasce di profondità personali (ancoraggio) ===
+  const depthZones = useAppStore((s) => s.depthZones)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!mapReady || !map) return
+    const refs = tileLayerRefs.current
+    if (!refs.depthZones) refs.depthZones = new DepthZoneLayer({ attribution: '© EMODnet Bathymetry' })
+    // In Liguria: fasce di dettaglio dalle isobate della Regione; lì le EMODnet si tolgono
+    if (!refs.fineDepthZones) {
+      refs.fineDepthZones = new FineDepthZoneLayer({
+        attribution: '© Regione Liguria – isobate di dettaglio',
+        onCoverage: (rings) => refs.depthZones.setHdCoverage(rings),
+      })
+    }
+    refs.depthZones.setZones(depthZones)
+    refs.fineDepthZones.setZones(depthZones)
+    const on = layers.depthZones && depthZones.some((z) => z.on)
+    for (const layer of [refs.depthZones, refs.fineDepthZones]) {
+      if (on && !map.hasLayer(layer)) map.addLayer(layer)
+      if (!on && map.hasLayer(layer)) map.removeLayer(layer)
+    }
+    // Con le fasce i bassi fondali azzurri delle isobate si tolgono
+    refs.isobathVector?.setShallowBands(!on)
+  }, [layers.depthZones, depthZones, mapReady])
 
   // === Temperatura del mare e clorofilla, solo se accese ===
   const [seaInfo, setSeaInfo] = useState({})
@@ -1822,6 +1848,7 @@ function LayerPopover({ onClose, onDownloadArea }) {
       [
         { key: 'bathy', label: 'Batimetria (colori)' },
         { key: 'isobaths', label: 'Isobate e bassi fondali' },
+        { key: 'depthZones', label: 'Fasce di profondità (ancoraggio)' },
         { key: 'shomRelief', label: 'Rilievo HD Francia (Shom)' },
         { key: 'posidonia', label: 'Posidonia e fondali (Liguria)' },
       ],

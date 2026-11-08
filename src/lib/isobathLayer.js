@@ -12,7 +12,7 @@
 import L from 'leaflet'
 import { loadBlock, blockIndex, mergeBlocks, BLOCK } from './depthGrid.js'
 import { buildIsobaths } from './isobathVector.js'
-import { CHART_COLORS, IMAGERY_COLORS, SHALLOW_LIMIT } from './isobaths.js'
+import { CHART_COLORS, DEPTH_ZONE_OPACITY, IMAGERY_COLORS, SHALLOW_LIMIT } from './isobaths.js'
 import { waterRings } from './waterMask.js'
 
 // Margine dei canvas oltre la mappa: più grande = pan più fluido, ma su iPad
@@ -185,6 +185,13 @@ export const IsobathLayer = L.Layer.extend({
     this._draw()
   },
 
+  // Con le fasce personali accese i bassi fondali azzurri non si disegnano
+  setShallowBands(on) {
+    if (on === !this.options.noBands) return
+    this.options.noBands = !on
+    this._draw()
+  },
+
   // Aree con le isobate ogni metro del Shom: qui le EMODnet non si disegnano
   setHdCoverage(rings) {
     this._hdRings = rings && rings.length ? rings : null
@@ -295,7 +302,7 @@ export const IsobathLayer = L.Layer.extend({
     const imagery = this.options.imagery
     const [shallowColor, deepColor] = imagery ? IMAGERY_COLORS : CHART_COLORS
 
-    if (!imagery) {
+    if (!imagery && !this.options.noBands) {
       for (const band of this._data.bands) {
         L.polygon(band.rings, {
           renderer: this._renderer,
@@ -344,3 +351,60 @@ export const IsobathLayer = L.Layer.extend({
     })
   },
 })
+
+/*
+ * Fasce di profondità personali (impostazioni → Fasce di profondità): stessa
+ * griglia e stessi blocchi delle isobate, colori pieni per fascia. In un
+ * pannello loro, sotto le isobate, tagliate dalla costa OSM e dove ci sono
+ * le fasce di dettaglio (fineDepthZones.js).
+ */
+export const ZONE_PANE = 'depthZonePane'
+export const DepthZoneLayer = IsobathLayer.extend({
+  options: { minZoom: 12, zones: [] },
+
+  setZones(zones) {
+    this.options.zones = zones
+    this._draw()
+  },
+
+  onAdd(map) {
+    ensurePane(map, ZONE_PANE, 248)
+    this._renderer = new MaskedCanvas({ pane: ZONE_PANE, padding: CANVAS_PAD, lowRes: true })
+    this._group = L.layerGroup().addTo(map)
+    this._labels = L.layerGroup()
+    map.on('moveend', this._update, this)
+    this._key = null
+    this._range = null
+    this._update()
+  },
+
+  // Dove ci sono le fasce di dettaglio (fineDepthZones.js) queste si tolgono
+  setHdCoverage(rings) {
+    this._hdRings = rings && rings.length ? rings : null
+    if (this._map) this._setMask()
+  },
+  _drawLabels() {},
+
+  _draw() {
+    if (!this._map || !this._data?.ringsLatLng) return
+    this._group.clearLayers()
+    this._mask = null
+    this._cut = null
+    const ringsAt = this._data.ringsLatLng
+    for (const z of this.options.zones) {
+      if (!z.on || !(z.to > z.from) || z.from < 0) continue
+      // Fascia = (meno profondo di "a") meno (meno profondo di "da"): evenodd
+      const rings = [...ringsAt(z.to), ...ringsAt(z.from)]
+      if (!rings.length) continue
+      L.polygon(rings, {
+        renderer: this._renderer,
+        stroke: false,
+        fillColor: z.color,
+        fillOpacity: DEPTH_ZONE_OPACITY,
+        interactive: false,
+      }).addTo(this._group)
+    }
+    this._setMask()
+  },
+})
+
