@@ -26,6 +26,28 @@ export function clearStarts() {
 
 const whole = (v) => (v == null ? null : Math.round(v))
 
+// Service worker attivo, in attesa o in installazione (un aggiornamento a metà?)
+async function swState() {
+  const reg = await navigator.serviceWorker?.getRegistration?.()
+  if (!reg) return null
+  return [reg.active && `attivo:${reg.active.state}`, reg.waiting && 'in attesa', reg.installing && `installa:${reg.installing.state}`].filter(Boolean).join(', ')
+}
+
+// Tempi della pagina misurati dal service worker (sw.js): avvio, archivio, rete
+function swTiming() {
+  const sw = navigator.serviceWorker?.controller
+  if (!sw) return Promise.resolve(null)
+  return new Promise((resolve) => {
+    const channel = new MessageChannel()
+    const timer = setTimeout(() => resolve(null), 1000)
+    channel.port1.onmessage = ({ data }) => {
+      clearTimeout(timer)
+      resolve(data)
+    }
+    sw.postMessage({ type: 'nav-timing' }, [channel.port2])
+  })
+}
+
 async function snapshot() {
   const nav = performance.getEntriesByType('navigation')[0]
   const paint = performance.getEntriesByType('paint').find((p) => p.name === 'first-contentful-paint')
@@ -38,7 +60,12 @@ async function snapshot() {
     home: !!navigator.standalone,
     sw: !!navigator.serviceWorker?.controller,
     worker: whole(nav?.workerStart),
+    // Pagina: richiesta partita, primo byte, ultimo byte
+    request: whole(nav?.requestStart),
+    firstByte: whole(nav?.responseStart),
     page: whole(nav?.responseEnd),
+    swNav: await swTiming().catch(() => null),
+    swState: await swState().catch(() => null),
     firstPaint: whole(paint?.startTime),
     main: whole(t.main),
     ready: whole(t.ready),

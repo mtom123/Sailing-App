@@ -104,10 +104,22 @@ async function trimCache(name, max) {
 
 const usable = (r) => r && (r.ok || r.type === 'opaque')
 
-async function networkFirst(request, cacheName, { timeout, max, fallbackShell = false }) {
+// Tempi dell'ultima apertura della pagina, chiesti dall'app per il registro
+// "Tempi di apertura" (startLog.js): solo misure, la logica non cambia
+let lastNav = null
+const since = (t0) => Math.round(performance.now() - t0)
+
+async function networkFirst(request, cacheName, { timeout, max, fallbackShell = false, timing = null }) {
+  const t0 = performance.now()
   const cache = await openCache(cacheName)
+  if (timing) timing.openMs = since(t0)
   try {
+    const t1 = performance.now()
     let response = await fetchWithTimeout(request, timeout)
+    if (timing) {
+      timing.netMs = since(t1)
+      timing.net = 'ok'
+    }
     // Safari rifiuta le pagine arrivate dopo un reindirizzamento: copia pulita
     if (response.redirected) {
       response = new Response(await response.blob(), { status: response.status, statusText: response.statusText, headers: response.headers })
@@ -118,10 +130,14 @@ async function networkFirst(request, cacheName, { timeout, max, fallbackShell = 
     }
     return response
   } catch (err) {
+    if (timing) timing.net = err?.message === 'timeout' ? 'timeout' : 'error'
+    const t2 = performance.now()
     const cached = await caches.match(request, { ignoreVary: true })
+    if (timing) timing.matchMs = since(t2)
     if (cached) return cached
     if (fallbackShell) {
       const shell = (await caches.match(BASE)) || (await caches.match(`${BASE}index.html`))
+      if (timing) timing.matchMs = since(t2)
       if (shell) return shell
       // Niente copia: ultima prova in rete senza tempo massimo
       return fetch(request)
@@ -172,6 +188,10 @@ async function cacheFirst(request, cacheName, { max, url = request.url } = {}) {
   return Promise.race([stored.catch(blankTile), late])
 }
 
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'nav-timing') event.ports?.[0]?.postMessage(lastNav)
+})
+
 // Qualunque errore del service worker: la richiesta va in rete come se non
 // ci fosse, così l'app non resta mai bloccata
 const safely = (event, promise) => event.respondWith(promise.catch(() => fetch(event.request)))
@@ -183,7 +203,9 @@ self.addEventListener('fetch', (event) => {
 
   if (url.origin === self.location.origin) {
     if (request.mode === 'navigate' || url.pathname === BASE || url.pathname.endsWith('/index.html')) {
-      safely(event, networkFirst(request, SHELL_CACHE, { timeout: 6000, fallbackShell: true }))
+      // swUpMs: da quanto era acceso il service worker (pochi ms = appena avviato da iOS)
+      lastNav = { at: Date.now(), swUpMs: Math.round(performance.now()) }
+      safely(event, networkFirst(request, SHELL_CACHE, { timeout: 6000, fallbackShell: true, timing: lastNav }))
     } else if (url.pathname.startsWith(`${BASE}assets/`) || url.pathname.startsWith(`${BASE}isobaths-hd/`)) {
       safely(event, cacheFirst(request, url.pathname.includes('/assets/') ? SHELL_CACHE : GEO_CACHE))
     } else if (url.pathname.endsWith('.json') || url.pathname.endsWith('.webmanifest')) {
