@@ -12,6 +12,7 @@
  * - 'dem': altimetria Terrarium → { id, heights } (Float32Array, metri)
  * - 'fronts' ({ sst, chl, kmPerPx }): fronti termici e di clorofilla di un
  *   tassello → { id, bitmap } | { id, empty: true }
+ * - 'raster' ({ w, h, layers }): poligoni e cerchi → { id, masks } (Uint8Array)
  * - 'tint' ({ rgb, alpha }): immagine ricolorata → { id, bitmap } | { id, empty: true }
  * - 'migrate': carte salvate in Cache Storage → archivio IndexedDB
  *   (tileStore.js) → { id, moved, skipped }
@@ -260,6 +261,48 @@ async function tint(id, url, { rgb, alpha }) {
   self.postMessage({ id, bitmap }, [bitmap])
 }
 
+// Disegno di poligoni e cerchi → maschere sì/no (Uint8Array w×h), per la
+// fascia costiera: sull'iPad rileggere nella pagina quel che si era appena
+// disegnato costava 5–15 s (Blocchi della carta, 8/11/2026).
+// layers: [{ rings: [Float32Array x,y,…], stroke?: larghezza } | { circles: Float32Array x,y,r,… }]
+function raster(id, { w, h, layers }) {
+  const canvas = new OffscreenCanvas(Math.max(1, w), Math.max(1, h))
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  ctx.fillStyle = '#fff'
+  ctx.strokeStyle = '#fff'
+  const masks = []
+  for (const layer of layers) {
+    ctx.clearRect(0, 0, w, h)
+    ctx.beginPath()
+    if (layer.rings) {
+      for (const ring of layer.rings) {
+        for (let i = 0; i < ring.length; i += 2) {
+          if (i === 0) ctx.moveTo(ring[i], ring[i + 1])
+          else ctx.lineTo(ring[i], ring[i + 1])
+        }
+        ctx.closePath()
+      }
+      ctx.fill('nonzero')
+      if (layer.stroke) {
+        ctx.lineWidth = layer.stroke
+        ctx.stroke()
+      }
+    } else if (layer.circles) {
+      const c = layer.circles
+      for (let i = 0; i < c.length; i += 3) {
+        ctx.moveTo(c[i] + c[i + 2], c[i + 1])
+        ctx.arc(c[i], c[i + 1], c[i + 2], 0, 2 * Math.PI)
+      }
+      ctx.fill()
+    }
+    const px = ctx.getImageData(0, 0, w, h).data
+    const mask = new Uint8Array(w * h)
+    for (let i = 0; i < mask.length; i++) mask[i] = px[i * 4 + 3] > 127 ? 1 : 0
+    masks.push(mask)
+  }
+  self.postMessage({ id, masks }, masks.map((m) => m.buffer))
+}
+
 self.onmessage = async ({ data: { id, kind, url, ...rest } }) => {
   if (kind === 'migrate') {
     migrate(id).catch((err) => self.postMessage({ id, error: String(err?.message || err) }))
@@ -274,6 +317,7 @@ self.onmessage = async ({ data: { id, kind, url, ...rest } }) => {
     else if (kind === 'dem') await dem(id, url)
     else if (kind === 'fronts') await fronts(id, rest)
     else if (kind === 'tint') await tint(id, url, rest)
+    else if (kind === 'raster') raster(id, rest)
     else throw new Error(`lavoro sconosciuto: ${kind}`)
   } catch (err) {
     self.postMessage({ id, error: String(err?.message || err) })

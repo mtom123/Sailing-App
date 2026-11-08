@@ -298,20 +298,33 @@ const blankTile = () => new Response(BLANK_PNG, { headers: { 'Content-Type': 'im
 // Copia se c'è (archivio IndexedDB; finché non è finito il trasferimento
 // anche le vecchie cache), sennò rete e copia nell'archivio
 const AREA = { [TILE_CACHE]: 'tiles', [SHOM_CACHE]: 'shom', [GEO_CACHE]: 'geo' }
+// Le vecchie cache dopo un avvio a freddo rispondono in ~10 s sull'iPad: con la
+// rete non si aspettano oltre questo, e il tassello arriva dalla rete
+const LEGACY_WAIT_MS = 300
+
+async function legacyLookup(url, cacheName) {
+  const lookIn = cacheName === SHOM_CACHE ? [OFFLINE_CACHE, SHOM_CACHE, TILE_CACHE] : [OFFLINE_CACHE, cacheName]
+  for (const name of lookIn) {
+    const cached = await (await openCache(name)).match(url, { ignoreVary: true }).catch(() => null)
+    if (cached) return cached
+  }
+  return null
+}
+
 async function cacheFirst(request, cacheName, { max, url = request.url, event = null } = {}) {
   const area = AREA[cacheName]
   const stored = await storeResponse(url).catch(() => null)
   if (stored) return stored
-  if (!(await legacyMigrated())) {
-    const lookIn =
-      cacheName === SHOM_CACHE ? [OFFLINE_CACHE, SHOM_CACHE, TILE_CACHE] : [OFFLINE_CACHE, cacheName] // vecchie cache
-    for (const name of lookIn) {
-      const cached = await (await openCache(name)).match(url, { ignoreVary: true }).catch(() => null)
-      if (cached) return cached
-    }
+  const offline = self.navigator.onLine === false
+  const legacy = (await legacyMigrated()) ? null : legacyLookup(url, cacheName).catch(() => null)
+  if (legacy) {
+    const first = offline ? await legacy : await Promise.race([legacy, new Promise((resolve) => setTimeout(() => resolve(SLOW), LEGACY_WAIT_MS))])
+    if (first && first !== SLOW) return first
   }
   const mapImage = cacheName === TILE_CACHE && request.destination === 'image'
-  if (mapImage && self.navigator.onLine === false) return blankTile()
+  // Senza rete un tassello che manca è trasparente, subito: sull'iPad la carta
+  // smetteva di disegnarsi aspettando richieste che non potevano arrivare
+  if (mapImage && offline) return blankTile()
   // Carte richieste da <img>: si riscaricano in CORS per salvarle leggibili
   const fresh = fetch(url, { mode: 'cors', credentials: 'omit' })
     .catch(() => fetch(request))
@@ -319,9 +332,15 @@ async function cacheFirst(request, cacheName, { max, url = request.url, event = 
       if (usable(response)) keepAlive(event, storeSave(url, response.clone(), area, max))
       return response
     })
-  if (!mapImage) return fresh
-  const late = new Promise((resolve) => setTimeout(() => resolve(blankTile()), TILE_WAIT_MS))
-  return Promise.race([fresh.catch(blankTile), late])
+  // Rete mancata: la vecchia copia se c'è (anche lenta), sennò per le immagini
+  // un tassello trasparente. Con la rete non si dà mai il tassello vuoto prima
+  // del tempo: Leaflet non lo richiederebbe più (buchi a blocchi, 8/11/2026)
+  return fresh.catch(async (err) => {
+    const old = legacy && (await legacy)
+    if (old) return old
+    if (mapImage) return blankTile()
+    throw err
+  })
 }
 
 self.addEventListener('message', (event) => {

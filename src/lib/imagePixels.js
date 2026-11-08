@@ -12,7 +12,11 @@ let unsupported = false
 let nextId = 0
 const pending = new Map() // id -> { resolve, reject }
 
-function run(kind, url, extra = {}) {
+function runTransfer(kind, extra, transfer) {
+  return run(kind, null, extra, transfer)
+}
+
+function run(kind, url, extra = {}, transfer = []) {
   // Il trasferimento dell'archivio non disegna: va anche senza canvas nei worker
   if (unsupported && kind !== 'migrate') return Promise.resolve(null)
   if (!worker) {
@@ -28,7 +32,7 @@ function run(kind, url, extra = {}) {
       pending.delete(data.id)
       if (data.unsupported) unsupported = true
       if (data.error) job.reject(new Error(data.error))
-      else job.resolve(data.bitmap || data.heights || null)
+      else job.resolve(data.bitmap || data.heights || data.masks || null)
     }
     worker.onerror = () => {
       unsupported = true
@@ -39,7 +43,7 @@ function run(kind, url, extra = {}) {
   const id = ++nextId
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject })
-    worker.postMessage({ id, kind, url, ...extra })
+    worker.postMessage({ id, kind, url, ...extra }, transfer)
   })
 }
 
@@ -63,3 +67,14 @@ export const migrateStore = () => run('migrate', null)
 
 /** Immagine con ogni pixel visibile del colore rgb ([r, g, b]) → ImageBitmap, o null */
 export const tintedBitmap = (url, rgb, alpha) => run('tint', url, { rgb, alpha })
+
+/**
+ * Poligoni e cerchi disegnati nel worker → una maschera sì/no (Uint8Array
+ * w×h) per strato, o null se il browser non lo permette.
+ * layers: [{ rings: [Float32Array x,y,…], stroke? } | { circles: Float32Array x,y,r,… }]
+ */
+export function rasterMasks(w, h, layers) {
+  const transfer = layers.flatMap((l) => (l.rings ? l.rings.map((r) => r.buffer) : [l.circles.buffer]))
+  return runTransfer('raster', { w, h, layers }, transfer)
+}
+

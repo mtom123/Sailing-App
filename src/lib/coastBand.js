@@ -25,7 +25,7 @@ import { contours } from 'd3-contour'
 import { coastFeatures } from './waterMask.js'
 import { chaikin, splitOnFrame } from './isobathVector.js'
 import { ruleAt, ruleTiming } from '../data/coastRules.js'
-import { demHeights } from './imagePixels.js'
+import { demHeights, rasterMasks } from './imagePixels.js'
 
 export const BAND_DEFAULTS = { beach: 200, beachSicily: 300, cliff: 100 }
 export const FRANCE_BAND_M = 300
@@ -190,6 +190,50 @@ const DIRS8 = [
  * dM, dPx }] }, o null se servono troppi tasselli o isStale() dice che il
  * risultato non serve più.
  */
+// Poligoni e cerchi → maschere sì/no. Nel worker: sull'iPad rileggere nella
+// pagina un canvas appena disegnato costava 5–15 s (8/11/2026). Solo se il
+// browser non ha canvas nei worker si disegna qui
+async function rasterize(w, h, layers) {
+  const masks = await rasterMasks(w, h, layers)
+  if (masks) return masks
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  ctx.fillStyle = '#fff'
+  ctx.strokeStyle = '#fff'
+  const out = []
+  for (const layer of layers) {
+    ctx.clearRect(0, 0, w, h)
+    ctx.beginPath()
+    if (layer.rings) {
+      for (const ring of layer.rings) {
+        for (let i = 0; i < ring.length; i += 2) i === 0 ? ctx.moveTo(ring[i], ring[i + 1]) : ctx.lineTo(ring[i], ring[i + 1])
+        ctx.closePath()
+      }
+      ctx.fill('nonzero')
+      if (layer.stroke) {
+        ctx.lineWidth = layer.stroke
+        ctx.stroke()
+      }
+    } else {
+      const c = layer.circles
+      for (let i = 0; i < c.length; i += 3) {
+        ctx.moveTo(c[i] + c[i + 2], c[i + 1])
+        ctx.arc(c[i], c[i + 1], c[i + 2], 0, 2 * Math.PI)
+      }
+      ctx.fill()
+    }
+    const px = ctx.getImageData(0, 0, w, h).data
+    const mask = new Uint8Array(w * h)
+    for (let i = 0; i < mask.length; i++) mask[i] = px[i * 4 + 3] > 127 ? 1 : 0
+    out.push(mask)
+    await breathe()
+  }
+  canvas.width = canvas.height = 0 // Safari iOS: libera subito la memoria dei canvas
+  return out
+}
+
 async function analyze(bounds, res, cfg, maxTiles, isStale = () => false) {
   const [features, elev] = await Promise.all([coastFeatures(bounds, maxTiles), elevation(bounds)])
   if (!features || isStale()) return null
@@ -205,38 +249,22 @@ async function analyze(bounds, res, cfg, maxTiles, isStale = () => false) {
     return [(p.x - minX) / res, (maxY - p.y) / res]
   }
 
-  const canvas = document.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })
-  ctx.fillStyle = '#fff'
-  ctx.strokeStyle = '#fff'
-  const trace = (rings) => {
-    ctx.beginPath()
-    for (const ring of rings) {
+  const flat = (rings) =>
+    rings.map((ring) => {
+      const out = new Float32Array(ring.length * 2)
       ring.forEach((ll, i) => {
         const [px, py] = toPx(ll)
-        if (i === 0) ctx.moveTo(px, py)
-        else ctx.lineTo(px, py)
+        out[i * 2] = px
+        out[i * 2 + 1] = py
       })
-      ctx.closePath()
-    }
-  }
-  trace(features.sea)
-  ctx.fill('nonzero') // tasselli vicini si sovrappongono
-  const seaA = ctx.getImageData(0, 0, w, h).data
-  const sea = new Uint8Array(w * h)
-  for (let i = 0; i < sea.length; i++) sea[i] = seaA[i * 4 + 3] > 127 ? 1 : 0
-
-  // Spiagge allargate di BEACH_NEAR_M: il poligono OSM non sempre tocca la riva
-  ctx.clearRect(0, 0, w, h)
-  trace(features.beaches)
-  ctx.fill('nonzero')
-  ctx.lineWidth = (2 * BEACH_NEAR_M * m) / res
-  ctx.stroke()
-  const beachA = ctx.getImageData(0, 0, w, h).data
-  // Safari iOS ha un limite di memoria per i canvas: oltre, li disegna neri
-  canvas.width = canvas.height = 0
+      return out
+    })
+  // Mare (tasselli vicini si sovrappongono: nonzero) e spiagge allargate di
+  // BEACH_NEAR_M, perché il poligono OSM non sempre tocca la riva
+  const [sea, beach] = await rasterize(w, h, [
+    { rings: flat(features.sea) },
+    { rings: flat(features.beaches), stroke: (2 * BEACH_NEAR_M * m) / res },
+  ])
   await breathe()
   if (isStale()) return null
 
@@ -257,7 +285,7 @@ async function analyze(bounds, res, cfg, maxTiles, isStale = () => false) {
       if (!region) continue
       if (harbors.some(([hx, hy]) => (hx - c - 0.5) ** 2 + (hy - r - 0.5) ** 2 < harborR2)) continue
       let kind = 'low'
-      if (beachA[i * 4 + 3] > 127) kind = 'beach'
+      if (beach[i]) kind = 'beach'
       else {
         // Quota attorno alla riva (in mare è ≤ 0, non conta)
         cliff: for (const t of [0.5, 1]) {
@@ -336,10 +364,6 @@ export async function coastBandLines(bounds, res, cfg = BAND_DEFAULTS, isStale =
     return false
   }
 
-  const canvas = document.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })
   const lines = []
   // Italia e Francia separate: regole diverse anche dove si vedono insieme (Bocche di Bonifacio)
   for (const group of ['italy', 'france']) {
@@ -347,17 +371,16 @@ export async function coastBandLines(bounds, res, cfg = BAND_DEFAULTS, isStale =
     if (!pts.length) continue
     await breathe()
     if (isStale()) break
-    ctx.clearRect(0, 0, w, h)
-    ctx.fillStyle = '#fff'
-    ctx.beginPath()
-    for (const p of pts) {
-      ctx.moveTo(p.c + 0.5 + p.dPx, p.r + 0.5)
-      ctx.arc(p.c + 0.5, p.r + 0.5, p.dPx, 0, 2 * Math.PI)
-    }
-    ctx.fill()
-    const bandA = ctx.getImageData(0, 0, w, h).data
+    const circles = new Float32Array(pts.length * 3)
+    pts.forEach((p, k) => {
+      circles[k * 3] = p.c + 0.5
+      circles[k * 3 + 1] = p.r + 0.5
+      circles[k * 3 + 2] = p.dPx
+    })
+    const [band] = await rasterize(w, h, [{ circles }])
+    if (isStale()) break
     const values = new Float64Array(w * h)
-    for (let i = 0; i < values.length; i++) values[i] = !sea[i] || bandA[i * 4 + 3] > 127 ? 1 : 0
+    for (let i = 0; i < values.length; i++) values[i] = !sea[i] || band[i] ? 1 : 0
     const rings = contours().size([w, h]).thresholds([0.5])(values)[0].coordinates.flat()
     const gov = governor(pts)
 
@@ -391,7 +414,6 @@ export async function coastBandLines(bounds, res, cfg = BAND_DEFAULTS, isStale =
       }
     }
   }
-  canvas.width = canvas.height = 0 // Safari iOS: libera la memoria dei canvas
   return isStale() ? null : lines
 }
 
