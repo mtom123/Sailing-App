@@ -5,7 +5,7 @@
  *   (niente versioni vecchie bloccate come su Safari 15); senza rete la copia.
  * - File dell'app con hash nel nome (assets/): dalla copia, non cambiano mai.
  * - Carte raster viste navigando (Esri, OpenSeaMap, EMODnet): dalla copia,
- *   con un tetto di voci. Quelle scaricate per una rotta stanno in
+ *   con un tetto di voci; il rilievo Shom in una cache sua. Quelle scaricate per una rotta stanno in
  *   OFFLINE_CACHE, scritte dalla pagina e mai sfoltite qui.
  * - Dati geografici (costa OSM, griglie di profondità, isobate, aree e
  *   ordinanze): dalla copia se c'è, senza tetto (sono pochi e servono offline).
@@ -17,8 +17,14 @@ const SHELL_CACHE = `timone-shell-${VERSION}`
 const TILE_CACHE = 'timone-tiles'
 const GEO_CACHE = 'timone-geo'
 const METEO_CACHE = 'timone-meteo'
+// Rilievo Shom: tasselli grandi (512 px), in una cache tutta loro così le
+// altre carte non li fanno uscire. La scrive anche imageWorker.js, che li
+// scarica fuori dalla pagina
+const SHOM_CACHE = 'timone-shom'
+const SHOM_HOST = 'services.data.shom.fr'
+const SHOM_MAX = 3000
 const OFFLINE_CACHE = 'timone-offline'
-const KEEP = [SHELL_CACHE, TILE_CACHE, GEO_CACHE, METEO_CACHE, OFFLINE_CACHE]
+const KEEP = [SHELL_CACHE, TILE_CACHE, GEO_CACHE, METEO_CACHE, OFFLINE_CACHE, SHOM_CACHE]
 
 const BASE = new URL('./', self.location).pathname
 
@@ -27,7 +33,6 @@ const TILE_HOSTS = [
   'tiles.openseamap.org',
   'tiles.emodnet-bathymetry.eu',
   'ows.emodnet-seabedhabitats.eu', // posidonia (immagini WMS)
-  'services.data.shom.fr', // rilievo (immagini WMS)
 ]
 // Dati: costa OSM, griglie di profondità (WCS), isobate e habitat (WFS).
 // Le immagini WMS degli stessi server vanno con le carte
@@ -139,7 +144,12 @@ const blankTile = () => new Response(BLANK_PNG, { headers: { 'Content-Type': 'im
 // Copia se c'è (prima tra le carte scaricate per le rotte, poi nella cache
 // propria), sennò rete
 async function cacheFirst(request, cacheName, { max, url = request.url } = {}) {
-  const lookIn = cacheName === TILE_CACHE || cacheName === GEO_CACHE ? [OFFLINE_CACHE, cacheName] : [cacheName]
+  const lookIn =
+    cacheName === SHOM_CACHE
+      ? [OFFLINE_CACHE, SHOM_CACHE, TILE_CACHE] // nella cache delle carte quelli salvati prima
+      : cacheName === TILE_CACHE || cacheName === GEO_CACHE
+      ? [OFFLINE_CACHE, cacheName]
+      : [cacheName]
   for (const name of lookIn) {
     const cached = await (await openCache(name)).match(url, { ignoreVary: true })
     if (cached) return cached
@@ -183,6 +193,10 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
+  if (url.hostname === SHOM_HOST) {
+    safely(event, cacheFirst(request, SHOM_CACHE, { max: SHOM_MAX }))
+    return
+  }
   if (TILE_HOSTS.includes(url.hostname) || isSeaTile(url) || (GEO_HOSTS.includes(url.hostname) && isWmsImage(url))) {
     safely(event, cacheFirst(request, TILE_CACHE, { max: TILE_MAX }))
     return

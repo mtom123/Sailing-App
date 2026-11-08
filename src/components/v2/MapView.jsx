@@ -520,6 +520,7 @@ export default function MapView({
         seamarks: tileLayerRefs.current.seamarks,
         bathy: tileLayerRefs.current.bathy,
         isobathsWms: tileLayerRefs.current.isobaths,
+        shomRelief: tileLayerRefs.current.shomRelief,
       })
       if (layers.coastBand) map.addLayer(tileLayerRefs.current.coastBand)
 

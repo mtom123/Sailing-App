@@ -13,10 +13,40 @@
  * Errori: { id, error }; browser senza OffscreenCanvas: { id, unsupported: true }.
  */
 
-async function pixels(url) {
+// Tasselli Shom già visti o scaricati per una rotta: dalla copia, sennò rete
+// e copia in SHOM_CACHE (come il service worker, che dal worker potrebbe non
+// vedere le richieste). Tetto di voci come in sw.js
+const SHOM_CACHE = 'timone-shom'
+const SHOM_MAX = 3000
+const TRIM_EVERY = 100
+let stored = 0
+
+async function trimShom(cache) {
+  const keys = await cache.keys()
+  for (let i = 0; i < keys.length - SHOM_MAX; i++) await cache.delete(keys[i])
+}
+
+async function download(url, keep) {
+  if (keep && self.caches) {
+    const cached = await caches.match(url, { ignoreVary: true }).catch(() => null)
+    if (cached) return cached.blob()
+  }
   const res = await fetch(url, { mode: 'cors', credentials: 'omit' })
   if (!res.ok) throw new Error(`${res.status}`)
-  const image = await createImageBitmap(await res.blob())
+  if (keep && self.caches) {
+    try {
+      const cache = await caches.open(SHOM_CACHE)
+      await cache.put(url, res.clone())
+      if (++stored % TRIM_EVERY === 0) trimShom(cache).catch(() => {})
+    } catch {
+      // spazio pieno: il tassello si mostra lo stesso
+    }
+  }
+  return res.blob()
+}
+
+async function pixels(url, keep = false) {
+  const image = await createImageBitmap(await download(url, keep))
   const { width, height } = image
   const canvas = new OffscreenCanvas(Math.max(1, width), Math.max(1, height))
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
@@ -28,7 +58,7 @@ async function pixels(url) {
 const SHOM_TILE = 512
 
 async function shom(id, url) {
-  const { canvas, ctx, width, height } = await pixels(url)
+  const { canvas, ctx, width, height } = await pixels(url, true)
   // Senza rete il service worker manda un tassello vuoto da 1 pixel
   if (width < SHOM_TILE || height < SHOM_TILE) {
     self.postMessage({ id, empty: true })

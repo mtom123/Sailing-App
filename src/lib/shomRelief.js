@@ -22,6 +22,32 @@ const COVERAGE = [
 ]
 const TILE = 512
 
+/**
+ * URL del tassello {z, x, y} (da TILE px) del rilievo, o null fuori dalle
+ * zone coperte. Lo usano la carta e lo scaricamento offline (stessi URL,
+ * così le copie salvate si ritrovano).
+ */
+export function shomTileUrl(z, x, y) {
+  const crs = L.CRS.EPSG3857
+  const nw = crs.pointToLatLng(L.point(x * TILE, y * TILE), z)
+  const se = crs.pointToLatLng(L.point((x + 1) * TILE, (y + 1) * TILE), z)
+  // Come GridLayer._tileCoordsToBounds (longitudini "avvolte"): stesse cifre,
+  // quindi gli stessi URL dei tasselli già salvati
+  const bounds = crs.wrapLatLngBounds(L.latLngBounds(nw, se))
+  const area = COVERAGE.find((c) => c.bounds.intersects(bounds))
+  if (!area) return null
+  const sw = crs.project(bounds.getSouthWest())
+  const ne = crs.project(bounds.getNorthEast())
+  return (
+    `${SHOM_WMS_URL}?service=WMS&version=1.3.0&request=GetMap&layers=${area.layer}` +
+    `&styles=&format=image/png&transparent=true&crs=EPSG:3857` +
+    `&bbox=${sw.x},${sw.y},${ne.x},${ne.y}&width=${TILE}&height=${TILE}`
+  )
+}
+
+/** Zoom del rilievo da scaricare per l'offline: rotte fino a 15, zone fino a 14 */
+export const SHOM_OFFLINE_ZOOMS = { route: [12, 15], area: [12, 14] }
+
 export const ShomReliefLayer = L.GridLayer.extend({
   options: {
     tileSize: TILE,
@@ -47,19 +73,12 @@ export const ShomReliefLayer = L.GridLayer.extend({
     const tile = document.createElement('canvas')
     tile.width = TILE
     tile.height = TILE
-    const bounds = this._tileCoordsToBounds(coords)
-    const area = COVERAGE.find((c) => c.bounds.intersects(bounds))
-    if (!area) {
+    const url = shomTileUrl(coords.z, coords.x, coords.y)
+    if (!url) {
       setTimeout(() => done(null, tile), 0)
       return tile
     }
-
-    const sw = L.CRS.EPSG3857.project(bounds.getSouthWest())
-    const ne = L.CRS.EPSG3857.project(bounds.getNorthEast())
-    const url =
-      `${SHOM_WMS_URL}?service=WMS&version=1.3.0&request=GetMap&layers=${area.layer}` +
-      `&styles=&format=image/png&transparent=true&crs=EPSG:3857` +
-      `&bbox=${sw.x},${sw.y},${ne.x},${ne.y}&width=${TILE}&height=${TILE}`
+    const bounds = this._tileCoordsToBounds(coords)
     const origin = coords.scaleBy(this.getTileSize())
 
     Promise.all([shomTileBitmap(url), waterRings(bounds, coords.z, { oceanOnly: true })])

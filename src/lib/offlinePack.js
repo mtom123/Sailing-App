@@ -4,12 +4,13 @@ import { loadBlock, blockIndex } from './depthGrid.js'
 import { SHOM_SOURCE, HD_BASE } from './hdIsobathLayer.js'
 import { LIGURIA_ISOBATH_SOURCE } from './liguriaIsobaths.js'
 import { loadTile as loadWaterTile } from './waterMask.js'
+import { shomTileUrl, SHOM_OFFLINE_ZOOMS } from './shomRelief.js'
 
 /*
  * Carta per l'offline lungo una rotta (una fascia attorno ai tratti) o in
  * una zona disegnata col rettangolo, con
- * segnalamenti (OpenSeaMap), batimetria e isobate EMODnet, griglie di
- * profondità, costa OSM (che offline disegna anche la terra), isobate di
+ * segnalamenti (OpenSeaMap), batimetria e isobate EMODnet, rilievo Shom
+ * (se acceso), griglie di profondità, costa OSM (che offline disegna anche la terra), isobate di
  * dettaglio Shom e Regione Liguria, aree protette e ordinanze.
  *
  * Le carte raster si salvano qui in OFFLINE_CACHE (mai sfoltita dal service
@@ -114,6 +115,7 @@ const routeKey = (points) => points.map((p) => `${p.lat.toFixed(4)},${p.lon.toFi
 function routePlan(points) {
   return {
     key: routeKey(points),
+    kind: 'route',
     level: LEVELS.detail,
     tiles: (z, bufM, tileSize) => corridorTiles(points, z, bufM, tileSize),
     views: samples(points, 1000).map((p) => around(p, BUFFER_M)),
@@ -123,6 +125,7 @@ function routePlan(points) {
 function areaPlan(bounds, level = LEVELS.detail) {
   return {
     key: `${level.prefix}${bounds.toBBoxString()}`,
+    kind: 'area',
     level,
     tiles: (z, bufM, tileSize) => boundsTiles(bounds, z, tileSize),
     views: splitBounds(bounds, 0.05),
@@ -174,7 +177,7 @@ export function offlineInfo(points) {
 // URL dei tasselli raster del piano, per ogni strato presente sulla carta
 function rasterUrls(plan) {
   const urls = []
-  const { seamarks, bathy, isobathsWms } = mapLayers
+  const { seamarks, bathy, isobathsWms, shomRelief } = mapLayers
   const template = (layer, t) => L.Util.template(layer._url, { ...layer.options, ...t, s: 'a', r: '' })
   if (seamarks) {
     const [z0, z1] = plan.level.seamarks
@@ -193,6 +196,17 @@ function rasterUrls(plan) {
         const c = L.point(t.x, t.y)
         c.z = z
         urls.push(isobathsWms.getTileUrl(c))
+      }
+    }
+  }
+  // Rilievo Shom (Corsica, Provenza), se è acceso: tasselli grandi e lenti
+  // da preparare, quindi solo nel dettaglio e non oltre zoom 15 (14 per le zone)
+  if (shomRelief?._map && plan.level.hd) {
+    const [z0, z1] = SHOM_OFFLINE_ZOOMS[plan.kind]
+    for (let z = z0; z <= z1; z++) {
+      for (const t of plan.tiles(z, BUFFER_M, 512)) {
+        const url = shomTileUrl(t.z, t.x, t.y)
+        if (url) urls.push(url)
       }
     }
   }
@@ -313,6 +327,7 @@ export function downloadArea(bounds, opts, level = 'detail') {
 const AVG_TILE_BYTES = 4500
 const AVG_WATER_BYTES = 60000
 const AVG_BLOCK_BYTES = 130000
+const AVG_SHOM_BYTES = 80000 // tasselli del rilievo da 512 px (in mare aperto molto meno)
 
 /**
  * Quanto pesa una zona prima di scaricarla, al livello dato: { tiles, mb,
@@ -330,7 +345,12 @@ export function estimateArea(bounds, level = 'detail') {
   const water = count(lv.water)
   const blocks =
     (blockIndex(bounds.getEast()) - blockIndex(bounds.getWest()) + 1) * (blockIndex(bounds.getNorth()) - blockIndex(bounds.getSouth()) + 1)
-  const mb = (tiles * AVG_TILE_BYTES + water * AVG_WATER_BYTES + blocks * AVG_BLOCK_BYTES) / 1e6
+  let shom = 0
+  if (mapLayers.shomRelief?._map && lv.hd) {
+    const [z0, z1] = SHOM_OFFLINE_ZOOMS.area
+    for (let z = z0; z <= z1; z++) shom += plan.tiles(z, 0, 512).filter((t) => shomTileUrl(t.z, t.x, t.y)).length
+  }
+  const mb = (tiles * AVG_TILE_BYTES + water * AVG_WATER_BYTES + blocks * AVG_BLOCK_BYTES + shom * AVG_SHOM_BYTES) / 1e6
   return { tiles, mb, tooBig: tiles > lv.maxTiles }
 }
 
