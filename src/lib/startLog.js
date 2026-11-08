@@ -4,6 +4,8 @@
  * pagina; quello che iOS fa prima (avviare il browser) qui non si vede.
  */
 
+import { storeCounts, storeMeta } from './tileStore.js'
+
 const KEY = 'timone.starts'
 const MAX_ENTRIES = 8
 const SETTLE_MS = 6000 // a carta caricata, per avere anche risorse e memoria
@@ -72,6 +74,9 @@ async function snapshot() {
     load: whole(nav?.loadEventEnd),
     files: slowest.map((r) => `${r.name.split('/').pop().split('-')[0]} ${whole(r.startTime)}+${whole(r.duration)}`),
     storageMb: est?.usage != null ? Math.round(est.usage / 1048576) : null,
+    // Voci nell'archivio carte (IndexedDB) e se le vecchie cache sono già passate lì
+    store: await storeCounts().catch(() => null),
+    migrated: await storeMeta('migrated').catch(() => null),
     markers: document.querySelectorAll('.leaflet-marker-icon').length,
   }
 }

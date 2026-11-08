@@ -92,6 +92,8 @@ class GlobalErrorBoundary extends React.Component {
   }
 }
 
+const MIGRATE_DELAY_MS = 20000
+
 try {
   logStep('Creating React root')
   ReactDOM.createRoot(document.getElementById('root')).render(
@@ -109,6 +111,13 @@ try {
       recordStart()
     })
   )
+  // Carte salvate prima dell'archivio IndexedDB: si spostano lì a app avviata
+  // (dopo la misura dei tempi di apertura), nel worker delle immagini
+  setTimeout(() => {
+    import('./lib/imagePixels.js')
+      .then((m) => m.migrateStore())
+      .catch(() => {})
+  }, MIGRATE_DELAY_MS)
 } catch (err) {
   failStep('React render', err)
 }

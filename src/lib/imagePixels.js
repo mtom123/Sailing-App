@@ -13,7 +13,8 @@ let nextId = 0
 const pending = new Map() // id -> { resolve, reject }
 
 function run(kind, url, extra = {}) {
-  if (unsupported) return Promise.resolve(null)
+  // Il trasferimento dell'archivio non disegna: va anche senza canvas nei worker
+  if (unsupported && kind !== 'migrate') return Promise.resolve(null)
   if (!worker) {
     try {
       worker = new Worker(new URL('./imageWorker.js', import.meta.url), { type: 'module' })
@@ -53,3 +54,10 @@ export const demHeights = (url) => run('dem', url)
  * clorofilla (uno dei due può mancare) e km per pixel → ImageBitmap, o null
  */
 export const frontsBitmap = ({ sst, chl, kmPerPx }) => run('fronts', null, { sst, chl, kmPerPx })
+
+/**
+ * Sposta le carte salvate in Cache Storage nell'archivio IndexedDB
+ * (tileStore.js), nel worker e poche alla volta. Si risolve a fine lavoro.
+ */
+export const migrateStore = () => run('migrate', null)
+

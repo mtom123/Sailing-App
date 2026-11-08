@@ -3,13 +3,14 @@
  *
  * - Pagina (index.html): prima la rete, così ogni aggiornamento arriva subito
  *   (niente versioni vecchie bloccate come su Safari 15); senza rete la copia.
- * - File dell'app con hash nel nome (assets/): dalla copia, non cambiano mai.
- * - Carte raster viste navigando (Esri, OpenSeaMap, EMODnet): dalla copia,
- *   con un tetto di voci; il rilievo Shom in una cache sua. Quelle scaricate per una rotta stanno in
- *   OFFLINE_CACHE, scritte dalla pagina e mai sfoltite qui.
- * - Dati geografici (costa OSM, griglie di profondità, isobate, aree e
- *   ordinanze): dalla copia se c'è, senza tetto (sono pochi e servono offline).
- * - Meteo Open-Meteo: prima la rete, l'ultima previsione resta per l'offline.
+ * - File dell'app con hash nel nome (assets/): dalla copia se risponde subito.
+ * - Carte raster viste navigando (Esri, OpenSeaMap, EMODnet, rilievo Shom) e
+ *   dati geografici (costa OSM, griglie di profondità, isobate): dalla copia
+ *   nell'archivio IndexedDB "timone-store", non in Cache Storage (vedi sotto);
+ *   le carte viste con un tetto di voci. Quelle scaricate per rotte e zone le
+ *   scrive la pagina (offlinePack.js) e non si sfoltiscono.
+ * - Aree protette, ordinanze, meteo: prima la rete, l'ultima copia in Cache
+ *   Storage, dove restano solo pagina e poche voci.
  */
 
 const VERSION = 'v6'
@@ -100,6 +101,100 @@ async function trimCache(name, max) {
   const cache = await openCache(name)
   const keys = await cache.keys()
   for (let i = 0; i < keys.length - max; i++) await cache.delete(keys[i])
+}
+
+// ------------------------------------------------ archivio carte (IndexedDB)
+// Carte e dati non stanno più in Cache Storage: sull'iPad il primo accesso
+// dopo un avvio a freddo costava ~10 s e cresceva con le voci. Stesso schema
+// di src/lib/tileStore.js (cambiare insieme). Voce: { url, area, at, type,
+// blob, packs }; aree 'tiles' e 'shom' con tetto, 'geo' e 'offline' senza.
+const STORE_DB = 'timone-store'
+const STORE_VERSION = 1
+let storeDbPromise = null
+function storeDb() {
+  if (!storeDbPromise) {
+    storeDbPromise = new Promise((resolve, reject) => {
+      const req = indexedDB.open(STORE_DB, STORE_VERSION)
+      req.onupgradeneeded = () => {
+        const db = req.result
+        if (!db.objectStoreNames.contains('entries')) {
+          const s = db.createObjectStore('entries', { keyPath: 'url' })
+          s.createIndex('area_at', ['area', 'at'])
+          s.createIndex('packs', 'packs', { multiEntry: true })
+        }
+        if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', { keyPath: 'key' })
+      }
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+      req.onblocked = () => reject(new Error('archivio bloccato'))
+    })
+    storeDbPromise.catch(() => {
+      storeDbPromise = null
+    })
+  }
+  return storeDbPromise
+}
+const idbDone = (req) =>
+  new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+
+async function storeResponse(url) {
+  const db = await storeDb()
+  const rec = await idbDone(db.transaction('entries').objectStore('entries').get(url))
+  return rec ? new Response(rec.blob, { headers: { 'Content-Type': rec.type || 'application/octet-stream' } }) : null
+}
+
+async function storeSave(url, response, area, max) {
+  // Le risposte "opache" (senza CORS) non si possono leggere: non si salvano
+  if (!response.ok || response.type === 'opaque') return
+  const type = response.headers.get('Content-Type')
+  const blob = await response.blob()
+  const db = await storeDb()
+  const tx = db.transaction('entries', 'readwrite')
+  const store = tx.objectStore('entries')
+  const old = await idbDone(store.get(url))
+  store.put({ url, area: old?.area === 'offline' ? 'offline' : area, at: Date.now(), type: type || old?.type, blob, packs: old?.packs || [] })
+  await new Promise((resolve, reject) => {
+    tx.oncomplete = resolve
+    tx.onerror = () => reject(tx.error)
+    tx.onabort = () => reject(tx.error)
+  })
+  if (max) trimStore(area, max)
+}
+
+async function trimStore(area, max) {
+  const now = Date.now()
+  if (now - (lastTrim[area] || 0) < TRIM_EVERY_MS) return
+  lastTrim[area] = now
+  const db = await storeDb()
+  const tx = db.transaction('entries', 'readwrite')
+  const index = tx.objectStore('entries').index('area_at')
+  const range = IDBKeyRange.bound([area, -Infinity], [area, Infinity])
+  let extra = (await idbDone(index.count(range))) - max
+  if (extra <= 0) return
+  const req = index.openCursor(range) // dalle più vecchie
+  req.onsuccess = () => {
+    const cursor = req.result
+    if (!cursor || extra-- <= 0) return
+    cursor.delete()
+    cursor.continue()
+  }
+}
+
+// Finché le carte salvate prima non sono passate nel nuovo archivio (lo fa
+// imageWorker.js, a carta ferma) si cercano anche nelle vecchie cache
+let legacyDone = false
+async function legacyMigrated() {
+  if (legacyDone) return true
+  try {
+    const db = await storeDb()
+    legacyDone = !!(await idbDone(db.transaction('meta').objectStore('meta').get('migrated')))?.value
+  } catch {
+    // archivio non leggibile: si guarda anche nelle vecchie cache
+  }
+  return legacyDone
 }
 
 const usable = (r) => r && (r.ok || r.type === 'opaque')
@@ -200,35 +295,33 @@ const BLANK_PNG = Uint8Array.from(
 )
 const blankTile = () => new Response(BLANK_PNG, { headers: { 'Content-Type': 'image/png' } })
 
-// Copia se c'è (prima tra le carte scaricate per le rotte, poi nella cache
-// propria), sennò rete
-async function cacheFirst(request, cacheName, { max, url = request.url } = {}) {
-  const lookIn =
-    cacheName === SHOM_CACHE
-      ? [OFFLINE_CACHE, SHOM_CACHE, TILE_CACHE] // nella cache delle carte quelli salvati prima
-      : cacheName === TILE_CACHE || cacheName === GEO_CACHE
-      ? [OFFLINE_CACHE, cacheName]
-      : [cacheName]
-  for (const name of lookIn) {
-    const cached = await (await openCache(name)).match(url, { ignoreVary: true })
-    if (cached) return cached
+// Copia se c'è (archivio IndexedDB; finché non è finito il trasferimento
+// anche le vecchie cache), sennò rete e copia nell'archivio
+const AREA = { [TILE_CACHE]: 'tiles', [SHOM_CACHE]: 'shom', [GEO_CACHE]: 'geo' }
+async function cacheFirst(request, cacheName, { max, url = request.url, event = null } = {}) {
+  const area = AREA[cacheName]
+  const stored = await storeResponse(url).catch(() => null)
+  if (stored) return stored
+  if (!(await legacyMigrated())) {
+    const lookIn =
+      cacheName === SHOM_CACHE ? [OFFLINE_CACHE, SHOM_CACHE, TILE_CACHE] : [OFFLINE_CACHE, cacheName] // vecchie cache
+    for (const name of lookIn) {
+      const cached = await (await openCache(name)).match(url, { ignoreVary: true }).catch(() => null)
+      if (cached) return cached
+    }
   }
   const mapImage = cacheName === TILE_CACHE && request.destination === 'image'
   if (mapImage && self.navigator.onLine === false) return blankTile()
   // Carte richieste da <img>: si riscaricano in CORS per salvarle leggibili
-  const stored = fetch(url, { mode: 'cors', credentials: 'omit' })
+  const fresh = fetch(url, { mode: 'cors', credentials: 'omit' })
     .catch(() => fetch(request))
-    .then(async (response) => {
-      if (usable(response)) {
-        const cache = await openCache(cacheName)
-        cache.put(url, response.clone())
-        if (max) trimCache(cacheName, max)
-      }
+    .then((response) => {
+      if (usable(response)) keepAlive(event, storeSave(url, response.clone(), area, max))
       return response
     })
-  if (!mapImage) return stored
+  if (!mapImage) return fresh
   const late = new Promise((resolve) => setTimeout(() => resolve(blankTile()), TILE_WAIT_MS))
-  return Promise.race([stored.catch(blankTile), late])
+  return Promise.race([fresh.catch(blankTile), late])
 }
 
 self.addEventListener('message', (event) => {
@@ -252,7 +345,7 @@ self.addEventListener('fetch', (event) => {
     } else if (url.pathname.startsWith(`${BASE}assets/`)) {
       safely(event, shellAsset(request, event))
     } else if (url.pathname.startsWith(`${BASE}isobaths-hd/`)) {
-      safely(event, cacheFirst(request, GEO_CACHE))
+      safely(event, cacheFirst(request, GEO_CACHE, { event }))
     } else if (url.pathname.endsWith('.json') || url.pathname.endsWith('.webmanifest')) {
       // Aree protette e ordinanze si aggiornano: rete, poi copia
       safely(event, networkFirst(request, GEO_CACHE, { timeout: 6000, event }))
@@ -261,11 +354,11 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (url.hostname === SHOM_HOST) {
-    safely(event, cacheFirst(request, SHOM_CACHE, { max: SHOM_MAX }))
+    safely(event, cacheFirst(request, SHOM_CACHE, { max: SHOM_MAX, event }))
     return
   }
   if (TILE_HOSTS.includes(url.hostname) || isSeaTile(url) || (GEO_HOSTS.includes(url.hostname) && isWmsImage(url))) {
-    safely(event, cacheFirst(request, TILE_CACHE, { max: TILE_MAX }))
+    safely(event, cacheFirst(request, TILE_CACHE, { max: TILE_MAX, event }))
     return
   }
   if (GEO_HOSTS.includes(url.hostname)) {
@@ -273,7 +366,7 @@ self.addEventListener('fetch', (event) => {
     if (url.hostname === 'tiles.openfreemap.org' && url.pathname === '/planet') {
       safely(event, networkFirst(request, GEO_CACHE, { timeout: 5000, event }))
     } else {
-      safely(event, cacheFirst(request, GEO_CACHE))
+      safely(event, cacheFirst(request, GEO_CACHE, { event }))
     }
     return
   }

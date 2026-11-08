@@ -12,40 +12,88 @@
  * - 'dem': altimetria Terrarium → { id, heights } (Float32Array, metri)
  * - 'fronts' ({ sst, chl, kmPerPx }): fronti termici e di clorofilla di un
  *   tassello → { id, bitmap } | { id, empty: true }
+ * - 'migrate': carte salvate in Cache Storage → archivio IndexedDB
+ *   (tileStore.js) → { id, moved, skipped }
  * Errori: { id, error }; browser senza OffscreenCanvas: { id, unsupported: true }.
  */
 
-// Tasselli Shom già visti o scaricati per una rotta: dalla copia, sennò rete
-// e copia in SHOM_CACHE (come il service worker, che dal worker potrebbe non
-// vedere le richieste). Tetto di voci come in sw.js
-const SHOM_CACHE = 'timone-shom'
-const SHOM_MAX = 3000
+import { setStoreMeta, storeGet, storeHas, storePut, storeTrim } from './tileStore.js'
+
+// Tasselli già visti o scaricati per una rotta: dall'archivio (tileStore.js),
+// sennò rete e copia nell'area data (il service worker dal worker potrebbe
+// non vedere le richieste). Tetto per il rilievo Shom come in sw.js
+const AREA_MAX = { shom: 3000, tiles: 4000 }
 const TRIM_EVERY = 100
 let stored = 0
 
-async function trimShom(cache) {
-  const keys = await cache.keys()
-  for (let i = 0; i < keys.length - SHOM_MAX; i++) await cache.delete(keys[i])
-}
-
-// keep: nome della cache dove tenere la copia (null = nessuna)
+// keep: area dell'archivio dove tenere la copia (null = nessuna)
 async function download(url, keep) {
-  if (keep && self.caches) {
-    const cached = await caches.match(url, { ignoreVary: true }).catch(() => null)
-    if (cached) return cached.blob()
+  if (keep) {
+    const rec = await storeGet(url).catch(() => null)
+    if (rec) return rec.blob
   }
   const res = await fetch(url, { mode: 'cors', credentials: 'omit' })
   if (!res.ok) throw new Error(`${res.status}`)
-  if (keep && self.caches) {
+  const blob = await res.blob()
+  if (keep) {
     try {
-      const cache = await caches.open(keep)
-      await cache.put(url, res.clone())
-      if (keep === SHOM_CACHE && ++stored % TRIM_EVERY === 0) trimShom(cache).catch(() => {})
+      await storePut(url, blob, res.headers.get('Content-Type'), keep)
+      if (AREA_MAX[keep] && ++stored % TRIM_EVERY === 0) storeTrim(keep, AREA_MAX[keep]).catch(() => {})
     } catch {
       // spazio pieno: il tassello si mostra lo stesso
     }
   }
-  return res.blob()
+  return blob
+}
+
+// ----------------------------------------------------- vecchie cache → archivio
+// Le carte salvate in Cache Storage prima dell'archivio IndexedDB passano lì,
+// poche alla volta (si riprende alla prossima apertura se l'app si chiude).
+// Restano in Cache Storage i JSON letti "prima la rete" (aree, ordinanze,
+// TileJSON della costa): il service worker li rilegge da lì
+const LEGACY = [
+  ['timone-offline', 'offline'],
+  ['timone-tiles', 'tiles'],
+  ['timone-shom', 'shom'],
+  ['timone-geo', 'geo'],
+]
+const staysInCache = (url) => {
+  const u = new URL(url)
+  return (u.origin === self.location.origin && /\.(json|webmanifest)$/.test(u.pathname)) || (u.hostname === 'tiles.openfreemap.org' && u.pathname === '/planet')
+}
+
+async function migrate(id) {
+  const result = { moved: 0, skipped: 0 }
+  if (self.caches) {
+    for (const [name, area] of LEGACY) {
+      if (!(await caches.has(name))) continue
+      const cache = await caches.open(name)
+      const keys = await cache.keys()
+      let kept = 0
+      for (let i = 0; i < keys.length; i++) {
+        const req = keys[i]
+        if (name === 'timone-geo' && staysInCache(req.url)) {
+          kept++
+          continue
+        }
+        if (!(await storeHas(req.url))) {
+          const res = await cache.match(req)
+          // Le risposte opache (senza CORS) non si possono rileggere: si riscaricheranno
+          if (res && res.ok && res.type !== 'opaque') {
+            // Se non c'è spazio ci si ferma: le voci rimaste restano dove sono
+            await storePut(req.url, await res.blob(), res.headers.get('Content-Type'), area)
+            result.moved++
+          } else result.skipped++
+        }
+        await cache.delete(req)
+        // Respiro: la carta e il service worker usano lo stesso disco
+        if (i % 25 === 24) await new Promise((resolve) => setTimeout(resolve, 40))
+      }
+      if (!kept) await caches.delete(name)
+    }
+  }
+  await setStoreMeta('migrated', true)
+  self.postMessage({ id, ...result })
 }
 
 async function pixels(url, keep = null) {
@@ -61,7 +109,7 @@ async function pixels(url, keep = null) {
 const SHOM_TILE = 512
 
 async function shom(id, url) {
-  const { canvas, ctx, width, height } = await pixels(url, SHOM_CACHE)
+  const { canvas, ctx, width, height } = await pixels(url, 'shom')
   // Senza rete il service worker manda un tassello vuoto da 1 pixel
   if (width < SHOM_TILE || height < SHOM_TILE) {
     self.postMessage({ id, empty: true })
@@ -115,7 +163,7 @@ const STEP = 2 // pixel: il gradiente si misura su 4 pixel (~3,6 km a zoom 7)
 // Tassello in grigio → valori (NaN dove non c'è mare o dato), levigati 3×3
 async function grid(url, decode) {
   if (!url) return null
-  const { ctx, width, height } = await pixels(url, 'timone-tiles').catch(() => ({}))
+  const { ctx, width, height } = await pixels(url, 'tiles').catch(() => ({}))
   if (!ctx || width !== T || height !== T) return null
   const px = ctx.getImageData(0, 0, T, T).data
   const raw = new Float32Array(T * T)
@@ -188,6 +236,10 @@ async function fronts(id, { sst, chl, kmPerPx }) {
 }
 
 self.onmessage = async ({ data: { id, kind, url, ...rest } }) => {
+  if (kind === 'migrate') {
+    migrate(id).catch((err) => self.postMessage({ id, error: String(err?.message || err) }))
+    return
+  }
   if (typeof OffscreenCanvas === 'undefined' || typeof createImageBitmap === 'undefined') {
     self.postMessage({ id, unsupported: true })
     return

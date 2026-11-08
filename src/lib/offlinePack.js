@@ -5,6 +5,7 @@ import { SHOM_SOURCE, HD_BASE } from './hdIsobathLayer.js'
 import { LIGURIA_ISOBATH_SOURCE } from './liguriaIsobaths.js'
 import { loadTile as loadWaterTile } from './waterMask.js'
 import { shomTileUrl, SHOM_OFFLINE_ZOOMS } from './shomRelief.js'
+import { storeAdopt, storeClearArea, storePut } from './tileStore.js'
 
 /*
  * Carta per l'offline lungo una rotta (una fascia attorno ai tratti) o in
@@ -13,9 +14,9 @@ import { shomTileUrl, SHOM_OFFLINE_ZOOMS } from './shomRelief.js'
  * (se acceso), griglie di profondità, costa OSM (che offline disegna anche la terra), isobate di
  * dettaglio Shom e Regione Liguria, aree protette e ordinanze.
  *
- * Le carte raster si salvano qui in OFFLINE_CACHE (mai sfoltita dal service
- * worker); i dati passano dai loro caricatori e il service worker li salva
- * nella sua cache dei dati. La carta di base Esri non si scarica in blocco
+ * Le carte raster si salvano qui nell'archivio IndexedDB (tileStore.js, area
+ * 'offline', mai sfoltita); i dati passano dai loro caricatori e il service
+ * worker li salva nello stesso archivio (area 'geo'). La carta di base Esri non si scarica in blocco
  * (le condizioni d'uso non lo permettono): offline la sostituisce la terra
  * dalla costa OSM, e restano le zone già viste navigando.
  */
@@ -260,15 +261,15 @@ export async function mapAtRest() {
 
 async function downloadPlan(plan, { onProgress = () => {}, signal } = {}) {
   navigator.storage?.persist?.().catch(() => {}) // Safari: non cancellare i dati da solo
-  const cache = await caches.open(OFFLINE_CACHE)
   const urls = [...new Set(rasterUrls(plan))]
   const jobs = [
     ...urls.map((url) => async () => {
-      if (await caches.match(url)) return 0
+      // Già salvata (vista navigando o in un altro scaricamento): diventa di questo
+      if (await storeAdopt(url, plan.key)) return 0
       const res = await fetch(url, { mode: 'cors', credentials: 'omit', signal })
       if (!res.ok) throw new Error(`${res.status}`)
       const blob = await res.blob()
-      await cache.put(url, new Response(blob, { headers: { 'Content-Type': res.headers.get('Content-Type') || 'image/png' } }))
+      await storePut(url, blob, res.headers.get('Content-Type') || 'image/png', 'offline', plan.key)
       return blob.size
     }),
     ...(await dataJobs(plan)),
@@ -362,7 +363,8 @@ export async function storageUsage() {
 
 /** Cancella tutte le carte scaricate per le rotte */
 export async function clearOffline() {
-  await caches.delete(OFFLINE_CACHE)
+  await storeClearArea('offline')
+  await caches.delete(OFFLINE_CACHE) // quelle salvate prima del nuovo archivio
   localStorage.removeItem(META_KEY)
   window.dispatchEvent(new Event(OFFLINE_EVENT))
 }
