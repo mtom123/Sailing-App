@@ -28,6 +28,7 @@ export const useAppStore = create(
         posidonia: true,
         seaTemp: false,
         chlorophyll: false,
+        fronts: false,
         shomRelief: true,
         seamarks: true,
         wind: true,

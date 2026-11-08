@@ -12,7 +12,7 @@ let unsupported = false
 let nextId = 0
 const pending = new Map() // id -> { resolve, reject }
 
-function run(kind, url) {
+function run(kind, url, extra = {}) {
   if (unsupported) return Promise.resolve(null)
   if (!worker) {
     try {
@@ -38,7 +38,7 @@ function run(kind, url) {
   const id = ++nextId
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject })
-    worker.postMessage({ id, kind, url })
+    worker.postMessage({ id, kind, url, ...extra })
   })
 }
 
@@ -47,3 +47,9 @@ export const shomTileBitmap = (url) => run('shom', url)
 
 /** Tassello Terrarium → Float32Array di quote in metri, o null */
 export const demHeights = (url) => run('dem', url)
+
+/**
+ * Fronti di un tassello: URL dei tasselli in grigio di temperatura e
+ * clorofilla (uno dei due può mancare) e km per pixel → ImageBitmap, o null
+ */
+export const frontsBitmap = ({ sst, chl, kmPerPx }) => run('fronts', null, { sst, chl, kmPerPx })

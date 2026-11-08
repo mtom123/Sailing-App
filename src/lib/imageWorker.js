@@ -10,6 +10,8 @@
  * - 'shom': rilievo Shom con il nero (nessun rilievo) trasparente →
  *   { id, bitmap } (ImageBitmap) | { id, empty: true } (tassello vuoto)
  * - 'dem': altimetria Terrarium → { id, heights } (Float32Array, metri)
+ * - 'fronts' ({ sst, chl, kmPerPx }): fronti termici e di clorofilla di un
+ *   tassello → { id, bitmap } | { id, empty: true }
  * Errori: { id, error }; browser senza OffscreenCanvas: { id, unsupported: true }.
  */
 
@@ -26,6 +28,7 @@ async function trimShom(cache) {
   for (let i = 0; i < keys.length - SHOM_MAX; i++) await cache.delete(keys[i])
 }
 
+// keep: nome della cache dove tenere la copia (null = nessuna)
 async function download(url, keep) {
   if (keep && self.caches) {
     const cached = await caches.match(url, { ignoreVary: true }).catch(() => null)
@@ -35,9 +38,9 @@ async function download(url, keep) {
   if (!res.ok) throw new Error(`${res.status}`)
   if (keep && self.caches) {
     try {
-      const cache = await caches.open(SHOM_CACHE)
+      const cache = await caches.open(keep)
       await cache.put(url, res.clone())
-      if (++stored % TRIM_EVERY === 0) trimShom(cache).catch(() => {})
+      if (keep === SHOM_CACHE && ++stored % TRIM_EVERY === 0) trimShom(cache).catch(() => {})
     } catch {
       // spazio pieno: il tassello si mostra lo stesso
     }
@@ -45,7 +48,7 @@ async function download(url, keep) {
   return res.blob()
 }
 
-async function pixels(url, keep = false) {
+async function pixels(url, keep = null) {
   const image = await createImageBitmap(await download(url, keep))
   const { width, height } = image
   const canvas = new OffscreenCanvas(Math.max(1, width), Math.max(1, height))
@@ -58,7 +61,7 @@ async function pixels(url, keep = false) {
 const SHOM_TILE = 512
 
 async function shom(id, url) {
-  const { canvas, ctx, width, height } = await pixels(url, true)
+  const { canvas, ctx, width, height } = await pixels(url, SHOM_CACHE)
   // Senza rete il service worker manda un tassello vuoto da 1 pixel
   if (width < SHOM_TILE || height < SHOM_TILE) {
     self.postMessage({ id, empty: true })
@@ -82,7 +85,109 @@ async function dem(id, url) {
   self.postMessage({ id, heights }, [heights.buffer])
 }
 
-self.onmessage = async ({ data: { id, kind, url } }) => {
+// ---------------------------------------------------------------- fronti
+// Temperatura e clorofilla Copernicus chieste in grigio (cmap:gray): la
+// somma R+G+B del colore dà la posizione nella scala (tabella della legenda
+// del servizio, 256 livelli), quindi il valore. Dove il valore cambia in
+// fretta (gradiente per km) c'è un fronte: lì si concentra il pesce.
+const GRAY_SUMS = [
+  0,0,0,0,3,3,6,6,9,9,12,15,15,18,21,24,27,30,33,36,39,43,46,49,52,55,58,61,64,67,70,73,76,79,82,85,87,90,93,96,99,102,105,108,110,113,115,118,121,124,127,129,132,135,138,140,143,145,148,151,154,157,159,162,165,167,170,172,175,178,181,184,186,189,192,194,197,199,202,205,208,211,213,216,218,221,224,226,229,232,235,238,240,242,245,248,251,253,256,259,262,265,268,270,272,275,278,281,283,286,289,292,295,298,301,302,305,308,311,314,317,320,322,325,328,331,334,337,340,342,344,347,350,353,356,359,362,365,368,371,374,376,379,382,385,388,391,394,397,400,403,406,409,412,415,418,421,424,427,430,433,436,439,442,445,448,451,454,457,460,463,466,470,473,476,479,482,485,488,491,494,497,500,503,507,510,513,517,520,524,527,530,533,536,539,543,546,549,554,557,560,563,566,569,573,576,581,584,587,590,593,597,600,605,608,611,614,618,622,626,629,632,636,640,644,647,650,654,659,662,665,669,673,677,680,684,688,692,695,700,704,707,711,715,719,723,727,731,734,739,743,746,751,755,759,763,
+]
+// somma R+G+B → posizione 0..1 nella scala (la più vicina)
+const GRAY_POS = (() => {
+  const pos = new Float32Array(766)
+  for (let sum = 0, i = 0; sum < 766; sum++) {
+    while (i < 255 && Math.abs(GRAY_SUMS[i + 1] - sum) <= Math.abs(GRAY_SUMS[i] - sum)) i++
+    pos[sum] = i / 255
+  }
+  return pos
+})()
+
+// Soglie tarate sui dati di novembre 2026 tra Liguria e Tirreno (sopra il
+// 90° percentile dei cambi): sotto lo, niente; da hi in su, colore pieno
+const FRONT_SCALES = {
+  sst: { lo: 0.1, hi: 0.2, decode: (t) => 283 + t * 20 }, // K per km, scala 283–303 K
+  chl: { lo: 0.025, hi: 0.1, decode: (t) => Math.log10(0.02) + t * 2 }, // decadi per km, 0,02–2 mg/m³
+}
+const T = 256
+const STEP = 2 // pixel: il gradiente si misura su 4 pixel (~3,6 km a zoom 7)
+
+// Tassello in grigio → valori (NaN dove non c'è mare o dato), levigati 3×3
+async function grid(url, decode) {
+  if (!url) return null
+  const { ctx, width, height } = await pixels(url, 'timone-tiles').catch(() => ({}))
+  if (!ctx || width !== T || height !== T) return null
+  const px = ctx.getImageData(0, 0, T, T).data
+  const raw = new Float32Array(T * T)
+  for (let i = 0; i < raw.length; i++) {
+    raw[i] = px[i * 4 + 3] < 255 ? NaN : decode(GRAY_POS[px[i * 4] + px[i * 4 + 1] + px[i * 4 + 2]])
+  }
+  const out = new Float32Array(T * T).fill(NaN)
+  for (let y = 1; y < T - 1; y++) {
+    for (let x = 1; x < T - 1; x++) {
+      if (Number.isNaN(raw[y * T + x])) continue
+      let sum = 0
+      let n = 0
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const v = raw[(y + dy) * T + x + dx]
+          if (!Number.isNaN(v)) {
+            sum += v
+            n++
+          }
+        }
+      }
+      out[y * T + x] = sum / n
+    }
+  }
+  return out
+}
+
+// Forza del fronte 0..1 in ogni pixel
+function strength(values, kmPerPx, { lo, hi }) {
+  const s = new Float32Array(T * T)
+  if (!values) return s
+  const base = 2 * STEP * kmPerPx
+  for (let y = STEP; y < T - STEP; y++) {
+    for (let x = STEP; x < T - STEP; x++) {
+      const gx = (values[y * T + x + STEP] - values[y * T + x - STEP]) / base
+      const gy = (values[(y + STEP) * T + x] - values[(y - STEP) * T + x]) / base
+      const g = Math.hypot(gx, gy)
+      if (g > lo) s[y * T + x] = Math.min(1, (g - lo) / (hi - lo))
+    }
+  }
+  return s
+}
+
+async function fronts(id, { sst, chl, kmPerPx }) {
+  const [vt, vc] = await Promise.all([grid(sst, FRONT_SCALES.sst.decode), grid(chl, FRONT_SCALES.chl.decode)])
+  if (!vt && !vc) {
+    self.postMessage({ id, empty: true })
+    return
+  }
+  const st = strength(vt, kmPerPx, FRONT_SCALES.sst)
+  const sc = strength(vc, kmPerPx, FRONT_SCALES.chl)
+  const canvas = new OffscreenCanvas(T, T)
+  const ctx = canvas.getContext('2d')
+  const img = ctx.createImageData(T, T)
+  const out = img.data
+  for (let i = 0; i < T * T; i++) {
+    const a = st[i]
+    const b = sc[i]
+    if (!a && !b) continue
+    // Giallo: fronte termico e di clorofilla insieme; arancio solo termico; verde solo clorofilla
+    const [r, g, bl] = a && b ? [255, 214, 0] : a ? [255, 90, 40] : [40, 225, 150]
+    out[i * 4] = r
+    out[i * 4 + 1] = g
+    out[i * 4 + 2] = bl
+    out[i * 4 + 3] = Math.round(70 + 175 * Math.max(a, b))
+  }
+  ctx.putImageData(img, 0, 0)
+  const bitmap = canvas.transferToImageBitmap()
+  self.postMessage({ id, bitmap }, [bitmap])
+}
+
+self.onmessage = async ({ data: { id, kind, url, ...rest } }) => {
   if (typeof OffscreenCanvas === 'undefined' || typeof createImageBitmap === 'undefined') {
     self.postMessage({ id, unsupported: true })
     return
@@ -90,6 +195,7 @@ self.onmessage = async ({ data: { id, kind, url } }) => {
   try {
     if (kind === 'shom') await shom(id, url)
     else if (kind === 'dem') await dem(id, url)
+    else if (kind === 'fronts') await fronts(id, rest)
     else throw new Error(`lavoro sconosciuto: ${kind}`)
   } catch (err) {
     self.postMessage({ id, error: String(err?.message || err) })

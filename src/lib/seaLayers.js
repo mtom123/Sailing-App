@@ -1,4 +1,5 @@
 import L from 'leaflet'
+import { frontsBitmap } from './imagePixels.js'
 
 /*
  * Temperatura del mare e clorofilla: analisi giornaliere senza buchi di nuvole
@@ -100,3 +101,85 @@ export function seaRangeText(key, info) {
   if (key === 'seaTemp') return `${Math.round(info.range[0] - 273.15)}–${Math.round(info.range[1] - 273.15)} °C`
   return `${String(info.range[0]).replace('.', ',')}–${info.range[1]} mg/m³`
 }
+
+// ---------------------------------------------------------------- fronti
+// Dove temperatura o clorofilla cambiano in fretta: i fronti dove si raduna
+// il pesce. Si calcolano nel worker (imageWorker.js) dai tasselli in grigio,
+// con scale fisse così le soglie valgono ogni giorno.
+const FRONT_STYLE = {
+  seaTemp: 'cmap:gray,range:283/303',
+  chlorophyll: 'cmap:gray,logScale,range:0.02/2',
+}
+export const FRONTS_LEGEND = [
+  { color: '#FFD600', label: 'temperatura e clorofilla' },
+  { color: '#FF5A28', label: 'temperatura' },
+  { color: '#28E196', label: 'clorofilla' },
+]
+
+function grayTileUrl(key, info, z, x, y) {
+  if (!info) return null
+  const q = new URLSearchParams({
+    SERVICE: 'WMTS',
+    VERSION: '1.0.0',
+    REQUEST: 'GetTile',
+    LAYER: SEA_LAYERS[key].layer,
+    STYLE: FRONT_STYLE[key],
+    TILEMATRIXSET: 'EPSG:3857',
+    FORMAT: 'image/png',
+    TIME: `${info.date}T00:00:00.000Z`,
+    TILEMATRIX: z,
+    TILEROW: y,
+    TILECOL: x,
+  })
+  return `${WMTS}?${q}`
+}
+
+/**
+ * Strato dei fronti. sstInfo / chlInfo da seaLayerInfo (uno può mancare).
+ * Si calcola a zoom 7–8 (dati a ~1 km): più da vicino si ingrandisce.
+ */
+export function makeFrontsLayer(sstInfo, chlInfo) {
+  const Layer = L.GridLayer.extend({
+    initialize(options) {
+      L.setOptions(this, options)
+      this.on('tileunload', ({ tile }) => {
+        tile.width = 0
+        tile.height = 0
+      })
+    },
+    createTile(coords, done) {
+      const tile = document.createElement('canvas')
+      tile.width = 256
+      tile.height = 256
+      const lat = this._tileCoordsToBounds(coords).getCenter().lat
+      const kmPerPx = (40075.016 * Math.cos((lat * Math.PI) / 180)) / (256 * 2 ** coords.z)
+      frontsBitmap({
+        sst: grayTileUrl('seaTemp', sstInfo, coords.z, coords.x, coords.y),
+        chl: grayTileUrl('chlorophyll', chlInfo, coords.z, coords.x, coords.y),
+        kmPerPx,
+      })
+        .then((bitmap) => {
+          if (bitmap) {
+            tile.getContext('2d').drawImage(bitmap, 0, 0)
+            bitmap.close()
+          }
+          done(null, tile)
+        })
+        .catch((err) => done(err, tile))
+      return tile
+    },
+  })
+  return new Layer({
+    bounds: MED,
+    minZoom: 7,
+    maxNativeZoom: 8,
+    maxZoom: 20,
+    opacity: 0.9,
+    zIndex: 3,
+    updateWhenIdle: true,
+    updateWhenZooming: false,
+    keepBuffer: 1,
+    attribution: CITE,
+  })
+}
+

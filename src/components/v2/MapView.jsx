@@ -38,7 +38,7 @@ import { DOLPHIN_BUTTON } from '../../lib/sightingIcons.js'
 import AreaDownloadTool from './AreaDownloadTool.jsx'
 import { setOfflineLayers, holdDownloads } from '../../lib/offlinePack.js'
 import { startStallLog } from '../../lib/stallLog.js'
-import { SEA_LAYERS, makeSeaLayer, seaLayerInfo, seaRangeText } from '../../lib/seaLayers.js'
+import { SEA_LAYERS, FRONTS_LEGEND, makeFrontsLayer, makeSeaLayer, seaLayerInfo, seaRangeText } from '../../lib/seaLayers.js'
 import { OfflineZonesLayer } from '../../lib/offlineZonesLayer.js'
 import {
   Anchor,
@@ -56,6 +56,9 @@ import {
   Ruler,
   CloudDownload,
 } from 'lucide-react'
+
+// "2026-11-07" → "7 nov"
+const dayText = (date) => new Date(`${date}T12:00:00Z`).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })
 
 // ============================================================
 // Marker HTML helpers — Leaflet divIcon
@@ -676,6 +679,25 @@ export default function MapView({
   }
   useEffect(seaLayerEffect('seaTemp', layers.seaTemp), [layers.seaTemp, mapReady])
   useEffect(seaLayerEffect('chlorophyll', layers.chlorophyll), [layers.chlorophyll, mapReady])
+
+  // === Fronti termici e di clorofilla (calcolati nel worker) ===
+  const [frontsInfo, setFrontsInfo] = useState(null)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!mapReady || !map || !layers.fronts) return undefined
+    let layer = null
+    let alive = true
+    Promise.all([seaLayerInfo('seaTemp'), seaLayerInfo('chlorophyll')]).then(([sst, chl]) => {
+      if (!alive) return
+      setFrontsInfo(sst || chl ? { sst: sst?.date, chl: chl?.date } : 'none')
+      if (sst || chl) layer = makeFrontsLayer(sst, chl).addTo(map)
+    })
+    return () => {
+      alive = false
+      if (layer) map.removeLayer(layer)
+      setFrontsInfo(null)
+    }
+  }, [layers.fronts, mapReady])
 
   // === Carta CHIARA: terra più scura, staccata dal mare ===
   useEffect(() => {
@@ -1436,7 +1458,7 @@ export default function MapView({
         </div>
       )}
 
-      {(seaInfo.seaTemp || seaInfo.chlorophyll) && (
+      {(seaInfo.seaTemp || seaInfo.chlorophyll || frontsInfo) && (
         <div className="glass absolute bottom-24 left-1/2 z-[800] -translate-x-1/2 rounded-md px-2.5 py-1.5 text-[calc(10px*var(--fs))] text-paper">
           {Object.keys(SEA_LAYERS)
             .filter((key) => seaInfo[key])
@@ -1452,6 +1474,24 @@ export default function MapView({
                 </div>
               )
             )}
+          {frontsInfo === 'none' && <div className="text-warn">Fronti: dati non disponibili</div>}
+          {frontsInfo && frontsInfo !== 'none' && (
+            <div className="py-0.5">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <span className="text-fog">Fronti</span>
+                {FRONTS_LEGEND.map((f) => (
+                  <span key={f.label} className="flex items-center gap-1">
+                    <span className="h-2 w-3 rounded-sm" style={{ background: f.color }} />
+                    {f.label}
+                  </span>
+                ))}
+              </div>
+              <div className="text-fog">
+                {(view?.zoom ?? 99) < 7 ? 'Avvicinati: si vedono da circa 30 miglia di scala · ' : ''}
+                {[frontsInfo.sst && `temperatura ${dayText(frontsInfo.sst)}`, frontsInfo.chl && `clorofilla ${dayText(frontsInfo.chl)}`].filter(Boolean).join(', ')}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1791,6 +1831,7 @@ function LayerPopover({ onClose, onDownloadArea }) {
       [
         { key: 'seaTemp', label: 'Temperatura del mare' },
         { key: 'chlorophyll', label: 'Clorofilla' },
+        { key: 'fronts', label: 'Fronti (zone più pescose)' },
       ],
     ],
     [
