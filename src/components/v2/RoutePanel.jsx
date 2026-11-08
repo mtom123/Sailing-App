@@ -595,7 +595,11 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
             <span className="text-xs font-semibold tracking-widest text-phos">
               → {nav.dest.name}
             </span>
-            <span className="text-[calc(10px*var(--fs))] text-fog">ETA {fmtTime(nav.etaMs)}</span>
+            <span className="text-[calc(10px*var(--fs))] text-fog">
+              ETA {fmtTime(nav.etaMs)}
+              {/* Tempo che manca all'arrivo, alla velocità attuale (o di progetto) */}
+              <b className="ml-1.5 font-mono text-paper">tra {fmtDuration(Math.max(0, nav.etaMs - Date.now()))}</b>
+            </span>
           </div>
           <div className="mt-1 grid grid-cols-3 gap-1 text-center">
             <div>
