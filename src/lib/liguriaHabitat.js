@@ -6,7 +6,16 @@
  */
 import L from 'leaflet'
 import { MaskedCanvas } from './isobathLayer.js'
-import { LIGURIA_HABITAT_WFS_URL, LIGURIA_HABITAT_LAYER, LIGURIA_BOUNDS, liguriaHabitatStyle } from './seagrass.js'
+import {
+  LIGURIA_HABITAT_WFS_URL,
+  LIGURIA_HABITAT_WMS_URL,
+  LIGURIA_HABITAT_LAYER,
+  LIGURIA_BOUNDS,
+  LIGURIA_POSIDONIA_CQL,
+  POSIDONIA_RGB,
+  liguriaHabitatStyle,
+} from './seagrass.js'
+import { tintedBitmap } from './imagePixels.js'
 
 const PANE = 'habitatPane'
 const CELL = 0.1 // gradi: ~8 × 11 km, ~0,5 MB compressi (diversi MB da leggere)
@@ -132,5 +141,62 @@ export const LiguriaHabitatLayer = L.Layer.extend({
       layer.addTo(g)
     }
     g.addTo(this._group)
+  },
+})
+
+/*
+ * Vista d'insieme della posidonia ligure (zoom 10–13, prima dei poligoni
+ * dell'Atlante): immagini del server della Regione con le sole praterie,
+ * ricolorate nel worker col verde della posidonia.
+ */
+const OVERVIEW_TILE = 512
+export const LiguriaPosidoniaOverview = L.GridLayer.extend({
+  options: {
+    tileSize: OVERVIEW_TILE,
+    minZoom: 10,
+    maxZoom: 13,
+    bounds: AREA,
+    pane: PANE,
+    updateWhenZooming: false,
+    updateWhenIdle: true,
+    attribution: '© Regione Liguria – Atlante Habitat Marini 2020',
+  },
+
+  initialize(options) {
+    L.setOptions(this, options)
+    this.on('tileunload', ({ tile }) => {
+      tile.width = 0
+      tile.height = 0
+    })
+  },
+
+  onAdd(map) {
+    if (!map.getPane(PANE)) {
+      const pane = map.createPane(PANE)
+      pane.style.zIndex = 245
+      pane.style.pointerEvents = 'none'
+    }
+    L.GridLayer.prototype.onAdd.call(this, map)
+  },
+
+  createTile(coords, done) {
+    const tile = document.createElement('canvas')
+    tile.width = OVERVIEW_TILE
+    tile.height = OVERVIEW_TILE
+    const b = this._tileCoordsToBounds(coords)
+    const sw = L.CRS.EPSG3857.project(b.getSouthWest())
+    const ne = L.CRS.EPSG3857.project(b.getNorthEast())
+    const url =
+      `${LIGURIA_HABITAT_WMS_URL}?service=WMS&version=1.1.1&request=GetMap&layers=${LIGURIA_HABITAT_LAYER}&styles=` +
+      `&format=image/png&transparent=true&srs=EPSG:3857&bbox=${sw.x},${sw.y},${ne.x},${ne.y}` +
+      `&width=${OVERVIEW_TILE}&height=${OVERVIEW_TILE}&CQL_FILTER=${encodeURIComponent(LIGURIA_POSIDONIA_CQL)}`
+    tintedBitmap(url, POSIDONIA_RGB, 0.55)
+      .then((bitmap) => {
+        if (bitmap && this._map) tile.getContext('2d').drawImage(bitmap, 0, 0)
+        bitmap?.close()
+        done(null, tile)
+      })
+      .catch((err) => done(err, tile))
+    return tile
   },
 })

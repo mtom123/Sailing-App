@@ -12,6 +12,7 @@
  * - 'dem': altimetria Terrarium → { id, heights } (Float32Array, metri)
  * - 'fronts' ({ sst, chl, kmPerPx }): fronti termici e di clorofilla di un
  *   tassello → { id, bitmap } | { id, empty: true }
+ * - 'tint' ({ rgb, alpha }): immagine ricolorata → { id, bitmap } | { id, empty: true }
  * - 'migrate': carte salvate in Cache Storage → archivio IndexedDB
  *   (tileStore.js) → { id, moved, skipped }
  * Errori: { id, error }; browser senza OffscreenCanvas: { id, unsupported: true }.
@@ -235,6 +236,30 @@ async function fronts(id, { sst, chl, kmPerPx }) {
   self.postMessage({ id, bitmap }, [bitmap])
 }
 
+// Immagine ricolorata: ogni pixel visibile prende il colore rgb, con
+// trasparenza alpha (0..1) moltiplicata per la sua
+async function tint(id, url, { rgb, alpha }) {
+  const { canvas, ctx, width, height } = await pixels(url, 'tiles')
+  const data = ctx.getImageData(0, 0, width, height)
+  const px = data.data
+  let any = false
+  for (let i = 0; i < px.length; i += 4) {
+    if (px[i + 3] === 0) continue
+    any = true
+    px[i] = rgb[0]
+    px[i + 1] = rgb[1]
+    px[i + 2] = rgb[2]
+    px[i + 3] = Math.round(px[i + 3] * alpha)
+  }
+  if (!any) {
+    self.postMessage({ id, empty: true })
+    return
+  }
+  ctx.putImageData(data, 0, 0)
+  const bitmap = canvas.transferToImageBitmap()
+  self.postMessage({ id, bitmap }, [bitmap])
+}
+
 self.onmessage = async ({ data: { id, kind, url, ...rest } }) => {
   if (kind === 'migrate') {
     migrate(id).catch((err) => self.postMessage({ id, error: String(err?.message || err) }))
@@ -248,6 +273,7 @@ self.onmessage = async ({ data: { id, kind, url, ...rest } }) => {
     if (kind === 'shom') await shom(id, url)
     else if (kind === 'dem') await dem(id, url)
     else if (kind === 'fronts') await fronts(id, rest)
+    else if (kind === 'tint') await tint(id, url, rest)
     else throw new Error(`lavoro sconosciuto: ${kind}`)
   } catch (err) {
     self.postMessage({ id, error: String(err?.message || err) })

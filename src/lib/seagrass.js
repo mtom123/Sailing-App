@@ -15,6 +15,14 @@ export const SEAGRASS_LAYER = 'seagrass_eov_poly_2025'
 // (GeoJSON, CORS aperto) e si colorano nell'app (liguriaHabitat.js)
 export const LIGURIA_HABITAT_WFS_URL = 'https://geoservizi.regione.liguria.it/geoserver/M2121/ows'
 export const LIGURIA_HABITAT_LAYER = 'M2121:L7247'
+// Vista d'insieme (zoom 10–13): immagini del server ligure con le sole
+// praterie di posidonia (filtro CQL; lo stile resta il loro, verde scuro con
+// bordi neri, e si ricolora nel worker). La sintesi EMODnet 2025 in Liguria
+// non ha poligoni (8/11/2026): senza questo la posidonia ligure non si vedeva
+// sotto zoom 14
+export const LIGURIA_HABITAT_WMS_URL = 'https://geoservizi.regione.liguria.it/geoserver/M2121/wms'
+export const LIGURIA_POSIDONIA_CQL = "CLASSE IN ('pos','pos-roc','mos','pos e cau','cym-pos')"
+export const POSIDONIA_RGB = [46, 158, 79] // #2e9e4f, come POSIDONIA
 // Area dell'Atlante: fuori non si chiede niente
 export const LIGURIA_BOUNDS = [
   [43.75, 7.45],

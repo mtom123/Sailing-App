@@ -14,7 +14,7 @@ import { CoastBandLayer } from '../../lib/coastBandLayer.js'
 import { ProtectedAreasLayer } from '../../lib/protectedAreasLayer.js'
 import { OrdinancesLayer } from '../../lib/ordinancesLayer.js'
 import { ampContext, ampPageFor, ampPopupHTML } from '../../lib/ampRules.js'
-import { LiguriaHabitatLayer } from '../../lib/liguriaHabitat.js'
+import { LiguriaHabitatLayer, LiguriaPosidoniaOverview } from '../../lib/liguriaHabitat.js'
 
 // Isobate calcolate nell'app da qui in su (sotto: immagini del server
 // EMODnet). Allo zoom 12 il calcolo copriva un'area troppo larga e su iPad
@@ -442,7 +442,7 @@ export default function MapView({
         attribution: '© EMODnet Seabed Habitats',
         zIndex: 3,
       })
-      tileLayerRefs.current.posidonia = L.layerGroup([seagrass, new LiguriaHabitatLayer()])
+      tileLayerRefs.current.posidonia = L.layerGroup([seagrass, new LiguriaPosidoniaOverview(), new LiguriaHabitatLayer()])
       // Isobate 2–1000 m + acque basse. Vista d'insieme (z9–12): immagini
       // calcolate dal server EMODnet. Da z13: vettoriali, calcolate nell'app
       // dalla griglia delle profondità, nitide a ogni zoom.

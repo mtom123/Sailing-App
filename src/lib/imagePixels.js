@@ -61,3 +61,5 @@ export const frontsBitmap = ({ sst, chl, kmPerPx }) => run('fronts', null, { sst
  */
 export const migrateStore = () => run('migrate', null)
 
+/** Immagine con ogni pixel visibile del colore rgb ([r, g, b]) → ImageBitmap, o null */
+export const tintedBitmap = (url, rgb, alpha) => run('tint', url, { rgb, alpha })
