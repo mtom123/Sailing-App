@@ -1,6 +1,6 @@
 import L from 'leaflet'
 import { haversine } from './geo.js'
-import { loadBlock, blockIndex } from './depthGrid.js'
+import { loadBlock, blockIndex, BLOCK, CELLS_PER_DEGREE } from './depthGrid.js'
 import { SHOM_SOURCE, HD_BASE } from './hdIsobathLayer.js'
 import { LIGURIA_ISOBATH_SOURCE } from './liguriaIsobaths.js'
 import { loadTile as loadWaterTile } from './waterMask.js'
@@ -109,17 +109,95 @@ function splitBounds(b, step) {
 
 const routeKey = (points) => points.map((p) => `${p.lat.toFixed(4)},${p.lon.toFixed(4)}`).join(';')
 
-/*
- * Piano di scaricamento: tiles(z, bufM, tileSize) → tasselli; views →
- * riquadri piccoli per le fonti a blocchi (griglie, isobate di dettaglio).
+// ------------------------------------------------ dettaglio solo sotto costa
+// In alto mare il dettaglio (zoom 13+, rilievo Shom, isobate fini) non serve:
+// niente boe né fari, fondale profondo. Lungo la rotta si tiene solo dove
+// entro DETAIL_NEAR_M c'è terra o un fondale meno profondo di DETAIL_DEPTH_M.
+// Su Genova–Capo Corso i segnali a zoom 15–16 e la costa a zoom 13–14 erano
+// quasi metà del download, tutti in mare aperto
+const DETAIL_ZOOM = 13
+const DETAIL_DEPTH_M = 100
+const DETAIL_NEAR_M = BUFFER_M
+const DETAIL_STEP_M = 500
+const CELL_STEP = 2 // si guarda una cella su due (~230 m)
+
+/**
+ * Tratti della rotta che vogliono il dettaglio: array di polilinee {lat, lon}.
+ * Senza profondità (blocco non scaricabile) il tratto lo vuole, per prudenza.
  */
-function routePlan(points) {
+async function detailRuns(points) {
+  const pts = samples(points, DETAIL_STEP_M)
+  const keys = new Map()
+  for (const p of pts) {
+    const b = around(p, DETAIL_NEAR_M)
+    for (let bx = blockIndex(b.getWest()); bx <= blockIndex(b.getEast()); bx++) {
+      for (let by = blockIndex(b.getSouth()); by <= blockIndex(b.getNorth()); by++) keys.set(`${bx},${by}`, [bx, by])
+    }
+  }
+  const blocks = new Map()
+  await Promise.all(
+    [...keys.entries()].map(([key, [bx, by]]) =>
+      loadBlock(bx, by)
+        .then((b) => blocks.set(key, b))
+        .catch(() => blocks.set(key, null))
+    )
+  )
+  // Quota della cella (I, J): mare negativo; undefined se manca il dato
+  const cell = (I, J) => {
+    const b = blocks.get(`${Math.floor(I / BLOCK)},${Math.floor(J / BLOCK)}`)
+    if (!b) return undefined
+    const c = I - b.i0
+    const r = b.jTop - J
+    if (c < 0 || r < 0 || c >= b.width || r >= b.height) return undefined
+    return b.values[r * b.width + c]
+  }
+  const near = (p) => {
+    const rLat = Math.ceil((DETAIL_NEAR_M / 111320) * CELLS_PER_DEGREE)
+    const rLon = Math.ceil((DETAIL_NEAR_M / (111320 * Math.cos(p.lat * rad))) * CELLS_PER_DEGREE)
+    const I0 = Math.floor(p.lon * CELLS_PER_DEGREE)
+    const J0 = Math.floor(p.lat * CELLS_PER_DEGREE)
+    for (let dj = -rLat; dj <= rLat; dj += CELL_STEP) {
+      for (let di = -rLon; di <= rLon; di += CELL_STEP) {
+        if ((di / rLon) ** 2 + (dj / rLat) ** 2 > 1) continue
+        const v = cell(I0 + di, J0 + dj)
+        if (v === undefined || v > -DETAIL_DEPTH_M) return true
+      }
+    }
+    return false
+  }
+  const runs = []
+  let run = null
+  for (const p of pts) {
+    if (near(p)) {
+      if (!run) runs.push((run = []))
+      run.push(p)
+    } else run = null
+  }
+  // Un tratto di un punto solo: corridorTiles vuole almeno due punti
+  return runs.map((r) => (r.length > 1 ? r : [r[0], r[0]]))
+}
+
+/*
+ * Piano di scaricamento: tiles(z, bufM, tileSize) → tasselli (dal dettaglio
+ * in su solo nei tratti sotto costa); views → riquadri piccoli per le fonti a
+ * blocchi (griglie); nearViews → per le isobate di dettaglio.
+ * runs: tratti che vogliono il dettaglio (detailRuns), null = tutta la rotta.
+ */
+function routePlan(points, runs = null) {
+  const near = runs ?? [points]
+  const nearTiles = (z, bufM, tileSize) => {
+    const out = new Map()
+    for (const r of near) for (const t of corridorTiles(r, z, bufM, tileSize)) out.set(`${t.x}/${t.y}`, t)
+    return [...out.values()]
+  }
   return {
     key: routeKey(points),
     kind: 'route',
     level: LEVELS.detail,
-    tiles: (z, bufM, tileSize) => corridorTiles(points, z, bufM, tileSize),
+    tiles: (z, bufM, tileSize) => (z >= DETAIL_ZOOM ? nearTiles(z, bufM, tileSize) : corridorTiles(points, z, bufM, tileSize)),
+    nearTiles,
     views: samples(points, 1000).map((p) => around(p, BUFFER_M)),
+    nearViews: near.flatMap((r) => samples(r, 1000).map((p) => around(p, BUFFER_M))),
   }
 }
 
@@ -205,7 +283,7 @@ function rasterUrls(plan) {
   if (shomRelief?._map && plan.level.hd) {
     const [z0, z1] = SHOM_OFFLINE_ZOOMS[plan.kind]
     for (let z = z0; z <= z1; z++) {
-      for (const t of plan.tiles(z, BUFFER_M, 512)) {
+      for (const t of (plan.nearTiles ?? plan.tiles)(z, BUFFER_M, 512)) {
         const url = shomTileUrl(t.z, t.x, t.y)
         if (url) urls.push(url)
       }
@@ -229,9 +307,11 @@ async function dataJobs(plan) {
       for (let by = blockIndex(view.getSouth()); by <= blockIndex(view.getNorth()); by++) blocks.set(`${bx},${by}`, [bx, by])
     }
   }
-  // Le isobate di dettaglio bastano a passi di ~3 km (non nella base larga)
-  for (let i = 0; plan.level.hd && i < plan.views.length; i += plan.views.length > 50 ? 3 : 1) {
-    const view = plan.views[i]
+  // Le isobate di dettaglio bastano a passi di ~3 km (non nella base larga),
+  // e lungo le rotte solo nei tratti sotto costa
+  const hdViews = plan.nearViews ?? plan.views
+  for (let i = 0; plan.level.hd && i < hdViews.length; i += hdViews.length > 50 ? 3 : 1) {
+    const view = hdViews[i]
     for (const name of await SHOM_SOURCE.names(view)) shom.add(name)
     for (const name of await LIGURIA_ISOBATH_SOURCE.names(view)) liguria.add(name)
   }
@@ -313,9 +393,26 @@ async function downloadPlan(plan, { onProgress = () => {}, signal } = {}) {
  * Scarica la fascia attorno alla rotta. onProgress({ done, total, bytes,
  * failed }); `signal` per annullare. Ritorna il riepilogo salvato.
  */
-export function downloadCorridor(points, opts) {
+export async function downloadCorridor(points, opts) {
   if (points.length < 2) throw new Error('Servono almeno 2 punti')
-  return downloadPlan(routePlan(points), opts)
+  // Senza le profondità (es. servizio EMODnet giù) si scarica tutto il dettaglio
+  const runs = await detailRuns(points).catch(() => null)
+  return downloadPlan(routePlan(points, runs), opts)
+}
+
+/** Quante voci scaricherebbe la rotta, con e senza il taglio del dettaglio (per le prove) */
+export async function corridorCounts(points) {
+  const runs = await detailRuns(points)
+  const count = (plan) => new Set(rasterUrls(plan)).size
+  const water = (plan) => {
+    let n = 0
+    for (let z = plan.level.water[0]; z <= plan.level.water[1]; z++) n += plan.tiles(z, BUFFER_M).length
+    return n
+  }
+  const full = routePlan(points)
+  const cut = routePlan(points, runs)
+  const end = (p) => [Math.round(p.lat * 1000) / 1000, Math.round(p.lon * 1000) / 1000]
+  return { runs: runs.map((r) => [end(r[0]), end(r[r.length - 1])]), before: { raster: count(full), water: water(full) }, after: { raster: count(cut), water: water(cut) } }
 }
 
 /** Scarica la zona del rettangolo (L.LatLngBounds) al livello dato ('detail' | 'wide') */
