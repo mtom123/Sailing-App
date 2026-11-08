@@ -12,11 +12,19 @@ export function ampRuleFor(name) {
   return (name && AMP_RULES.find((r) => r.match.test(name))) || null
 }
 
-/** 'A' | 'B' | 'C' | 'D' dal nome ("Zona B", "… · Zona C"), o null */
+/**
+ * Chiave della zona dal nome ("Zona B", "… · Zona C", "… · Zona MB speciale"):
+ * 'A' | 'B' | 'C' | 'D', oppure 'MA' | 'MB' | 'MBs' | 'MC' | 'MD' per i
+ * parchi nazionali con zone a mare (MBs: a regolamentazione speciale), o null
+ */
 export function zoneLetter(name) {
-  const m = /\bzon[ae]\s*([ABCD])\b/i.exec(name || '')
-  return m ? m[1].toUpperCase() : null
+  const m = /\bzon[ae]\s*(M?[ABCD])\b(\s+speciale)?/i.exec(name || '')
+  if (!m) return null
+  return m[1].toUpperCase() + (m[2] ? 's' : '')
 }
+
+/** "MBs" → "MB speciale" */
+export const zoneTitle = (z) => z.replace(/s$/, ' speciale')
 
 const bboxArea = ([s, w, n, e]) => (n - s) * (e - w)
 
@@ -32,7 +40,8 @@ function samplePoints(area) {
 export function ampContext(area, areas = []) {
   const zone = zoneLetter(area.name)
   let rule = ampRuleFor(area.name)
-  if (!rule) {
+  // Un divieto di ancoraggio (cavi, condotte) non è una zona del parco attorno
+  if (!rule && area.kind !== 'restricted') {
     // L'area marina che contiene più vertici della zona (a parità, la più piccola)
     const pts = samplePoints(area)
     const parent = areas
@@ -72,14 +81,14 @@ const list = (items, color = 'var(--color-paper)') =>
  */
 export function ampPopupHTML(area, { rule, zone }) {
   if (!rule) return null
-  const title = zone ? `${rule.name} · Zona ${zone}` : rule.name
+  const title = zone ? `${rule.name} · Zona ${zoneTitle(zone)}` : rule.name
   const sections = []
   const zones = zone ? [zone] : Object.keys(rule.zones)
   for (const z of zones) {
     const zr = rule.zones[z]
     if (!zr) continue
     sections.push(
-      `<div style="margin-top:5px;font-size:calc(11px*var(--fs));font-weight:600;color:${z === 'A' || z === 'MA' ? '#C026D3' : 'var(--color-warn)'}">Zona ${z}${zr.label ? ` · ${esc(zr.label)}` : ''}</div>${list(zr.rules)}`
+      `<div style="margin-top:5px;font-size:calc(11px*var(--fs));font-weight:600;color:${z === 'A' || z === 'MA' || zr.nogo ? '#C026D3' : 'var(--color-warn)'}">Zona ${zoneTitle(z)}${zr.label ? ` · ${esc(zr.label)}` : ''}</div>${list(zr.rules)}`
     )
   }
   if (rule.general?.length) {

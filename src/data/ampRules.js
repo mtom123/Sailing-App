@@ -13,6 +13,173 @@
 
 const MASE = 'https://www.mase.gov.it/portale/documents/d/guest'
 
+const PNAT_SOURCE = 'https://www.islepark.it/wp-content/uploads/2025/07/02_NTA_2024_aprile_rev6.pdf'
+const PNAT_COMMON = {
+  manager: 'Ente Parco Nazionale Arcipelago Toscano',
+  source: PNAT_SOURCE,
+  edition: 'Piano del Parco, Norme tecniche aprile 2024 (artt. 21–31, Appendice A)',
+}
+const PNAT_GENERAL = [
+  'Vietati scarichi di acque reflue in tutte le zone',
+  'Vietati moto d’acqua e acquascooter',
+  'Imbarcazione = unità da 10 a 24 m (una barca di 12 m è un’imbarcazione, non un natante)',
+]
+const PNAT_MA = {
+  label: 'riserva marina integrale',
+  short: 'vietati navigazione (anche a vela), ancoraggio, balneazione',
+  rules: ['Vietata qualsiasi navigazione, anche a vela, a remi o in kayak', 'Vietati ancoraggio e ormeggio', 'Vietate balneazione, snorkeling e immersioni', 'Vietata ogni pesca'],
+}
+const PNAT_MB = {
+  label: 'riserva generale orientata',
+  short: 'navigazione consentita; ancoraggio con limitazioni; niente navi da diporto',
+  rules: [
+    'Navigazione a vela consentita; a motore natanti e imbarcazioni con limitazioni',
+    'Vietate le navi da diporto (oltre 24 m)',
+    'Ancoraggio consentito a natanti e imbarcazioni, con limitazioni',
+    'Ormeggio nelle aree indicate dal Parco',
+    'Balneazione consentita; immersioni solo guidate',
+    'Pesca sportiva solo ai residenti, con autorizzazione',
+  ],
+}
+const PNAT_MC = {
+  label: 'protezione',
+  short: 'navigazione consentita; ancoraggio con limitazioni',
+  rules: [
+    'Navigazione consentita (imbarcazioni a motore e navi da diporto con limitazioni)',
+    'Ancoraggio per i non residenti consentito con limitazioni',
+    'Ormeggio in porti, moli e aree indicate dal Parco',
+    'Balneazione consentita; immersioni individuali con autorizzazione, notturne vietate',
+    'Pesca sportiva con autorizzazione; pesca subacquea vietata',
+  ],
+}
+const PNAT_ISLANDS = [
+  {
+    ...PNAT_COMMON,
+    id: 'pnat-capraia',
+    match: /arcipelago toscano – capraia/i,
+    name: 'Parco Arcipelago Toscano – Capraia',
+    general: [...PNAT_GENERAL, 'Il porto e il paese (da Punta di Porto Vecchio a Punta Bellavista) sono fuori dal Parco'],
+    zones: {
+      MA: PNAT_MA,
+      MBs: {
+        label: 'riserva generale orientata a regolamentazione speciale',
+        short: 'vela sì; motore solo fino a 10 m; ancoraggio solo natanti fino a 10 m',
+        rules: [
+          'Navigazione a vela, remi e pedali consentita',
+          'A motore: natanti con limitazioni, imbarcazioni solo fino a 10 m',
+          'Vietate le navi da diporto',
+          'Ancoraggio per i non residenti solo natanti fino a 10 m, con limitazioni: una barca di 12 m non può ancorare',
+          'Ormeggio nelle aree indicate dal Parco',
+          'Balneazione consentita; immersioni solo guidate e autorizzate',
+          'Pesca vietata',
+        ],
+      },
+      MB: PNAT_MB,
+      MC: PNAT_MC,
+      MD: {
+        label: 'promozione',
+        short: 'navigazione e ancoraggio consentiti',
+        rules: ['Navigazione e ancoraggio consentiti', 'Sci nautico consentito, moto d’acqua vietate', 'Pesca sportiva consentita; subacquea con autorizzazione'],
+      },
+    },
+  },
+  {
+    ...PNAT_COMMON,
+    id: 'pnat-giannutri',
+    match: /arcipelago toscano – giannutri/i,
+    name: 'Parco Arcipelago Toscano – Giannutri',
+    general: PNAT_GENERAL,
+    zones: {
+      MA: PNAT_MA,
+      MBs: {
+        label: 'riserva generale orientata a regolamentazione speciale',
+        short: 'vela sì; motore solo fino a 10 m; ancoraggio vietato',
+        rules: [
+          'Navigazione a vela, remi e pedali consentita',
+          'A motore: natanti con limitazioni, imbarcazioni solo fino a 10 m',
+          'Vietate le navi da diporto',
+          'Vietata qualsiasi forma di ancoraggio, anche ai residenti',
+          'Ormeggio nelle aree indicate dal Parco',
+          'Balneazione consentita; immersioni solo guidate e autorizzate',
+          'Pesca vietata',
+        ],
+      },
+      MC: PNAT_MC,
+    },
+  },
+  {
+    ...PNAT_COMMON,
+    id: 'pnat-pianosa',
+    match: /arcipelago toscano – pianosa/i,
+    name: 'Parco Arcipelago Toscano – Pianosa',
+    general: [...PNAT_GENERAL, 'Area a mare: 1 miglio dalla costa'],
+    zones: {
+      MA: PNAT_MA,
+      MBs: {
+        nogo: true,
+        label: 'riserva generale orientata a regolamentazione speciale',
+        short: 'vietate navigazione da diporto (anche a vela) e ancoraggio',
+        rules: [
+          'Vietata la navigazione a vela, a remi e a pedali',
+          'A motore ed elettrica solo con autorizzazione del Parco, su percorsi stabiliti',
+          'Vietato l’ancoraggio; ormeggio solo con autorizzazione',
+          'Balneazione solo alla spiaggia di Cala Giovanna',
+          'Visitatori con i mezzi di linea autorizzati, lungo la rotta più breve per il molo',
+          'Pesca vietata',
+        ],
+      },
+    },
+  },
+  {
+    ...PNAT_COMMON,
+    id: 'pnat-montecristo',
+    match: /arcipelago toscano – montecristo/i,
+    name: 'Parco Arcipelago Toscano – Montecristo',
+    general: PNAT_GENERAL,
+    zones: {
+      MA: {
+        label: 'riserva integrale a regolamentazione speciale, fino a 1,5 miglia',
+        short: 'vietati navigazione e ancoraggio, salvo visite autorizzate',
+        rules: [
+          'Vietata la navigazione a vela, a remi e in kayak',
+          'A motore solo con autorizzazione per le visite (imbarcazioni fino a 16 m), lungo la rotta perpendicolare al molo di Cala Maestra',
+          'Vietato l’ancoraggio; ormeggio temporaneo autorizzato a Cala Maestra',
+          'Vietate balneazione e immersioni',
+          'Pesca vietata',
+        ],
+      },
+      MBs: {
+        label: 'riserva generale orientata a regolamentazione speciale',
+        short: 'navigazione consentita; vietati ancoraggio, ormeggio e balneazione',
+        rules: ['Navigazione consentita, anche alle navi da diporto', 'Vietati ancoraggio e ormeggio', 'Vietate balneazione e immersioni', 'Pesca vietata'],
+      },
+    },
+  },
+  {
+    ...PNAT_COMMON,
+    id: 'pnat-gorgona',
+    match: /arcipelago toscano – gorgona/i,
+    name: 'Parco Arcipelago Toscano – Gorgona',
+    general: [...PNAT_GENERAL, 'Lo specchio d’acqua davanti a Gorgona Scalo è fuori dalle zone del Parco'],
+    zones: { MA: PNAT_MA, MB: PNAT_MB },
+  },
+  // Non sono aree protette, ma qui la scheda serve lo stesso
+  {
+    id: 'ponza-cisterne',
+    match: /^navi cisterna/i,
+    name: 'Accosto delle navi cisterna',
+    manager: 'Ufficio Circondariale Marittimo di Ponza',
+    source:
+      'https://www.guardiacostiera.gov.it/portale/documents/315369/0/interdizione+specchi+acquei+riservati+all%27ancoraggio+per+l%27approvvigionamento+idrico+dell%27isola+di+Ponza+-+pdf.pdf/d4e46489-f942-da09-3606-e4ba34690cb4',
+    edition: 'Ordinanza UCM Ponza 04/2015',
+    general: [
+      'Durante ormeggio, scarico e disormeggio delle navi cisterna dell’acqua: vietati ancoraggio, sosta, pesca, balneazione e immersioni',
+      'Fuori da quelle manovre lo specchio d’acqua è libero',
+    ],
+    zones: {},
+  },
+]
+
 export const AMP_RULES = [
   // ---------------------------------------------------------------- Liguria
   {
@@ -166,6 +333,11 @@ export const AMP_RULES = [
       },
     },
   },
+
+  // Parco Nazionale Arcipelago Toscano: zone a mare MA–MD del Piano del Parco
+  // (tools/park-zones.mjs). Tabelle degli artt. 28–31 delle NTA 2024; per
+  // le "limitazioni" fa fede il Regolamento del Parco.
+  ...PNAT_ISLANDS,
 
   // ---------------------------------------------------------------- Sardegna
   {

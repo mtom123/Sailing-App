@@ -533,12 +533,14 @@ export default function App() {
                   }`}
                 >
                   <b>
-                    {{ nogo: '⚠ ZONA VIETATA: ', military: '⚠ ZONA MILITARE: ', protected: 'AREA MARINA PROTETTA: ' }[gpsAlerts.zone.kind]}
+                    {{ nogo: '⚠ ZONA VIETATA: ', military: '⚠ ZONA MILITARE: ', protected: 'AREA MARINA PROTETTA: ', restricted: '' }[gpsAlerts.zone.kind]}
                     {gpsAlerts.zone.name}
                   </b>
                   <span className="text-[calc(10px*var(--fs))] opacity-70">
                     {gpsAlerts.zone.kind === 'military'
                       ? 'Verifica gli avvisi ai naviganti'
+                      : gpsAlerts.zone.kind === 'restricted'
+                      ? 'Transito libero'
                       : zoneSummary(ampRuleFor(gpsAlerts.zone.name), zoneLetter(gpsAlerts.zone.name)) || "Tocca l'area per le regole"}
                   </span>
                 </div>

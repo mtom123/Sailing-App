@@ -14,7 +14,10 @@
  * delle Capitanerie / Préfectures maritimes.
  */
 
-const DATA_URL = `${import.meta.env?.BASE_URL ?? '/'}protected-areas.json`
+const BASE = import.meta.env?.BASE_URL ?? '/'
+// Da OpenStreetMap (tools/protected-areas.mjs) e zone ufficiali che OSM non
+// ha, ricavate dai testi (tools/park-zones.mjs)
+const DATA_URLS = [`${BASE}protected-areas.json`, `${BASE}park-zones.json`]
 
 // Aree che non regolano la navigazione da diporto (enormi, solo habitat o
 // zone di adesione) e nomi che non sono aree in mare
@@ -26,7 +29,16 @@ const NOGO_RESTRICTION = /no_entry|entry_prohibited|no_navigation|restricted_ent
 const MARINE =
   /marin|\bmare\b|\bmer\b|\bsea\b|zona\s*[abc]\b|zone\s*[abc]\b|\bisol[ae]\b|\bîle|îlot|archip|arcipelago|port-cros|calanques|bouches|scandola|lavezzi|cerbicale|oasi blu/i
 
-/** 'nogo' | 'protected' | 'military' | null */
+// Divieti delle carte nautiche che sono zone di un parco ("Zona Bs", "Parco …")
+const PARK_NAME = /\bzon[ae]\s*[abcd]|\bparco\b|\bparc\b|\bpark\b|riserva|réserve|reserve|refuge/i
+
+/**
+ * 'nogo' | 'protected' | 'restricted' | 'military' | null
+ *
+ * 'restricted': divieti puntuali delle carte nautiche (seamark) senza un'area
+ * marina protetta dietro, di solito ancoraggio e pesca sopra cavi e condotte
+ * sottomarine: si transita liberamente.
+ */
 export function classify(tags) {
   const name = tags.name || tags['seamark:name'] || ''
   const text = `${name} ${tags.protection_title || ''} ${tags.designation || ''}`
@@ -35,10 +47,30 @@ export function classify(tags) {
   if (tags.military === 'danger_area' || tags['seamark:type'] === 'military_area') return 'military'
   const restriction = tags['seamark:restricted_area:restriction'] || ''
   if (tags['seamark:type'] === 'restricted_area') {
-    return NOGO_RESTRICTION.test(restriction) ? 'nogo' : 'protected'
+    if (NOGO_RESTRICTION.test(restriction)) return 'nogo'
+    return name && (MARINE.test(text) || PARK_NAME.test(name)) ? 'protected' : 'restricted'
   }
   if (!MARINE.test(text)) return null
   return NOGO_NAME.test(name) ? 'nogo' : 'protected'
+}
+
+const RESTRICTION_WORDS = {
+  no_anchoring: 'ancoraggio',
+  no_fishing: 'pesca',
+  no_trawling: 'pesca a strascico',
+  no_diving: 'immersioni',
+  no_swimming: 'balneazione',
+  no_wake: 'onda (velocità ridotta)',
+  no_motor_craft: 'motore',
+  no_sport_craft: 'moto d’acqua',
+  no_dredging: 'dragaggio',
+}
+
+/** "no_anchoring;no_fishing" → "Divieto di ancoraggio e pesca" */
+export function restrictionName(restriction) {
+  const words = [...new Set(String(restriction || '').split(/[;,]/).map((r) => RESTRICTION_WORDS[r.trim()]).filter(Boolean))]
+  if (!words.length) return 'Zona regolamentata'
+  return `Divieto di ${words.length > 1 ? `${words.slice(0, -1).join(', ')} e ${words.at(-1)}` : words[0]}`
 }
 
 // Unisce i tratti (way) di una relazione in anelli chiusi
@@ -93,7 +125,10 @@ export function toArea(el) {
   return {
     id: `${el.type}/${el.id}`,
     kind,
-    name: t.name || t['seamark:name'] || { nogo: 'Zona vietata', military: 'Zona militare', protected: 'Area protetta' }[kind],
+    name:
+      t.name ||
+      t['seamark:name'] ||
+      (kind === 'restricted' ? restrictionName(t['seamark:restricted_area:restriction']) : { nogo: 'Zona vietata', military: 'Zona militare', protected: 'Area protetta' }[kind]),
     rings,
     bbox: [s, w, n, e],
   }
@@ -102,10 +137,14 @@ export function toArea(el) {
 let allPromise = null
 function loadAll() {
   if (!allPromise) {
-    allPromise = fetch(DATA_URL)
-      .then((r) => (r.ok ? r.json() : { areas: [] }))
-      .then((j) => j.areas || [])
-      .catch(() => [])
+    allPromise = Promise.all(
+      DATA_URLS.map((url) =>
+        fetch(url)
+          .then((r) => (r.ok ? r.json() : { areas: [] }))
+          .then((j) => j.areas || [])
+          .catch(() => [])
+      )
+    ).then((lists) => lists.flat())
   }
   return allPromise
 }
@@ -139,6 +178,8 @@ function inRings(rings, lat, lon) {
  * Il nome di una zona generica ("Zona A") si completa con l'AMP che la
  * contiene ("Area naturale marina protetta Portofino · Zona A").
  */
+const ZONE = /(^\s*|\s·\s)zon[ae]\s/i
+
 export function areaLookup(areas) {
   const list = areas || []
   const named = (a, lat, lon) => {
@@ -151,8 +192,9 @@ export function areaLookup(areas) {
     for (const a of list) {
       if (!inArea(a, lat, lon)) continue
       if (a.kind === 'nogo') return named(a, lat, lon)
-      // Tra le aree regolamentate, la zona (più specifica) prima del parco
-      if (!found || /^\s*zon/i.test(a.name)) found = a
+      // Tra le aree regolamentate, la zona (più specifica) prima del parco, e
+      // il parco prima di un semplice divieto di ancoraggio
+      if (!found || ZONE.test(a.name) || (found.kind === 'restricted' && a.kind !== 'restricted')) found = a
     }
     return found ? named(found, lat, lon) : null
   }
