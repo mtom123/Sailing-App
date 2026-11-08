@@ -5,11 +5,13 @@
  *
  * Il servizio WMS restituisce un'immagine già colorata (verde terra, grigio
  * ~0 m, azzurro -10 m, blu -20 m, blu scuro -50 m) con rilievo ombreggiato,
- * nera dove non ci sono rilievi: qui il nero diventa trasparente e si tiene
- * solo ciò che cade in acqua secondo la costa OpenStreetMap (waterMask.js).
+ * nera dove non ci sono rilievi: il nero diventa trasparente in un worker
+ * (imageWorker.js) e si tiene solo ciò che cade in acqua secondo la
+ * costa OpenStreetMap (waterMask.js).
  */
 import L from 'leaflet'
 import { waterRings } from './waterMask.js'
+import { shomTileBitmap } from './imagePixels.js'
 
 const SHOM_WMS_URL = 'https://services.data.shom.fr/INSPIRE/wms/r'
 // Estensioni dichiarate dal servizio: fuori non si chiede niente.
@@ -20,16 +22,6 @@ const COVERAGE = [
 ]
 const TILE = 512
 
-function loadImage(url) {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.crossOrigin = 'anonymous' // serve per leggere i pixel (il Shom lo consente)
-    img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error('Shom WMS'))
-    img.src = url
-  })
-}
-
 export const ShomReliefLayer = L.GridLayer.extend({
   options: {
     tileSize: TILE,
@@ -39,6 +31,16 @@ export const ShomReliefLayer = L.GridLayer.extend({
     updateWhenZooming: false, // ~0,5–3 s per tassello lato server
     updateWhenIdle: true,
     attribution: '© Shom – Litto3D® (licence ouverte)',
+  },
+
+  initialize(options) {
+    L.setOptions(this, options)
+    // Tasselli tolti: la memoria grafica dei canvas va liberata subito (sull'iPad
+    // è poca e quando finisce la carta diventa nera)
+    this.on('tileunload', ({ tile }) => {
+      tile.width = 0
+      tile.height = 0
+    })
   },
 
   createTile(coords, done) {
@@ -60,22 +62,19 @@ export const ShomReliefLayer = L.GridLayer.extend({
       `&bbox=${sw.x},${sw.y},${ne.x},${ne.y}&width=${TILE}&height=${TILE}`
     const origin = coords.scaleBy(this.getTileSize())
 
-    Promise.all([loadImage(url), waterRings(bounds, coords.z, { oceanOnly: true })])
-      .then(([img, rings]) => {
-        // Senza rete il service worker manda un tassello vuoto da 1 pixel
-        if (img.naturalWidth < TILE) {
+    Promise.all([shomTileBitmap(url), waterRings(bounds, coords.z, { oceanOnly: true })])
+      .then(([bitmap, rings]) => {
+        // Nessun rilievo (senza rete, o browser senza worker grafici), o
+        // livello già tolto dalla carta
+        if (!bitmap || !this._map) {
+          bitmap?.close()
           done(null, tile)
           return
         }
-        const ctx = tile.getContext('2d', { willReadFrequently: true })
-        ctx.drawImage(img, 0, 0)
-        // Nero = nessun rilievo: trasparente
-        const data = ctx.getImageData(0, 0, TILE, TILE)
-        const px = data.data
-        for (let i = 0; i < px.length; i += 4) {
-          if (px[i] < 10 && px[i + 1] < 10 && px[i + 2] < 10) px[i + 3] = 0
-        }
-        ctx.putImageData(data, 0, 0)
+        // Solo disegno, nessuna lettura di pixel: il nero è già trasparente
+        const ctx = tile.getContext('2d')
+        ctx.drawImage(bitmap, 0, 0)
+        bitmap.close()
         // Solo l'acqua (la costa OSM è al metro, il verde del Shom è la terra).
         // Senza mare nel tassello va cancellato tutto: un riempimento vuoto non cancella niente
         if (rings && rings.length === 0) ctx.clearRect(0, 0, TILE, TILE)

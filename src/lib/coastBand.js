@@ -25,6 +25,7 @@ import { contours } from 'd3-contour'
 import { coastFeatures } from './waterMask.js'
 import { chaikin, splitOnFrame } from './isobathVector.js'
 import { ruleAt, ruleTiming } from '../data/coastRules.js'
+import { demHeights } from './imagePixels.js'
 
 export const BAND_DEFAULTS = { beach: 200, beachSicily: 300, cliff: 100 }
 export const FRANCE_BAND_M = 300
@@ -134,23 +135,9 @@ const demTiles = new Map() // "x/y" -> Promise<Float32Array 256×256>
 function loadDem(x, y) {
   const key = `${x}/${y}`
   if (!demTiles.has(key)) {
-    const p = new Promise((resolve, reject) => {
-      const img = new Image()
-      img.crossOrigin = 'anonymous'
-      img.onload = () => {
-        const c = document.createElement('canvas')
-        c.width = c.height = 256
-        const ctx = c.getContext('2d', { willReadFrequently: true })
-        ctx.drawImage(img, 0, 0)
-        const d = ctx.getImageData(0, 0, 256, 256).data
-        c.width = c.height = 0 // Safari iOS: libera subito la memoria dei canvas
-        const h = new Float32Array(256 * 256)
-        for (let i = 0; i < h.length; i++) h[i] = d[i * 4] * 256 + d[i * 4 + 1] + d[i * 4 + 2] / 256 - 32768
-        resolve(h)
-      }
-      img.onerror = () => reject(new Error('altimetria non disponibile'))
-      img.src = `${DEM_URL}/${DEM_Z}/${x}/${y}.png`
-    })
+    // Pixel letti nel worker: sull'iPad la lettura nella pagina bloccava la carta.
+    // null (browser senza worker grafici) = quota 0: vale la distanza delle spiagge
+    const p = demHeights(`${DEM_URL}/${DEM_Z}/${x}/${y}.png`)
     p.catch(() => demTiles.delete(key))
     demTiles.set(key, p)
   }
