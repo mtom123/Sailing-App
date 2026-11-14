@@ -13,8 +13,8 @@
  * - 'fronts' ({ sst, chl, kmPerPx }): fronti termici e di clorofilla di un
  *   tassello → { id, bitmap } | { id, empty: true }
  * - 'raster' ({ w, h, layers }): poligoni e cerchi → { id, masks } (Uint8Array)
- * - 'fineZones' ({ key, bbox, lines?, water, zones, opacity }): griglia fine dalle
- *   isobate, colorata per fasce → { id, blob } (PNG) | { id, empty } | { id, missing }
+ * - 'fineZones' ({ key, bbox, lines?, water, zones }): griglia fine dalle
+ *   isobate → { id, fine, zones: [{ color, rings }], cov } | { id, missing }
  * - 'fineDepth' ({ key, bbox, lat, lon }): profondità nella griglia fine → { id, depth }
  * - 'tint' ({ rgb, alpha }): immagine ricolorata → { id, bitmap } | { id, empty: true }
  * - 'migrate': carte salvate in Cache Storage → archivio IndexedDB
@@ -498,12 +498,12 @@ function buildFineGrid({ bbox, lines, water }) {
   return { w, h, depth, cov }
 }
 
-function hexRgb(hex) {
-  const v = parseInt(String(hex).replace('#', ''), 16)
-  return [(v >> 16) & 255, (v >> 8) & 255, v & 255]
-}
 
-async function fineZones(id, { key, bbox, lines, water, zones, opacity }) {
+// Fasce come contorni vettoriali (lat, lon): nitide a ogni zoom. Un'immagine
+// a celle di ~10 m ingrandita era sfocata da vicino (Baleari, 14/11/2026).
+// Fascia [da, a) = (profondità ≥ da) meno (profondità ≥ a): gli anelli dei due
+// livelli insieme, da riempire con la regola evenodd
+async function fineZones(id, { key, bbox, lines, water, zones }) {
   let grid = fineGrids.get(key)
   if (!grid) {
     if (!lines) {
@@ -515,35 +515,33 @@ async function fineZones(id, { key, bbox, lines, water, zones, opacity }) {
     if (fineGrids.size > MAX_FINE) fineGrids.delete(fineGrids.keys().next().value)
   }
   const { w, h, depth } = grid
-  const on = zones.filter((z) => z.on && z.to > z.from).map((z) => ({ ...z, rgb: hexRgb(z.color) }))
-  const canvas = new OffscreenCanvas(w, h)
-  const ctx = canvas.getContext('2d')
-  const img = ctx.createImageData(w, h)
-  const out = img.data
-  const a = Math.round(255 * opacity)
-  let any = false
-  for (let i = 0; i < w * h; i++) {
-    const d = depth[i]
-    if (Number.isNaN(d)) continue
-    for (const z of on) {
-      if (d >= z.from && d < z.to) {
-        out[i * 4] = z.rgb[0]
-        out[i * 4 + 1] = z.rgb[1]
-        out[i * 4 + 2] = z.rgb[2]
-        out[i * 4 + 3] = a
-        any = true
-        break
-      }
+  const [s, wLon, n, e] = bbox
+  if (!grid.values) {
+    // Fuori dal rilievo e a terra: sotto ogni soglia
+    const values = new Float64Array(w * h)
+    for (let i = 0; i < values.length; i++) values[i] = Number.isNaN(depth[i]) ? -1e6 : depth[i]
+    grid.values = values
+    grid.rings = new Map()
+  }
+  const gen = contours().size([w, h]).smooth(true)
+  const round = (v) => Math.round(v * 1e6) / 1e6
+  const ringsAt = (t) => {
+    if (!grid.rings.has(t)) {
+      const rings = gen
+        .contour(grid.values, t)
+        .coordinates.flat()
+        .map((ring) => ring.map(([x, y]) => [round(n - (y / h) * (n - s)), round(wLon + (x / w) * (e - wLon))]))
+      grid.rings.set(t, rings)
     }
+    return grid.rings.get(t)
   }
-  // L'area coperta va sempre: anche senza fasce lì le EMODnet si tolgono
-  if (!any) {
-    self.postMessage({ id, fine: true, blob: null, cov: grid.cov })
-    return
+  const out = []
+  for (const z of zones) {
+    if (!z.on || !(z.to > z.from) || z.from < 0) continue
+    const rings = [...ringsAt(z.from), ...ringsAt(z.to)]
+    if (rings.length) out.push({ color: z.color, rings })
   }
-  ctx.putImageData(img, 0, 0)
-  const blob = await canvas.convertToBlob({ type: 'image/png' })
-  self.postMessage({ id, fine: true, blob, cov: grid.cov })
+  self.postMessage({ id, fine: true, zones: out, cov: grid.cov })
 }
 
 /** Profondità della griglia fine nel punto, o null (per il puntatore) */

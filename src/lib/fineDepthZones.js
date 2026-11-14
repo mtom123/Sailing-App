@@ -17,6 +17,7 @@ import { LIGURIA_ISOBATH_SOURCE } from './liguriaIsobaths.js'
 import { waterRings } from './waterMask.js'
 import { fineZonesImage } from './imagePixels.js'
 import { DEPTH_ZONE_OPACITY } from './isobaths.js'
+import { MaskedCanvas } from './isobathLayer.js'
 import { mapAtRest } from './offlinePack.js'
 
 const PANE = 'fineDepthZonePane'
@@ -28,7 +29,7 @@ export const FineDepthZoneLayer = L.Layer.extend({
 
   initialize(options) {
     L.setOptions(this, options)
-    this._shown = new Map() // chiave "fonte:i,j" -> { overlay, url, cov }
+    this._shown = new Map() // chiave "fonte:i,j" -> { group (poligoni delle fasce), cov }
     this._gen = 0
   },
 
@@ -46,6 +47,9 @@ export const FineDepthZoneLayer = L.Layer.extend({
       pane.style.zIndex = 249 // sopra le fasce EMODnet, sotto le isobate
       pane.style.pointerEvents = 'none'
     }
+    // Fasce vettoriali (nitide a ogni zoom) su un canvas a risoluzione normale:
+    // veli di colore, il dettaglio Retina non serve e su iPad la memoria è poca
+    this._renderer = new MaskedCanvas({ pane: PANE, padding: 0.1, lowRes: true })
     map.on('moveend', this._update, this)
     this._update()
   },
@@ -60,8 +64,7 @@ export const FineDepthZoneLayer = L.Layer.extend({
   _drop(name) {
     const s = this._shown.get(name)
     if (!s) return
-    s.overlay?.remove()
-    if (s.url) URL.revokeObjectURL(s.url)
+    s.group?.remove()
     this._shown.delete(name)
   },
 
@@ -108,7 +111,7 @@ export const FineDepthZoneLayer = L.Layer.extend({
       return
     }
     const zones = this.options.zones
-    const job = { key, bbox, zones, opacity: DEPTH_ZONE_OPACITY }
+    const job = { key, bbox, zones }
     let res = await fineZonesImage(job)
     if (res === 'missing') {
       // Troppi tasselli di costa a quello zoom: un livello meno fine
@@ -122,14 +125,23 @@ export const FineDepthZoneLayer = L.Layer.extend({
     if (!this._map || this._shown.has(key)) return
     // Il taglio delle fasce EMODnet segue l'area dove la griglia fine ha i dati
     const cov = res && res !== 'missing' ? res.cov : []
-    if (!res || res === 'missing' || !res.blob) {
+    if (!res || res === 'missing' || !res.zones.length) {
       this._shown.set(key, { cov })
       this._coverage()
       return
     }
-    const url = URL.createObjectURL(res.blob)
-    const overlay = L.imageOverlay(url, bounds, { pane: PANE, interactive: false, className: 'fine-depth-zones' }).addTo(this._map)
-    this._shown.set(key, { overlay, url, cov })
+    const group = L.layerGroup(
+      res.zones.map((z) =>
+        L.polygon(z.rings, {
+          renderer: this._renderer,
+          stroke: false,
+          fillColor: z.color,
+          fillOpacity: DEPTH_ZONE_OPACITY,
+          interactive: false,
+        })
+      )
+    ).addTo(this._map)
+    this._shown.set(key, { group, cov })
     this._coverage()
   },
 })
