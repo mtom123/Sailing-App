@@ -363,7 +363,8 @@ self.addEventListener('fetch', (event) => {
       safely(event, networkFirst(request, SHELL_CACHE, { timeout: 6000, fallbackShell: true, timing: lastNav, event }))
     } else if (url.pathname.startsWith(`${BASE}assets/`)) {
       safely(event, shellAsset(request, event))
-    } else if (url.pathname.startsWith(`${BASE}isobaths-hd/`)) {
+    } else if (url.pathname.startsWith(`${BASE}isobaths-hd/`) || url.pathname.startsWith(`${BASE}isobaths-baleari/`)) {
+      // Isobate di dettaglio pubblicate con l'app (Shom, Baleari): non cambiano
       safely(event, cacheFirst(request, GEO_CACHE, { event }))
     } else if (url.pathname.endsWith('.json') || url.pathname.endsWith('.webmanifest')) {
       // Aree protette e ordinanze si aggiornano: rete, poi copia

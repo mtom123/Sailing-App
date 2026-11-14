@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "bridge": "node tools/nmea-bridge.mjs",
     "litto3d": "node tools/litto3d-isobaths.mjs",
+    "baleari": "node tools/baleari-isobaths.mjs",
     "protected-areas": "node tools/protected-areas.mjs",
     "park-zones": "node tools/park-zones.mjs",
     "ordinances": "node tools/ordinances.mjs"

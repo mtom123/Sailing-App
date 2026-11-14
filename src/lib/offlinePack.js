@@ -3,6 +3,7 @@ import { haversine } from './geo.js'
 import { loadBlock, blockIndex, BLOCK, CELLS_PER_DEGREE } from './depthGrid.js'
 import { SHOM_SOURCE, HD_BASE } from './hdIsobathLayer.js'
 import { LIGURIA_ISOBATH_SOURCE } from './liguriaIsobaths.js'
+import { BALEARI_ISOBATH_SOURCE } from './baleariIsobaths.js'
 import { loadTile as loadWaterTile } from './waterMask.js'
 import { shomTileUrl, SHOM_OFFLINE_ZOOMS } from './shomRelief.js'
 import { storeAdopt, storeClearArea, storePut } from './tileStore.js'
@@ -302,6 +303,7 @@ async function dataJobs(plan) {
   const blocks = new Map()
   const shom = new Set()
   const liguria = new Set()
+  const baleari = new Set()
   for (const view of plan.views) {
     for (let bx = blockIndex(view.getWest()); bx <= blockIndex(view.getEast()); bx++) {
       for (let by = blockIndex(view.getSouth()); by <= blockIndex(view.getNorth()); by++) blocks.set(`${bx},${by}`, [bx, by])
@@ -314,6 +316,7 @@ async function dataJobs(plan) {
     const view = hdViews[i]
     for (const name of await SHOM_SOURCE.names(view)) shom.add(name)
     for (const name of await LIGURIA_ISOBATH_SOURCE.names(view)) liguria.add(name)
+    for (const name of await BALEARI_ISOBATH_SOURCE.names(view)) baleari.add(name)
   }
   for (const [bx, by] of blocks.values()) jobs.push(() => loadBlock(bx, by))
   for (const name of shom) {
@@ -321,6 +324,7 @@ async function dataJobs(plan) {
     jobs.push(() => fetch(`${HD_BASE}${name}.bin`).then((r) => r.arrayBuffer()))
   }
   for (const name of liguria) jobs.push(() => LIGURIA_ISOBATH_SOURCE.load(name))
+  for (const name of baleari) jobs.push(() => BALEARI_ISOBATH_SOURCE.load(name))
 
   const base = import.meta.env.BASE_URL
   jobs.push(() => fetch(`${base}protected-areas.json`).then((r) => r.json()))
