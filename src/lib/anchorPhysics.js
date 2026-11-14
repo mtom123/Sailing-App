@@ -130,6 +130,9 @@ export function anchorCheck({ depthM, bowHeightM, chainM, chainMm, anchorKg, anc
   const frictionKgf = (lying) => (lying * w * bt.friction) / G
   const holdKgf = anchorHoldKgf + frictionKgf(lyingM)
   const holdRatio = holdKgf / Math.max(1, loadKgf)
+  // Raffica che l'ancora regge con il margine voluto (il carico va col
+  // quadrato del vento; l'attrito della catena è poca cosa e resta fisso)
+  const holdMaxKn = gustKn > 0 ? gustKn * Math.sqrt(holdRatio / HOLD_MARGIN) : null
   // Catena consigliata: catena sul fondo alla raffica (catenaria) e calumo
   // minimo del fondo. L'attrito della catena adagiata è piccolo (pochi kg):
   // se l'ancora non tiene, più catena non basta, serve un fondo o un'ancora migliore
@@ -158,12 +161,14 @@ export function anchorCheck({ depthM, bowHeightM, chainM, chainMm, anchorKg, anc
     reasons.push(`Su ${bt.label.toLowerCase()} si consiglia almeno ${bt.minScope}:1, cioè ${scopeNeedM} m`)
   }
   let holdLevel = 'ok'
+  const upTo = holdMaxKn != null ? ` (regge fino a ~${Math.round(holdMaxKn)} kn di raffica)` : ''
+  const better = bt.factor < 1 ? 'cerca un fondo migliore (sabbia o fango buono), ' : ''
   if (holdRatio < 1) {
     holdLevel = 'danger'
-    reasons.push("Tenuta indicativa dell'ancora insufficiente per la raffica, e più catena non basta: cerca un fondo migliore (sabbia), un'ancora più pesante o dai una seconda ancora")
+    reasons.push(`L'ancora da sola non tiene questa raffica${upTo}, e più catena non serve: ${better}dai una seconda ancora o usa un'ancora più pesante`)
   } else if (holdRatio < HOLD_MARGIN) {
     holdLevel = 'warn'
-    reasons.push("Tenuta indicativa dell'ancora con poco margine (più catena non la cambia): dai marcia indietro decisa per farla affondare bene")
+    reasons.push(`Tenuta dell'ancora con poco margine${upTo}; più catena non la cambia: dai marcia indietro decisa per farla affondare bene`)
   }
   const level = worst(chainLevel, holdLevel)
   if (bottom === 'weed') reasons.push("Su posidonia l'ancora tiene male, e in molte aree protette è vietato")
@@ -174,6 +179,7 @@ export function anchorCheck({ depthM, bowHeightM, chainM, chainMm, anchorKg, anc
     anchorHoldKgf,
     chainHoldKgf: holdKgf - anchorHoldKgf,
     holdRatio,
+    holdMaxKn,
     suspendedM,
     lyingM,
     angleDeg,

@@ -235,6 +235,12 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
             <span className="text-right text-paper">~{Math.round(result.loadKgf)} kg</span>
             <span>Tenuta indicativa</span>
             <span className="text-right text-paper">~{Math.round(result.holdKgf)} kg</span>
+            {result.holdMaxKn != null && (
+              <>
+                <span>L'ancora regge fino a</span>
+                <span className="text-right text-paper">~{Math.round(result.holdMaxKn)} kn di raffica</span>
+              </>
+            )}
             <span>Catena consigliata</span>
             <span className="text-right text-paper">{result.chainNeededM} m</span>
             <span>Raggio di rotazione</span>
