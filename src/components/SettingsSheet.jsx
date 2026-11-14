@@ -9,7 +9,7 @@ import { clearStarts, readStarts } from '../lib/startLog.js'
 import { lastBackupAt, makeBackup, markBackupDone, readBackup, restoreBackup } from '../lib/backup.js'
 import { shareFile } from '../lib/route.js'
 import { DEFAULT_DEPTH_ZONES } from '../lib/isobaths.js'
-import { ANCHOR_TYPES } from '../lib/anchorPhysics.js'
+import { ANCHOR_TYPES, chainKgPerM } from '../lib/anchorPhysics.js'
 
 /*
  * Foglio impostazioni: tutto ciò che si configura una volta e poi si dimentica
@@ -608,7 +608,7 @@ export default function SettingsSheet({
             <div className="grid grid-cols-3 gap-1.5 text-[calc(10px*var(--fs))] text-fog">
               {[
                 ['anchorKg', 'kg ancora', 20, 1],
-                ['chainMm', 'mm catena', 10, 1],
+                ['chainMm', 'Ø catena (mm)', 10, 1],
                 ['chainLengthM', 'm catena', 60, 5],
                 ['bowHeightM', 'm musone', 1.2, 0.1],
                 ['windageM2', 'm² al vento', 12, 1],
@@ -628,7 +628,7 @@ export default function SettingsSheet({
               ))}
             </div>
             <div className="pt-1 text-[calc(10px*var(--fs))] text-fog-dim">
-              Musone: altezza del rullo di prua sull'acqua. Superficie al vento: scafo, tuga e albero visti di prua (~12 m² per 12 m).
+              Catena da {boat.chainMm ?? 10} mm: {chainKgPerM(boat.chainMm ?? 10).toFixed(1).replace('.', ',')} kg/m. Musone: altezza del rullo di prua sull'acqua. Superficie al vento: scafo, tuga e albero visti di prua (~12 m² per 12 m).
             </div>
             <div className="label pt-3 pb-1 flex items-center gap-1.5">
               <Gauge size={11} /> Fascia dalla costa: Capitanerie non in elenco

@@ -27,11 +27,13 @@ const DYNAMIC = 1.8
 export const MAX_ANGLE_DEG = 6
 const KN = 0.5144
 
-// Massa della catena (kg/m) per diametro del filo (mm), catena calibrata ISO 4565
-export const CHAIN_KG_M = { 6: 0.8, 8: 1.4, 10: 2.2, 12: 3.2, 13: 3.8, 14: 4.4 }
+// Massa della catena (kg/m) dal diametro del filo (mm), catena calibrata a
+// maglia corta (ISO 4565 / DIN 766): ~0,0219 · d² (8 mm 1,4 · 10 mm 2,2 · 12 mm 3,2)
+export const chainKgPerM = (mm) => 0.0219 * mm * mm
 
 // kgf di tenuta per kg di ancora, in sabbia compatta (indicativi)
 export const ANCHOR_TYPES = [
+  { key: 'ultra', label: 'Ultra (Ultra Marine)', factor: 60 },
   { key: 'newgen', label: 'Nuova generazione (Rocna, Spade, Mantus, Vulcan)', factor: 60 },
   { key: 'delta', label: 'Delta', factor: 40 },
   { key: 'cqr', label: 'CQR / aratro', factor: 35 },
@@ -93,7 +95,7 @@ export function anchorAngleDeg(H, w, L, h) {
  */
 export function anchorCheck({ depthM, bowHeightM, chainM, chainMm, anchorKg, anchorType, bottom, gustKn, windageM2, loaM }) {
   const h = Math.max(0.5, depthM + bowHeightM)
-  const w = (CHAIN_KG_M[chainMm] ?? 2.2) * G * STEEL_IN_WATER // N/m
+  const w = chainKgPerM(chainMm > 0 ? chainMm : 10) * G * STEEL_IN_WATER // N/m
   const H = windLoadN(gustKn, windageM2, false)
   const loadN = windLoadN(gustKn, windageM2, true)
   const suspendedM = Math.sqrt(h * h + (2 * h * H) / w)
