@@ -49,6 +49,7 @@ import { bandText } from './lib/coastBand.js'
 import useOfflineRoute from './hooks/useOfflineRoute.js'
 import useRaceRoute from './hooks/useRaceRoute.js'
 import useMarks from './hooks/useMarks.js'
+import { saveAnchorMark } from './lib/anchorMark.js'
 import { useRaceSignals } from './hooks/useRaceTimer.js'
 import { ampRuleFor, zoneLetter, zoneSummary } from './lib/ampRules.js'
 
@@ -477,6 +478,7 @@ export default function App() {
     armAudio()
     setAlarmMuted(false)
     setAnchorWatch({ lat: geo.lat, lon: geo.lon, radius: anchorRadius })
+    saveAnchorMark(geo.lat, geo.lon)
   }
   const raiseAnchor = () => {
     setAnchorWatch(null)

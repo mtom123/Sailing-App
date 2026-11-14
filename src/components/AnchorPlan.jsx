@@ -23,6 +23,8 @@ const PART = {
   warn: { color: 'var(--color-warn)', chain: 'al limite', hold: 'poco margine' },
   danger: { color: 'var(--color-danger)', chain: 'non basta', hold: 'insufficiente' },
 }
+// Profondità, fondo e catena dell'ultimo calcolo, per il marker di ANCORA CADUTA
+export const lastAnchorPlan = { current: null }
 const CELL = 0.05 // blocchi delle griglie di dettaglio (fineDepthZones.js)
 const HOURS = 12
 
@@ -118,6 +120,8 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
   const chainAuto = chainM == null
   const chain = Math.max(10, Math.min(maxChain, chainM ?? recommended))
   const result = useMemo(() => (input ? anchorCheck({ ...input, chainM: chain }) : null), [input, chain])
+  // Per il marker che ANCORA CADUTA salva da solo (senza ridisegnare l'app)
+  lastAnchorPlan.current = { depth, depthSource, bottom, chainM: chain, at: lat == null ? null : { lat, lon } }
 
   const openSettings = () => {
     useAppStore.getState().setSettingsOpen(true)
