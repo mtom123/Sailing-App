@@ -733,6 +733,9 @@ export default function App() {
                   alarmActive={anchorAlarmActive}
                   onMuteAlarm={() => setAlarmMuted(true)}
                   band={anchorBandText}
+                  planPosition={gpsOk ? { lat: geo.lat, lon: geo.lon } : { lat: view.center.lat, lon: view.center.lon, fromMap: true }}
+                  depthLive={depthLive}
+                  weather={weather}
                 />
               )}
               {activeDrawer === 'weather' && (

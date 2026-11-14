@@ -1,6 +1,7 @@
 import { Anchor, BellOff, LocateFixed } from 'lucide-react'
 import { SAFETY_COLORS } from '../lib/anchorageSafety.js'
 import { cardinal, formatDeg, metersToNm } from '../lib/geo.js'
+import AnchorPlan from './AnchorPlan.jsx'
 
 /*
  * Sidebar destra: ancoraggi ordinati per distanza con semaforo di sicurezza
@@ -55,6 +56,9 @@ export default function AnchoragePanel({
   alarmActive,
   onMuteAlarm,
   band, // bandText della fascia dalla costa qui, o null
+  planPosition, // { lat, lon }: la barca, o il centro della carta senza GPS
+  depthLive, // scandaglio (boatData.liveDepth), o null
+  weather, // previsione oraria dell'app (useOpenMeteo)
 }) {
   return (
     <div className="flex h-full flex-col bg-ink">
@@ -70,14 +74,16 @@ export default function AnchoragePanel({
 
         {!anchorWatch && (
           <>
-            <div className="flex items-center justify-between pb-1 text-[calc(10px*var(--fs))] text-fog">
+            <div className="label pb-1 pt-0.5">Prima di dare fondo{planPosition?.fromMap ? ' · centro carta' : ''}</div>
+            <AnchorPlan position={planPosition} depthLive={depthLive} weather={weather} onUseRadius={(r) => onRadiusChange(Math.max(15, Math.min(200, r)))} />
+            <div className="mt-2 flex items-center justify-between pb-1 text-[calc(10px*var(--fs))] text-fog">
               <span>Raggio scarroccio</span>
               <span className="font-bold text-paper tabular-nums">{radius} m</span>
             </div>
             <input
               type="range"
               min="15"
-              max="120"
+              max="200"
               step="5"
               value={radius}
               onChange={(e) => onRadiusChange(Number(e.target.value))}

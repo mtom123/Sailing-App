@@ -1,4 +1,4 @@
-import { Radio, Ship, Wifi, X, Sailboat, Gauge, Activity, Upload, FileText, Trash, Type, Cable, Layers, Plus } from 'lucide-react'
+import { Radio, Ship, Wifi, X, Sailboat, Gauge, Activity, Upload, FileText, Trash, Type, Cable, Layers, Plus, Anchor } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { useAppStore } from '../store/useAppStore.js'
 import { BOAT_LIBRARY, registerCustomPolar, listAvailablePolars } from '../routing/polarSolver.js'
@@ -9,6 +9,7 @@ import { clearStarts, readStarts } from '../lib/startLog.js'
 import { lastBackupAt, makeBackup, markBackupDone, readBackup, restoreBackup } from '../lib/backup.js'
 import { shareFile } from '../lib/route.js'
 import { DEFAULT_DEPTH_ZONES } from '../lib/isobaths.js'
+import { ANCHOR_TYPES } from '../lib/anchorPhysics.js'
 
 /*
  * Foglio impostazioni: tutto ciò che si configura una volta e poi si dimentica
@@ -589,6 +590,45 @@ export default function SettingsSheet({
             <div className="pt-1 text-[calc(10px*var(--fs))] text-fog-dim">
               La rotta segnala e aggira terra e fondali sotto{' '}
               {((boat.draftM ?? 1.9) + (boat.safetyMarginM ?? 1)).toFixed(1)} m
+            </div>
+            <div id="settings-anchor" className="label pt-3 pb-1 flex items-center gap-1.5">
+              <Anchor size={11} /> Ancora e catena (pianificazione dell'ancoraggio)
+            </div>
+            <select
+              value={boat.anchorType ?? 'delta'}
+              onChange={(e) => setBoat({ anchorType: e.target.value })}
+              className="mb-1.5 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-paper outline-none focus:border-phos"
+            >
+              {ANCHOR_TYPES.map((t) => (
+                <option key={t.key} value={t.key}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+            <div className="grid grid-cols-3 gap-1.5 text-[calc(10px*var(--fs))] text-fog">
+              {[
+                ['anchorKg', 'kg ancora', 20, 1],
+                ['chainMm', 'mm catena', 10, 1],
+                ['chainLengthM', 'm catena', 60, 5],
+                ['bowHeightM', 'm musone', 1.2, 0.1],
+                ['windageM2', 'm² al vento', 12, 1],
+                ['loaM', 'm lunghezza', 12.5, 0.5],
+              ].map(([key, label, def, step]) => (
+                <label key={key} className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    step={step}
+                    min="0"
+                    value={boat[key] ?? def}
+                    onChange={(e) => setBoat({ [key]: Number(e.target.value) })}
+                    className="w-14 rounded-md border border-line bg-surface px-1.5 py-1.5 text-center text-xs text-paper outline-none focus:border-phos"
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="pt-1 text-[calc(10px*var(--fs))] text-fog-dim">
+              Musone: altezza del rullo di prua sull'acqua. Superficie al vento: scafo, tuga e albero visti di prua (~12 m² per 12 m).
             </div>
             <div className="label pt-3 pb-1 flex items-center gap-1.5">
               <Gauge size={11} /> Fascia dalla costa: Capitanerie non in elenco

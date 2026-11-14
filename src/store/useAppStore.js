@@ -96,6 +96,14 @@ export const useAppStore = create(
         name: 'Dufour 41 Classic',
         polarProfile: 'cruiser-41-monohull',
         motoringSpeedKn: 6.5,
+        // Ancoraggio (anchorPhysics.js): ancora, catena, musone, superficie al vento
+        anchorKg: 20,
+        anchorType: 'delta',
+        chainMm: 10,
+        chainLengthM: 60,
+        bowHeightM: 1.2,
+        windageM2: 12,
+        loaM: 12.5,
         // Weather routing: 'sail', 'motor' o 'hybrid' (motore sotto motorBelowKn a vela)
         propulsion: 'hybrid',
         motorBelowKn: 4,

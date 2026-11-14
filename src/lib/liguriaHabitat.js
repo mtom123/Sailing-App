@@ -55,6 +55,52 @@ function loadCell(i, j) {
   return p
 }
 
+// Classe dell'Atlante → fondo per l'ancoraggio (anchorPhysics.js)
+// (posidonia, cymodocea, matte morta | sabbie, ghiaie, detritico costiero |
+// fanghi, detritico infangato | alghe su roccia, coralligeno; porti: nessuno)
+const BOTTOM_OF = (classe) => {
+  if (!classe) return null
+  if (/^(pos|mos|cym)/.test(classe) || classe === 'mmp') return 'weed'
+  if (['s', 'sgc', 'dc'].includes(classe)) return 'sand'
+  if (['f', 'di'].includes(classe)) return 'mud'
+  if (/^(af|asi|asc|c$|c-|sgc-c|gr)/.test(classe)) return 'rock'
+  return null
+}
+
+function inRing(ring, x, y) {
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i]
+    const [xj, yj] = ring[j]
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside
+  }
+  return inside
+}
+
+/**
+ * Fondo nel punto secondo l'Atlante ligure: { bottom: 'sand' | 'mud' |
+ * 'weed' | 'rock', label } o null (fuori Liguria, zona non indagata, senza rete)
+ */
+export async function habitatAt(lat, lon) {
+  if (!AREA.contains([lat, lon])) return null
+  const features = await loadCell(Math.floor(lon / CELL), Math.floor(lat / CELL)).catch(() => null)
+  if (!features) return null
+  const p = L.CRS.EPSG3857.project(L.latLng(lat, lon))
+  for (const f of features) {
+    const g = f.geometry
+    if (!g) continue
+    const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : []
+    for (const poly of polys) {
+      // Dentro l'anello esterno e fuori dai buchi
+      if (!inRing(poly[0], p.x, p.y)) continue
+      if (poly.slice(1).some((hole) => inRing(hole, p.x, p.y))) continue
+      const bottom = BOTTOM_OF(f.properties.CLASSE)
+      if (bottom) return { bottom, label: f.properties.DESCRIZIONE || f.properties.CLASSE }
+    }
+  }
+  return null
+}
+
 /*
  * Su iPad i poligoni dell'Atlante sono pesanti (migliaia, molto dettagliati):
  * da zoom 14 (dove servono per dare fondo; prima c'è la posidonia EMODnet in
