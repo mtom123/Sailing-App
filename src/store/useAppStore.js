@@ -105,6 +105,7 @@ export const useAppStore = create(
         windageM2: 12,
         loaM: 12.5,
         kelletKg: 0, // pesce (sentinella) sulla catena
+        kelletOn: false, // messo in questo ancoraggio (pannello Ancora)
         // Weather routing: 'sail', 'motor' o 'hybrid' (motore sotto motorBelowKn a vela)
         propulsion: 'hybrid',
         motorBelowKn: 4,

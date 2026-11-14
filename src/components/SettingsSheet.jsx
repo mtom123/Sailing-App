@@ -629,7 +629,7 @@ export default function SettingsSheet({
               ))}
             </div>
             <div className="pt-1 text-[calc(10px*var(--fs))] text-fog-dim">
-              Catena da {boat.chainMm ?? 10} mm: {chainKgPerM(boat.chainMm ?? 10).toFixed(1).replace('.', ',')} kg/m. Pesce: la sentinella sulla catena (0 se non la usi). Musone: altezza del rullo di prua sull'acqua. Superficie al vento: scafo, tuga e albero visti di prua (~12 m² per 12 m).
+              Catena da {boat.chainMm ?? 10} mm: {chainKgPerM(boat.chainMm ?? 10).toFixed(1).replace('.', ',')} kg/m. Pesce: peso della sentinella (0 se non ce l'hai); se è messo lo dici nel pannello Ancora. Musone: altezza del rullo di prua sull'acqua. Superficie al vento: scafo, tuga e albero visti di prua (~12 m² per 12 m).
             </div>
             <div className="label pt-3 pb-1 flex items-center gap-1.5">
               <Gauge size={11} /> Fascia dalla costa: Capitanerie non in elenco

@@ -30,6 +30,8 @@ export const MAX_ANGLE_DEG = 12
 // Angolo che va ancora bene: con 50 m di catena e 8–9 m di fondo a 63 kn la
 // catena arrivava all'ancora a 7–8° e l'Ultra ha tenuto senza problemi
 export const GOOD_ANGLE_DEG = 8
+// Pesce: metri di catena equivalenti per kg (Ultra Marine: ~10 m per 8 kg)
+export const KELLET_M_PER_KG = 1.25
 const KN = 0.5144
 
 // Massa della catena (kg/m) dal diametro del filo (mm), catena calibrata a
@@ -104,14 +106,17 @@ export function anchorAngleDeg(H, w, L, h) {
  */
 export function anchorCheck({ depthM, bowHeightM, chainM, chainMm, anchorKg, anchorType, bottom, gustKn, windageM2, loaM, kelletKg = 0, waveM = null }) {
   const h = Math.max(0.5, depthM + bowHeightM)
-  // Peso in acqua della catena; il pesce (sentinella) aggiunge il suo, come
-  // se fosse spalmato sulla catena: abbassa la catena e assorbe gli strappi
-  const w = (chainKgPerM(chainMm > 0 ? chainMm : 10) + (kelletKg > 0 ? kelletKg / Math.max(chainM, 1) : 0)) * G * STEEL_IN_WATER // N/m
+  const w = chainKgPerM(chainMm > 0 ? chainMm : 10) * G * STEEL_IN_WATER // N/m
+  // Il pesce (sentinella) a metà calumo abbassa la catena molto più del suo
+  // peso: Ultra Marine lo dà come ~10 m di catena in più per 8 kg. Conta come
+  // catena in più nella catenaria (non nel raggio di rotazione)
+  const kelletM = kelletKg > 0 ? KELLET_M_PER_KG * kelletKg : 0
+  const effChainM = chainM + kelletM
   const H = windLoadN(gustKn, windageM2, 1)
   const loadN = windLoadN(gustKn, windageM2, dynamicFactor(waveM))
   const suspendedM = Math.sqrt(h * h + (2 * h * H) / w)
-  const lyingM = Math.max(0, chainM - suspendedM)
-  const angleDeg = anchorAngleDeg(H, w, chainM, h)
+  const lyingM = Math.max(0, effChainM - suspendedM)
+  const angleDeg = anchorAngleDeg(H, w, effChainM, h)
   const chainOk = angleDeg <= MAX_ANGLE_DEG
   const typeF = ANCHOR_TYPES.find((t) => t.key === anchorType)?.factor ?? 25
   const bt = BOTTOMS.find((b) => b.key === bottom) ?? BOTTOMS[BOTTOMS.length - 1]
@@ -127,7 +132,7 @@ export function anchorCheck({ depthM, bowHeightM, chainM, chainMm, anchorKg, anc
   // se l'ancora non tiene, più catena non basta, serve un fondo o un'ancora migliore
   // Catena che tiene l'angolo sull'ancora entro GOOD_ANGLE_DEG alla raffica
   let catNeedM = Math.ceil(h * 2)
-  while (catNeedM < 400 && anchorAngleDeg(H, w, catNeedM, h) > GOOD_ANGLE_DEG) catNeedM += 1
+  while (catNeedM < 400 && anchorAngleDeg(H, w, catNeedM + kelletM, h) > GOOD_ANGLE_DEG) catNeedM += 1
   const scopeNeedM = Math.ceil(h * bt.minScope)
   const chainNeededM = Math.max(catNeedM, scopeNeedM)
   // Raggio massimo: catena tutta tesa più la barca

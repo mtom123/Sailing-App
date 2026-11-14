@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAppStore } from '../store/useAppStore.js'
-import { ANCHOR_TYPES, BOTTOMS, anchorCheck, windAhead } from '../lib/anchorPhysics.js'
+import { ANCHOR_TYPES, BOTTOMS, KELLET_M_PER_KG, anchorCheck, windAhead } from '../lib/anchorPhysics.js'
 import { depthAt } from '../lib/depthAt.js'
 import { habitatAt } from '../lib/liguriaHabitat.js'
 import { fineDepthAt } from '../lib/imagePixels.js'
@@ -99,7 +99,7 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
       gustKn: wind.gustKn,
       windageM2: boat.windageM2 ?? 12,
       loaM: boat.loaM ?? 12.5,
-      kelletKg: boat.kelletKg ?? 0,
+      kelletKg: boat.kelletOn ? boat.kelletKg ?? 0 : 0,
       waveM: wind.waveM,
     })
   }, [depth, wind, chain, bottom, boat])
@@ -156,6 +156,20 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
           {chain} m · {depth != null ? `${(chain / h).toFixed(1).replace('.', ',')}:1` : '—'}
         </span>
       </div>
+      <label className={`flex items-center gap-1.5 ${boat.kelletKg > 0 ? 'text-paper' : 'text-fog-dim'}`}>
+        <input
+          type="checkbox"
+          disabled={!(boat.kelletKg > 0)}
+          checked={!!boat.kelletOn && boat.kelletKg > 0}
+          onChange={() => useAppStore.getState().setBoat({ kelletOn: !boat.kelletOn })}
+          className="h-5 w-5 accent-[var(--color-phos)]"
+        />
+        <span>
+          {boat.kelletKg > 0
+            ? `Pesce messo (${boat.kelletKg} kg, come ~${Math.round(boat.kelletKg * KELLET_M_PER_KG)} m di catena in più)`
+            : 'Pesce: imposta il peso in Ancora ›'}
+        </span>
+      </label>
       <div className="text-fog">
         {wind
           ? `Prossime ${HOURS} h: raffica max ${Math.round(wind.gustKn)} kn alle ${hhmm(wind.at)}${
@@ -198,7 +212,7 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
       <button type="button" onClick={openSettings} className="flex w-full justify-between text-left text-fog hover:text-paper">
         <span className="truncate">
           {ANCHOR_TYPES.find((t) => t.key === boat.anchorType)?.label.split(' (')[0] ?? 'Ancora'} {boat.anchorKg ?? 20} kg · catena{' '}
-          {boat.chainMm ?? 10} mm × {boat.chainLengthM ?? 60} m{boat.kelletKg ? ` · pesce ${boat.kelletKg} kg` : ''}
+          {boat.chainMm ?? 10} mm × {boat.chainLengthM ?? 60} m
         </span>
         <span className="flex-none text-phos">Ancora ›</span>
       </button>
