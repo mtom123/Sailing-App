@@ -18,6 +18,11 @@ const LEVEL = {
   warn: { color: 'var(--color-warn)', text: 'Al limite' },
   danger: { color: 'var(--color-danger)', text: 'Non sicuro' },
 }
+const PART = {
+  ok: { color: 'var(--color-phos)', chain: 'basta', hold: 'con margine' },
+  warn: { color: 'var(--color-warn)', chain: 'al limite', hold: 'poco margine' },
+  danger: { color: 'var(--color-danger)', chain: 'non basta', hold: 'insufficiente' },
+}
 const CELL = 0.05 // blocchi delle griglie di dettaglio (fineDepthZones.js)
 const HOURS = 12
 
@@ -213,6 +218,14 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
         <div className="rounded-md border p-2" style={{ borderColor: LEVEL[result.level].color }}>
           <div className="font-bold" style={{ color: LEVEL[result.level].color }}>
             {LEVEL[result.level].text}
+          </div>
+          <div className="mt-0.5 grid grid-cols-2 gap-x-2">
+            <span>
+              Catena: <b style={{ color: PART[result.chainLevel].color }}>{PART[result.chainLevel].chain}</b>
+            </span>
+            <span>
+              Tenuta ancora: <b style={{ color: PART[result.holdLevel].color }}>{PART[result.holdLevel].hold}</b>
+            </span>
           </div>
           <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-paper">
             {result.reasons.length ? result.reasons.map((r) => <li key={r}>{r}</li>) : <li>Alla raffica resta catena sul fondo e la tenuta ha margine</li>}

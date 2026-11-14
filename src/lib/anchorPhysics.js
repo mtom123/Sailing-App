@@ -52,14 +52,17 @@ export const ANCHOR_TYPES = [
 // adagiata (coefficiente) e calumo minimo da buona pratica
 export const BOTTOMS = [
   { key: 'sand', label: 'Sabbia', factor: 1, friction: 0.7, minScope: 3 },
-  { key: 'mud', label: 'Fango (buon tenitore)', factor: 0.8, friction: 0.5, minScope: 4 },
+  // Fango buon tenitore: tiene come la sabbia (Le Grazie, Ultra 21 kg, 63 kn: ha tenuto senza problemi)
+  { key: 'mud', label: 'Fango (buon tenitore)', factor: 1, friction: 0.5, minScope: 4 },
   { key: 'softmud', label: 'Fango molle', factor: 0.45, friction: 0.4, minScope: 5 },
   { key: 'weed', label: 'Posidonia / alghe', factor: 0.3, friction: 0.4, minScope: 5 },
   { key: 'rock', label: 'Roccia / coralligeno', factor: 0.2, friction: 0.5, minScope: 5 },
   { key: 'unknown', label: 'Non so', factor: 0.6, friction: 0.5, minScope: 4 },
 ]
-// Margine voluto tra tenuta (ancora + catena sul fondo) e carico alla raffica
-const HOLD_MARGIN = 1.5
+// Margine voluto tra tenuta (ancora + catena sul fondo) e carico alla raffica.
+// Il carico comprende già gli strappi (fattore dinamico): 1,5 li contava due
+// volte e dava "poco margine" anche a Le Grazie, dove l'ancora ha tenuto bene
+const HOLD_MARGIN = 1.3
 
 /**
  * Carico orizzontale (N) del vento in nodi sulla superficie esposta (m²).
@@ -138,29 +141,31 @@ export function anchorCheck({ depthM, bowHeightM, chainM, chainMm, anchorKg, anc
   // Raggio massimo: catena tutta tesa più la barca
   const radiusM = Math.sqrt(Math.max(0, chainM * chainM - h * h)) + loaM
 
+  // Due giudizi separati: la catena (si corregge filandone di più) e la
+  // tenuta dell'ancora (con più catena non cambia: contano ancora e fondo)
   const reasons = []
-  let level = 'ok'
-  const worse = (l) => {
-    if (l === 'danger' || (l === 'warn' && level === 'ok')) level = l
-  }
+  const worst = (a, b) => (a === 'danger' || b === 'danger' ? 'danger' : a === 'warn' || b === 'warn' ? 'warn' : 'ok')
+  let chainLevel = 'ok'
   if (!chainOk) {
-    worse('danger')
+    chainLevel = 'danger'
     reasons.push(`Alla raffica la catena tira l'ancora verso l'alto (${angleDeg.toFixed(0)}°): servono almeno ${catNeedM} m`)
   } else if (angleDeg > GOOD_ANGLE_DEG) {
-    worse('warn')
+    chainLevel = 'warn'
     reasons.push(`Alla raffica la catena arriva all'ancora a ${angleDeg.toFixed(0)}°: meglio ${catNeedM} m`)
   }
-  if (holdRatio < 1) {
-    worse('danger')
-    reasons.push('Tenuta indicativa insufficiente per la raffica: cerca un fondo migliore (sabbia), un\'ancora più pesante o dai una seconda ancora')
-  } else if (holdRatio < HOLD_MARGIN) {
-    worse('warn')
-    reasons.push('Tenuta indicativa con poco margine per la raffica prevista')
-  }
   if (chainM < scopeNeedM) {
-    worse('warn')
+    chainLevel = worst(chainLevel, 'warn')
     reasons.push(`Su ${bt.label.toLowerCase()} si consiglia almeno ${bt.minScope}:1, cioè ${scopeNeedM} m`)
   }
+  let holdLevel = 'ok'
+  if (holdRatio < 1) {
+    holdLevel = 'danger'
+    reasons.push("Tenuta indicativa dell'ancora insufficiente per la raffica, e più catena non basta: cerca un fondo migliore (sabbia), un'ancora più pesante o dai una seconda ancora")
+  } else if (holdRatio < HOLD_MARGIN) {
+    holdLevel = 'warn'
+    reasons.push("Tenuta indicativa dell'ancora con poco margine (più catena non la cambia): dai marcia indietro decisa per farla affondare bene")
+  }
+  const level = worst(chainLevel, holdLevel)
   if (bottom === 'weed') reasons.push("Su posidonia l'ancora tiene male, e in molte aree protette è vietato")
   if (bottom === 'rock') reasons.push("Su roccia la presa è incerta e l'ancora può incastrarsi")
   return {
@@ -177,6 +182,8 @@ export function anchorCheck({ depthM, bowHeightM, chainM, chainMm, anchorKg, anc
     scope: chainM / h,
     radiusM,
     level,
+    chainLevel,
+    holdLevel,
     reasons,
   }
 }
