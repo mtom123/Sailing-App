@@ -252,6 +252,15 @@ export default function App() {
     [offsetQ, grib, windField]
   )
   const currentField = gribData?.currentField || null
+  // Dati del weather routing disponibili (pannello Rotta)
+  const gribStatus = {
+    wind: !!grib,
+    windPoints: grib?.grid?.length || 0,
+    windHours: grib?.grid?.[0]?.times?.length || 0,
+    current: !!(currentField && currentField.grid.some((p) => p.currSpeed)),
+    currentPoints: currentField?.grid?.length || 0,
+    updatedAt: grib?.updatedAt,
+  }
   const rainTileUrl = useRainRadar(rainLayerOn)
   const { vessels: aisVessels, status: aisOwnStatus } = useAIS({
     mode: aisMode,
@@ -702,6 +711,7 @@ export default function App() {
                   autopilot={autopilot}
                   offline={offline}
                   boatPosition={gpsOk ? { lat: geo.lat, lon: geo.lon } : null}
+                  gribStatus={gribStatus}
                 />
               )}
               {activeDrawer === 'anchors' && (
@@ -759,15 +769,6 @@ export default function App() {
           setThreshold: (v) => useAppStore.getState().setWindAlarm({ threshold: v }),
         }}
         weatherError={weather.error}
-        gribStatus={{
-          wind: !!grib,
-          windPoints: grib?.grid?.length || 0,
-          windHours: grib?.grid?.[0]?.times?.length || 0,
-          current: !!(currentField && currentField.grid.some(p => p.currSpeed)),
-          currentPoints: currentField?.grid?.length || 0,
-          polygons: 1,
-          updatedAt: grib?.updatedAt,
-        }}
       />
 
       {nightMode && (

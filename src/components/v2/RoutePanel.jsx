@@ -389,7 +389,84 @@ function SavedRoutes() {
   )
 }
 
-export default function RoutePanel({ route, routeWx, routeOptions, computing, gpsOk, bridgeConfigured, autopilot, duration, offline, boatPosition }) {
+// Propulsione per il weather routing: si sceglie qui, rotta per rotta
+const PROPULSION = [
+  { key: 'sail', label: 'VELA', hint: 'Polari, vento, onda e corrente. Motore solo senza vento.' },
+  { key: 'hybrid', label: 'VELA E MOTORE', hint: 'A vela; a motore quando verso la rotta si andrebbe più piano della soglia.' },
+  { key: 'motor', label: 'MOTORE', hint: "Velocità del motore, frenata dall'onda, più la corrente. Il vento conta solo come limite di sicurezza." },
+]
+
+// Impostazioni del calcolo accanto al calcolo: propulsione, soglia del motore,
+// riepilogo della barca (si cambia in Impostazioni) e dati meteo disponibili
+function RoutingSetup({ gribStatus }) {
+  const boat = useAppStore((s) => s.boat)
+  const setBoat = useAppStore((s) => s.setBoat)
+  const openBoatSettings = () => {
+    useAppStore.getState().setSettingsOpen(true)
+    setTimeout(() => document.getElementById('settings-boat')?.scrollIntoView({ block: 'start' }), 150)
+  }
+  const draft = boat.draftM ?? 1.9
+  const margin = boat.safetyMarginM ?? 1
+  const hhmm = (ms) => new Date(ms).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+  return (
+    <div className="mb-2 space-y-1.5">
+      <div className="grid grid-cols-3 gap-1.5">
+        {PROPULSION.map((p) => (
+          <button
+            key={p.key}
+            type="button"
+            onClick={() => setBoat({ propulsion: p.key })}
+            className={`touch rounded-md border py-1.5 text-[calc(9px*var(--fs))] font-semibold tracking-wider ${
+              boat.propulsion === p.key ? 'border-phos bg-phos/15 text-phos' : 'border-line bg-surface text-paper'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <div className="text-[calc(9px*var(--fs))] leading-snug text-fog">{PROPULSION.find((p) => p.key === boat.propulsion)?.hint}</div>
+      {boat.propulsion === 'hybrid' && (
+        <div className="flex items-center gap-2">
+          <span className="whitespace-nowrap text-[calc(10px*var(--fs))] text-fog">Motore sotto i</span>
+          <input
+            type="range"
+            min="2"
+            max="6"
+            step="0.5"
+            value={boat.motorBelowKn}
+            onChange={(e) => setBoat({ motorBelowKn: Number(e.target.value) })}
+            className="flex-1"
+          />
+          <span className="whitespace-nowrap text-right font-mono text-xs font-bold text-paper">{boat.motorBelowKn.toFixed(1).replace('.', ',')} kn</span>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={openBoatSettings}
+        className="flex w-full items-center justify-between gap-2 rounded-md border border-line bg-surface px-2 py-1.5 text-left text-[calc(10px*var(--fs))] text-fog hover:bg-raised"
+      >
+        <span className="min-w-0 truncate">
+          {boat.name} · pescaggio {String(draft).replace('.', ',')} + {String(margin).replace('.', ',')} m · motore{' '}
+          {String(boat.motoringSpeedKn).replace('.', ',')} kn
+        </span>
+        <span className="flex-none text-phos">Barca ›</span>
+      </button>
+      {gribStatus && (
+        <div className="flex flex-wrap gap-x-3 text-[calc(9px*var(--fs))]">
+          <span className={gribStatus.wind ? 'text-fog' : 'text-warn'}>
+            Vento: {gribStatus.wind ? `${gribStatus.windPoints} punti · ${gribStatus.windHours} h` : 'non disponibile'}
+          </span>
+          <span className={gribStatus.current ? 'text-fog' : 'text-warn'}>
+            Correnti: {gribStatus.current ? `${gribStatus.currentPoints} punti` : 'non disponibili'}
+          </span>
+          {gribStatus.updatedAt && <span className="text-fog-dim">aggiornato {hhmm(gribStatus.updatedAt)}</span>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function RoutePanel({ route, routeWx, routeOptions, computing, gpsOk, bridgeConfigured, autopilot, duration, offline, boatPosition, gribStatus }) {
   const [nameInput, setNameInput] = useState('')
   const {
     activeRouteOption,
@@ -646,6 +723,7 @@ export default function RoutePanel({ route, routeWx, routeOptions, computing, gp
                 <span className="text-[calc(9px*var(--fs))] text-fog-dim font-mono">{(duration / 1000).toFixed(1)}s</span>
               )}
             </div>
+            <RoutingSetup gribStatus={gribStatus} />
             <div className="grid grid-cols-3 gap-1.5">
               {ROUTE_TYPES.map((t) => {
                 const opt = routeOptions?.[t.key]

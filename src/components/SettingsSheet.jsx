@@ -1,4 +1,4 @@
-import { Radio, Ship, Wifi, X, Sailboat, Gauge, Database, Activity, Upload, FileText, Trash, Type, Cable, Layers, Plus } from 'lucide-react'
+import { Radio, Ship, Wifi, X, Sailboat, Gauge, Activity, Upload, FileText, Trash, Type, Cable, Layers, Plus } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { useAppStore } from '../store/useAppStore.js'
 import { BOAT_LIBRARY, registerCustomPolar, listAvailablePolars } from '../routing/polarSolver.js'
@@ -38,11 +38,6 @@ function signalKSummary(data, vessels) {
 }
 
 // Blocchi registrati sull'iPad: si copiano e si mandano per capirne la causa
-const PROPULSION = [
-  { key: 'sail', label: 'VELA', hint: 'Polari, vento, onda e corrente. Motore solo senza vento.' },
-  { key: 'hybrid', label: 'VELA E MOTORE', hint: 'A vela; a motore quando verso la rotta si andrebbe più piano della soglia.' },
-  { key: 'motor', label: 'MOTORE', hint: 'Velocità del motore, frenata dall\'onda, più la corrente. Il vento conta solo come limite di sicurezza.' },
-]
 
 const BACKUP_DUE_DAYS = 14
 
@@ -277,9 +272,9 @@ function DepthZonesSection() {
   )
 }
 
-function Section({ title, icon: Icon, children }) {
+function Section({ id, title, icon: Icon, children }) {
   return (
-    <div className="border-b border-line p-3">
+    <div id={id} className="border-b border-line p-3">
       <div className="label pb-2 flex items-center gap-1.5">
         {Icon && <Icon size={11} />}
         {title}
@@ -314,7 +309,6 @@ export default function SettingsSheet({
   signalKVessels,
   windAlarm,
   weatherError,
-  gribStatus,
 }) {
   const { boat, setBoat, coastBand, setCoastBand, textScale, setTextScale } = useAppStore()
   const [customPolars, setCustomPolars] = useState([])
@@ -401,7 +395,7 @@ export default function SettingsSheet({
 
           <DepthZonesSection />
 
-          <Section title="Configurazione barca" icon={Sailboat}>
+          <Section id="settings-boat" title="Configurazione barca" icon={Sailboat}>
             <div className="label pb-1">Nome, nominativo radio e MMSI</div>
             <div className="mb-1 grid grid-cols-3 gap-1.5">
               {[
@@ -524,47 +518,9 @@ export default function SettingsSheet({
                 La polar viene salvata localmente (IndexedDB) e usata dal routing engine.
               </div>
             </div>
-            <div className="label pt-3 pb-1 flex items-center gap-1.5">
-              <Gauge size={11} /> Propulsione nel weather routing
+            <div className="pt-3 text-[calc(10px*var(--fs))] text-fog-dim">
+              Vela o motore e la soglia del motore si scelgono nel pannello Rotta, accanto al calcolo.
             </div>
-            <div className="grid grid-cols-3 gap-1.5">
-              {PROPULSION.map((p) => (
-                <button
-                  key={p.key}
-                  type="button"
-                  onClick={() => setBoat({ propulsion: p.key })}
-                  className={`touch rounded-md border py-2 text-[calc(10px*var(--fs))] font-semibold tracking-wider ${
-                    boat.propulsion === p.key ? 'border-phos bg-phos/15 text-phos' : 'border-line bg-surface text-paper'
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-            <div className="pt-1 text-[calc(10px*var(--fs))] leading-relaxed text-fog">
-              {PROPULSION.find((p) => p.key === boat.propulsion)?.hint}
-            </div>
-            {boat.propulsion === 'hybrid' && (
-              <>
-                <div className="label pt-3 pb-1 flex items-center gap-1.5">
-                  <Gauge size={11} /> Motore sotto i
-                </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="range"
-                    min="2"
-                    max="6"
-                    step="0.5"
-                    value={boat.motorBelowKn}
-                    onChange={(e) => setBoat({ motorBelowKn: Number(e.target.value) })}
-                    className="flex-1"
-                  />
-                  <span className="font-mono text-xs font-bold text-paper w-16 text-right">
-                    {boat.motorBelowKn.toFixed(1)} kn
-                  </span>
-                </div>
-              </>
-            )}
             <div className="label pt-3 pb-1 flex items-center gap-1.5">
               <Gauge size={11} /> Velocità motore
             </div>
@@ -833,37 +789,6 @@ export default function SettingsSheet({
               Triplo segnale acustico e banner quando le raffiche superano la soglia.
             </div>
           </Section>
-
-          {gribStatus && (
-            <Section title="Stato dati weather routing" icon={Database}>
-              <div className="space-y-1 text-[calc(10px*var(--fs))]">
-                <div className="flex justify-between">
-                  <span className="text-fog">Vento (GRIB):</span>
-                  <span className={gribStatus.wind ? 'text-phos' : 'text-warn'}>
-                    {gribStatus.wind ? `${gribStatus.windPoints} punti · ${gribStatus.windHours}h` : 'non disponibile'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-fog">Correnti marine:</span>
-                  <span className={gribStatus.current ? 'text-phos' : 'text-warn'}>
-                    {gribStatus.current ? `${gribStatus.currentPoints} punti` : 'non disponibile'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-fog">Land mask:</span>
-                  <span className="text-phos">Mediterraneo {gribStatus.polygons} poligoni</span>
-                </div>
-                {gribStatus.updatedAt && (
-                  <div className="flex justify-between">
-                    <span className="text-fog">Ultimo update:</span>
-                    <span className="text-paper">
-                      {new Date(gribStatus.updatedAt).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </Section>
-          )}
 
           {weatherError && (
             <Section title="Avvisi">
