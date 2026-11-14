@@ -77,7 +77,7 @@ export default function AnchoragePanel({
             <div className="label pb-1 pt-0.5">Prima di dare fondo{planPosition?.fromMap ? ' · centro carta' : ''}</div>
             <AnchorPlan position={planPosition} depthLive={depthLive} weather={weather} onUseRadius={(r) => onRadiusChange(Math.max(15, Math.min(200, r)))} />
             <div className="mt-2 flex items-center justify-between pb-1 text-[calc(10px*var(--fs))] text-fog">
-              <span>Raggio scarroccio</span>
+              <span>Raggio allarme</span>
               <span className="font-bold text-paper tabular-nums">{radius} m</span>
             </div>
             <input

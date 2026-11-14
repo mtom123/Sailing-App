@@ -51,6 +51,7 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
   const [depthInput, setDepthInput] = useState('')
   const [bottomPick, setBottomPick] = useState(null)
   const [chainM, setChainM] = useState(null)
+  const [gustInput, setGustInput] = useState('') // raffica inserita a mano (es. quella di domani)
 
   const lat = position?.lat
   const lon = position?.lon
@@ -83,11 +84,16 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
   const depthSource = depthInput !== '' && typed > 0 ? 'inserita' : sounder != null ? 'scandaglio' : chart?.source
   const bottom = bottomPick ?? habitat?.bottom ?? 'unknown'
   const wind = useMemo(() => windAhead(weather?.hourly, HOURS), [weather?.hourly])
+  const typedGust = Number(String(gustInput).replace(',', '.'))
+  const manualGust = gustInput !== '' && typedGust > 0 ? typedGust : null
+  // Con la raffica inserita a mano l'onda prevista per oggi non vale: strappi medi
+  const gustKn = manualGust ?? wind?.gustKn ?? null
+  const waveM = manualGust != null ? null : wind?.waveM ?? null
   const h = (depth ?? 0) + (boat.bowHeightM ?? 1.2)
   const chain = Math.min(boat.chainLengthM ?? 60, chainM ?? Math.round(Math.max(h * 5, 20)))
 
   const result = useMemo(() => {
-    if (depth == null || !wind) return null
+    if (depth == null || gustKn == null) return null
     return anchorCheck({
       depthM: depth,
       bowHeightM: boat.bowHeightM ?? 1.2,
@@ -96,13 +102,13 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
       anchorKg: boat.anchorKg ?? 20,
       anchorType: boat.anchorType ?? 'delta',
       bottom,
-      gustKn: wind.gustKn,
+      gustKn,
       windageM2: boat.windageM2 ?? 12,
       loaM: boat.loaM ?? 12.5,
       kelletKg: boat.kelletOn ? boat.kelletKg ?? 0 : 0,
-      waveM: wind.waveM,
+      waveM,
     })
-  }, [depth, wind, chain, bottom, boat])
+  }, [depth, gustKn, waveM, chain, bottom, boat])
 
   const openSettings = () => {
     useAppStore.getState().setSettingsOpen(true)
@@ -170,6 +176,27 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
             : 'Pesce: imposta il peso in Ancora ›'}
         </span>
       </label>
+      <div className="flex items-center gap-1.5">
+        <span className="w-16 text-fog">Raffica</span>
+        <input
+          type="text"
+          inputMode="decimal"
+          placeholder={wind ? String(Math.round(wind.gustKn)) : '—'}
+          value={gustInput}
+          onChange={(e) => setGustInput(e.target.value)}
+          className={`${field} w-14 text-right tabular-nums`}
+          aria-label="Raffica in nodi"
+        />
+        <span className="text-fog">kn</span>
+        <span className="min-w-0 flex-1 truncate text-fog-dim">
+          {manualGust != null ? 'inserita (es. quella di domani)' : wind ? `prevista nelle prossime ${HOURS} h` : 'inseriscila'}
+        </span>
+        {manualGust != null && (
+          <button type="button" onClick={() => setGustInput('')} className="flex-none text-phos">
+            Prevista
+          </button>
+        )}
+      </div>
       <div className="text-fog">
         {wind
           ? `Prossime ${HOURS} h: raffica max ${Math.round(wind.gustKn)} kn alle ${hhmm(wind.at)}${
