@@ -22,6 +22,7 @@
  * Errori: { id, error }; browser senza OffscreenCanvas: { id, unsupported: true }.
  */
 
+import { contours } from 'd3-contour'
 import { setStoreMeta, storeGet, storeHas, storePut, storeTrim } from './tileStore.js'
 
 // Tasselli già visti o scaricati per una rotta: dall'archivio (tileStore.js),
@@ -313,6 +314,8 @@ function raster(id, { w, h, layers }) {
 // alle distanze. Poi colorata con le fasce di profondità dell'utente.
 // Calcolata una volta per blocco (key) e tenuta; ricolorarla costa poco.
 const GRID_STEP = 1e-4 // gradi (~8 × 11 m)
+// Isobate più distanti di 2 × questo non si considerano lo stesso rilievo
+const SURVEY_GAP_M = 300
 const fineGrids = new Map() // key -> { w, h, depth: Float32Array } (NaN = terra o fuori)
 const MAX_FINE = 12
 
@@ -376,10 +379,10 @@ function buildFineGrid({ bbox, lines, water }) {
 
   // Livelli: 0 = riva, poi le profondità delle isobate presenti
   const levels = [0, ...[...new Set(lines.map((l) => l.depth))].sort((a, b) => a - b)]
+  const byLevel = levels.map(() => [])
+  for (const line of lines) byLevel[levels.indexOf(line.depth)].push(line.path)
   const INF = 1e9
-  const fields = levels.map(() => new Float32Array(w * h).fill(INF))
-  // Riva: le celle di terra
-  for (let i = 0; i < sea.length; i++) if (!sea[i]) fields[0][i] = 0
+  const n2 = w * h
   // Isobate: segmenti tracciati cella per cella
   const mark = (field, x0, y0, x1, y1) => {
     const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 2))
@@ -389,48 +392,110 @@ function buildFineGrid({ bbox, lines, water }) {
       if (x >= 0 && y >= 0 && x < w && y < h) field[y * w + x] = 0
     }
   }
-  const covered = new Uint8Array(w * h)
-  for (const { depth, path } of lines) {
-    const field = fields[levels.indexOf(depth)]
-    for (let k = 1; k < path.length; k++) {
-      const [x0, y0] = toPx(path[k - 1][0], path[k - 1][1])
-      const [x1, y1] = toPx(path[k][0], path[k][1])
-      mark(field, x0, y0, x1, y1)
+  // Celle toccate da un'isobata (qualsiasi livello): per l'area del rilievo
+  const onLine = new Uint8Array(n2)
+  // Campo delle distanze di un livello (0 = riva: le celle di terra)
+  const fieldOf = (k, field) => {
+    field.fill(INF)
+    if (k === 0) {
+      for (let i = 0; i < n2; i++) if (!sea[i]) field[i] = 0
+    } else {
+      for (const path of byLevel[k]) {
+        for (let q = 1; q < path.length; q++) {
+          const [x0, y0] = toPx(path[q - 1][0], path[q - 1][1])
+          const [x1, y1] = toPx(path[q][0], path[q][1])
+          mark(field, x0, y0, x1, y1)
+        }
+      }
+      for (let i = 0; i < n2; i++) if (field[i] === 0) onLine[i] = 1
     }
+    chamfer(field, w, h)
+    return field
   }
-  for (const f of fields) chamfer(f, w, h)
-  // Area rilevata: entro ~400 m da un'isobata (oltre, la stima non regge)
-  const NEAR = (400 / 9) * 3
-  for (let i = 0; i < w * h; i++) {
-    for (let k = 1; k < fields.length; k++) {
-      if (fields[k][i] <= NEAR) {
-        covered[i] = 1
-        break
+  // Un livello alla volta (con le Baleari, un'isobata ogni metro, i campi
+  // tutti insieme sarebbero decine di MB): per ogni cella si tengono il
+  // livello più vicino e le distanze dai due livelli accanto
+
+  const bestK = new Int16Array(n2)
+  const best = new Float32Array(n2).fill(INF)
+  const up = new Float32Array(n2).fill(INF)
+  const down = new Float32Array(n2).fill(INF)
+  let prev = null
+  let cur = fieldOf(0, new Float32Array(n2))
+  let next = levels.length > 1 ? fieldOf(1, new Float32Array(n2)) : null
+  let spare = new Float32Array(n2)
+  for (let k = 0; k < levels.length; k++) {
+    for (let i = 0; i < n2; i++) {
+      const d = cur[i]
+      if (d < best[i] || k === 0) {
+        best[i] = d
+        bestK[i] = k
+        up[i] = prev ? prev[i] : INF
+        down[i] = next ? next[i] : INF
       }
     }
+    // Finestra di tre campi che scorre: il più vecchio si riusa
+    const old = prev
+    prev = cur
+    cur = next
+    next = k + 2 < levels.length ? fieldOf(k + 2, old || spare) : null
+    if (!old) spare = null
   }
-  const depth = new Float32Array(w * h).fill(NaN)
-  for (let i = 0; i < w * h; i++) {
+  // Area del rilievo: isobate e riva, con gli spazi tra loro riempiti
+  // (chiusura morfologica di raggio SURVEY_GAP: dilatazione poi erosione), ma
+  // senza andare oltre la fine delle linee. "Entro 400 m da un'isobata"
+  // prolungava le profondità oltre il bordo del rilievo (Finale, 14/11/2026)
+  const R = Math.round((SURVEY_GAP_M / (GRID_STEP * 111000)) * 3)
+  const grow = new Float32Array(n2).fill(INF)
+  for (let i = 0; i < n2; i++) {
+    if (onLine[i]) grow[i] = 0
+    else if (!sea[i]) {
+      // Riva: terra accanto al mare
+      const x = i % w
+      if ((x > 0 && sea[i - 1]) || (x < w - 1 && sea[i + 1]) || (i >= w && sea[i - w]) || (i < n2 - w && sea[i + w])) grow[i] = 0
+    }
+  }
+  chamfer(grow, w, h)
+  const shrink = new Float32Array(n2).fill(INF)
+  for (let i = 0; i < n2; i++) if (grow[i] > R) shrink[i] = 0
+  chamfer(shrink, w, h)
+  // …e comunque vicino a un'isobata: una caletta fuori dal rilievo, chiusa
+  // dalla sola riva, non conta
+  const nearLine = new Float32Array(n2).fill(INF)
+  for (let i = 0; i < n2; i++) if (onLine[i]) nearLine[i] = 0
+  chamfer(nearLine, w, h)
+  const covered = new Uint8Array(n2)
+  for (let i = 0; i < n2; i++) covered[i] = shrink[i] > R && nearLine[i] <= R ? 1 : 0
+
+  const depth = new Float32Array(n2).fill(NaN)
+  for (let i = 0; i < n2; i++) {
     if (!sea[i] || !covered[i]) continue
     // Livello più vicino, poi il più vicino tra i due adiacenti
-    let k1 = 0
-    for (let k = 1; k < fields.length; k++) if (fields[k][i] < fields[k1][i]) k1 = k
-    const d1 = fields[k1][i]
+    const k1 = bestK[i]
+    const d1 = best[i]
     if (d1 === 0) {
       depth[i] = levels[k1]
       continue
     }
-    const up = k1 > 0 ? fields[k1 - 1][i] : INF
-    const down = k1 < fields.length - 1 ? fields[k1 + 1][i] : INF
-    if (up >= INF && down >= INF) {
+    if (up[i] >= INF && down[i] >= INF) {
       depth[i] = levels[k1]
       continue
     }
-    const k2 = up <= down ? k1 - 1 : k1 + 1
-    const d2 = fields[k2][i]
+    const k2 = up[i] <= down[i] ? k1 - 1 : k1 + 1
+    const d2 = k2 < k1 ? up[i] : down[i]
     depth[i] = levels[k1] + ((levels[k2] - levels[k1]) * d1) / (d1 + d2)
   }
-  return { w, h, depth }
+  // Contorno esatto dell'area con la profondità di dettaglio (lat, lon): lì e
+  // solo lì si tolgono le fasce EMODnet. Il contorno convesso delle isobate
+  // era molto più grande e lasciava buchi a spigolo (Finale Ligure, 14/11/2026)
+  const has = new Float64Array(n2)
+  for (let i = 0; i < n2; i++) has[i] = Number.isNaN(depth[i]) ? 0 : 1
+  const cov = contours()
+    .size([w, h])
+    .thresholds([0.5])(has)[0]
+    .coordinates.flat()
+    .map((ring) => ring.map(([x, y]) => [n - (y / h) * (n - s), wLon + (x / w) * (e - wLon)]))
+  return { w, h, depth, cov }
 }
 
 function hexRgb(hex) {
@@ -471,13 +536,14 @@ async function fineZones(id, { key, bbox, lines, water, zones, opacity }) {
       }
     }
   }
+  // L'area coperta va sempre: anche senza fasce lì le EMODnet si tolgono
   if (!any) {
-    self.postMessage({ id, empty: true })
+    self.postMessage({ id, fine: true, blob: null, cov: grid.cov })
     return
   }
   ctx.putImageData(img, 0, 0)
   const blob = await canvas.convertToBlob({ type: 'image/png' })
-  self.postMessage({ id, blob })
+  self.postMessage({ id, fine: true, blob, cov: grid.cov })
 }
 
 /** Profondità della griglia fine nel punto, o null (per il puntatore) */

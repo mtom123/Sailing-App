@@ -37,6 +37,9 @@ export const DEFAULT_DEPTH_ZONES = [
   { id: 'cento', name: '100 metri', from: 96, to: 100, color: '#ee2f8e', on: true },
 ]
 export const DEPTH_ZONE_OPACITY = 0.55
+// Fasce dalla griglia europea EMODnet (~115 m), indicative sotto costa:
+// tenui, così si distinguono da quelle dei rilievi di dettaglio
+export const DEPTH_ZONE_OPACITY_COARSE = 0.25
 
 const lit = (v) => `<ogc:Literal>${v}</ogc:Literal>`
 const css = (name, value) => `<CssParameter name="${name}">${value}</CssParameter>`

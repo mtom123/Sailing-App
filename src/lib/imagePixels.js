@@ -34,6 +34,7 @@ function run(kind, url, extra = {}, transfer = []) {
       if (data.error) job.reject(new Error(data.error))
       else if ('depth' in data) job.resolve(data.depth)
       else if (data.missing) job.resolve('missing')
+      else if (data.fine) job.resolve({ blob: data.blob, cov: data.cov })
       else job.resolve(data.bitmap || data.heights || data.masks || data.blob || null)
     }
     worker.onerror = () => {
@@ -82,7 +83,8 @@ export function rasterMasks(w, h, layers) {
 
 /**
  * Fasce di profondità dalla griglia fine ricostruita dalle isobate, per un
- * blocco: → Blob PNG, null (nessuna fascia) o 'missing' (il worker non ha
+ * blocco: → { blob (PNG o null se nessuna fascia), cov (contorno dell'area
+ * con il dettaglio, anelli [lat, lon]) } o 'missing' (il worker non ha
  * più la griglia: rimandare con lines e water)
  */
 export const fineZonesImage = (job) => run('fineZones', null, job)

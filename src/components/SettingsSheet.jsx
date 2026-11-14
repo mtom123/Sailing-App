@@ -267,9 +267,11 @@ function DepthZonesSection() {
         </button>
       </div>
       <div className="pt-1 text-[calc(10px*var(--fs))] text-fog-dim">
-        In Liguria, dove la Regione ha i rilievi multibeam, fasce di dettaglio (griglia di ~10 m ricostruita dalle isobate ogni 5 m):
-        sotto i 5 m la profondità è stimata tra la riva e l'isobata dei 5 m. Altrove griglia europea EMODnet (~115 m), indicativa sotto
-        costa. Controlla sempre lo scandaglio: fanno fede le carte ufficiali.
+        Colori pieni: fasce di dettaglio (griglia di ~10 m ricostruita dalle isobate dei rilievi), solo dove il rilievo c'è. In
+        Liguria dai rilievi multibeam della Regione, con isobate ogni metro o ogni 5 m a seconda del tratto: dove la prima è a 5 m,
+        più sotto la profondità è stimata tra la riva e l'isobata. A Ibiza, Formentera e Menorca dai rilievi MITECO del 2008, con
+        un'isobata ogni metro da 1 m (Mallorca e Cabrera escluse). Colori tenui: griglia europea EMODnet (~115 m), solo indicativa
+        sotto costa. Controlla sempre lo scandaglio: fanno fede le carte ufficiali.
       </div>
     </Section>
   )

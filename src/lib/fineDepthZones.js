@@ -1,13 +1,16 @@
 /**
- * Fasce di profondità di dettaglio in Liguria: per ogni blocco di 0,05°
- * (~4 × 5,5 km) il worker ricostruisce una griglia a ~10 m dalle isobate
- * multibeam della Regione (ogni 5 m, liguriaIsobaths.js) e dalla costa OSM,
- * e la colora con le fasce dell'utente (imageWorker.js → fineZones). Qui le
- * immagini si mettono sulla carta. Dove c'è il dettaglio, le fasce EMODnet
- * (DepthZoneLayer) si tagliano: onCoverage(anelli).
+ * Fasce di profondità di dettaglio (Liguria, Baleari): per ogni blocco di
+ * 0,05° (~4 × 5,5 km) il worker ricostruisce una griglia a ~10 m dalle
+ * isobate di dettaglio e dalla costa OSM, e la colora con le fasce
+ * dell'utente (imageWorker.js → fineZones). Qui le immagini si mettono sulla
+ * carta. Dove c'è il dettaglio, le fasce EMODnet (DepthZoneLayer) si
+ * tagliano: onCoverage(anelli).
  *
- * Sotto i 5 m (prima isobata) la profondità è stimata tra la riva e
- * l'isobata: le fasce più basse lì sono indicative.
+ * Fonti (`sources`): oggetti { names(vista), load(nome) → { lines, cov } }
+ * con blocchi "i,j" di 0,05° (liguriaIsobaths.js, baleariIsobaths.js).
+ * In Liguria le isobate partono dai 5 m: più sotto la profondità è stimata
+ * tra la riva e l'isobata, e le fasce più basse lì sono indicative. Alle
+ * Baleari c'è un'isobata ogni metro da 1 m: anche le fasce basse sono misurate.
  */
 import L from 'leaflet'
 import { LIGURIA_ISOBATH_SOURCE } from './liguriaIsobaths.js'
@@ -17,15 +20,15 @@ import { DEPTH_ZONE_OPACITY } from './isobaths.js'
 import { mapAtRest } from './offlinePack.js'
 
 const PANE = 'fineDepthZonePane'
-const CELL = 0.05 // come liguriaIsobaths.js
+const CELL = 0.05 // blocchi delle fonti (liguriaIsobaths.js, baleariIsobaths.js)
 const WATER_ZOOM = 15 // dettaglio della costa OSM
 
 export const FineDepthZoneLayer = L.Layer.extend({
-  options: { minZoom: 13, zones: [], onCoverage: () => {} },
+  options: { minZoom: 13, zones: [], sources: [LIGURIA_ISOBATH_SOURCE], onCoverage: () => {} },
 
   initialize(options) {
     L.setOptions(this, options)
-    this._shown = new Map() // nome blocco -> { overlay, url, cov }
+    this._shown = new Map() // chiave "fonte:i,j" -> { overlay, url, cov }
     this._gen = 0
   },
 
@@ -77,51 +80,56 @@ export const FineDepthZoneLayer = L.Layer.extend({
       return
     }
     const view = map.getBounds().pad(0.2)
-    const names = await LIGURIA_ISOBATH_SOURCE.names(view)
+    const { sources } = this.options
+    const lists = await Promise.all(sources.map((source) => source.names(view).catch(() => [])))
     if (gen !== this._gen || !this._map) return
-    const wanted = new Set(names)
-    for (const name of [...this._shown.keys()]) if (!wanted.has(name)) this._drop(name)
+    // La prima fonte tiene il nome della Liguria com'era (chiave della griglia nel worker)
+    const blocks = lists.flatMap((names, k) => names.map((name) => ({ key: k ? `${k}:${name}` : name, name, source: sources[k] })))
+    const wanted = new Set(blocks.map((b) => b.key))
+    for (const key of [...this._shown.keys()]) if (!wanted.has(key)) this._drop(key)
     this._coverage()
-    for (const name of names) {
-      if (this._shown.has(name)) continue
+    for (const block of blocks) {
+      if (this._shown.has(block.key)) continue
       // Lavoro pesante: a carta ferma, un blocco alla volta
       await mapAtRest()
       if (gen !== this._gen || !this._map) return
-      await this._show(name).catch((err) => console.warn('Fasce di dettaglio non disponibili', err))
+      await this._show(block).catch((err) => console.warn('Fasce di dettaglio non disponibili', err))
       if (gen !== this._gen) return
     }
   },
 
-  async _show(name) {
+  async _show({ key, name, source }) {
     const [i, j] = name.split(',').map(Number)
     const bbox = [j * CELL, i * CELL, (j + 1) * CELL, (i + 1) * CELL]
     const bounds = L.latLngBounds([bbox[0], bbox[1]], [bbox[2], bbox[3]])
-    const { lines, cov } = await LIGURIA_ISOBATH_SOURCE.load(name)
+    const { lines } = await source.load(name)
     if (!lines.length) {
-      this._shown.set(name, { cov: [] })
+      this._shown.set(key, { cov: [] })
       return
     }
     const zones = this.options.zones
-    const job = { key: name, bbox, zones, opacity: DEPTH_ZONE_OPACITY }
-    let blob = await fineZonesImage(job)
-    if (blob === 'missing') {
+    const job = { key, bbox, zones, opacity: DEPTH_ZONE_OPACITY }
+    let res = await fineZonesImage(job)
+    if (res === 'missing') {
       // Troppi tasselli di costa a quello zoom: un livello meno fine
       const water = (await waterRings(bounds, WATER_ZOOM)) || (await waterRings(bounds, WATER_ZOOM - 2)) || []
       if (!water.length) {
-        this._shown.set(name, { cov: [] })
+        this._shown.set(key, { cov: [] })
         return
       }
-      blob = await fineZonesImage({ ...job, lines, water })
+      res = await fineZonesImage({ ...job, lines, water })
     }
-    if (!this._map || this._shown.has(name)) return
-    if (!blob || blob === 'missing') {
-      this._shown.set(name, { cov })
+    if (!this._map || this._shown.has(key)) return
+    // Il taglio delle fasce EMODnet segue l'area dove la griglia fine ha i dati
+    const cov = res && res !== 'missing' ? res.cov : []
+    if (!res || res === 'missing' || !res.blob) {
+      this._shown.set(key, { cov })
       this._coverage()
       return
     }
-    const url = URL.createObjectURL(blob)
+    const url = URL.createObjectURL(res.blob)
     const overlay = L.imageOverlay(url, bounds, { pane: PANE, interactive: false, className: 'fine-depth-zones' }).addTo(this._map)
-    this._shown.set(name, { overlay, url, cov })
+    this._shown.set(key, { overlay, url, cov })
     this._coverage()
   },
 })

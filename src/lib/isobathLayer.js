@@ -12,7 +12,7 @@
 import L from 'leaflet'
 import { loadBlock, blockIndex, mergeBlocks, BLOCK } from './depthGrid.js'
 import { buildIsobaths } from './isobathVector.js'
-import { CHART_COLORS, DEPTH_ZONE_OPACITY, IMAGERY_COLORS, SHALLOW_LIMIT } from './isobaths.js'
+import { CHART_COLORS, DEPTH_ZONE_OPACITY_COARSE, IMAGERY_COLORS, SHALLOW_LIMIT } from './isobaths.js'
 import { waterRings } from './waterMask.js'
 
 // Margine dei canvas oltre la mappa: più grande = pan più fluido, ma su iPad
@@ -400,7 +400,7 @@ export const DepthZoneLayer = IsobathLayer.extend({
         renderer: this._renderer,
         stroke: false,
         fillColor: z.color,
-        fillOpacity: DEPTH_ZONE_OPACITY,
+        fillOpacity: DEPTH_ZONE_OPACITY_COARSE,
         interactive: false,
       }).addTo(this._group)
     }

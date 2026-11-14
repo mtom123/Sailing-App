@@ -11,6 +11,7 @@ import { FineDepthZoneLayer } from '../../lib/fineDepthZones.js'
 import { ShomReliefLayer } from '../../lib/shomRelief.js'
 import { HdIsobathLayer } from '../../lib/hdIsobathLayer.js'
 import { LIGURIA_ISOBATH_SOURCE } from '../../lib/liguriaIsobaths.js'
+import { BALEARI_ISOBATH_SOURCE } from '../../lib/baleariIsobaths.js'
 import { CoastBandLayer } from '../../lib/coastBandLayer.js'
 import { ProtectedAreasLayer } from '../../lib/protectedAreasLayer.js'
 import { OrdinancesLayer } from '../../lib/ordinancesLayer.js'
@@ -480,12 +481,12 @@ export default function MapView({
       })
       // Isobate ogni metro dai rilievi Shom, dove ci sono (public/isobaths-hd):
       // nella loro area le EMODnet si nascondono
-      // Copertura delle isobate di dettaglio (Shom e Regione Liguria) unita
-      const coverage = { shom: null, liguria: null }
+      // Copertura delle isobate di dettaglio (Shom, Regione Liguria, Baleari) unita
+      const coverage = { shom: null, liguria: null, baleari: null }
       const setCoverage = (source, rings) => {
         if (coverage[source] === rings) return
         coverage[source] = rings
-        const all = [...(coverage.shom || []), ...(coverage.liguria || [])]
+        const all = Object.values(coverage).flatMap((r) => r || [])
         tileLayerRefs.current.isobathVector.setHdCoverage(all.length ? all : null)
       }
       tileLayerRefs.current.isobathHd = new HdIsobathLayer({
@@ -498,6 +499,13 @@ export default function MapView({
         source: LIGURIA_ISOBATH_SOURCE,
         attribution: '© Regione Liguria – isobate di dettaglio (rilievi multibeam)',
         onCoverage: (rings) => setCoverage('liguria', rings),
+      })
+      // Isobate ogni metro del MITECO (Ibiza, Formentera, Menorca)
+      tileLayerRefs.current.isobathBaleari = new HdIsobathLayer({
+        imagery,
+        source: BALEARI_ISOBATH_SOURCE,
+        attribution: '© MITECO – Ecocartografía del litoral (2008)',
+        onCoverage: (rings) => setCoverage('baleari', rings),
       })
       // Rilievo HD del Shom (Corsica, Costa Azzurra): sopra le carte, sotto le isobate
       map.createPane('reliefPane').style.zIndex = 240
@@ -525,6 +533,7 @@ export default function MapView({
       if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobathVector)
       if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobathHd)
       if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobathLiguria)
+      if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobathBaleari)
       if (layers.seamarks) map.addLayer(tileLayerRefs.current.seamarks)
       // Stessi strati (e URL) per scaricare la carta lungo le rotte
       setOfflineLayers({
@@ -649,6 +658,7 @@ export default function MapView({
     refs.isobathVector?.setImagery(imagery)
     refs.isobathHd?.setImagery(imagery)
     refs.isobathLiguria?.setImagery(imagery)
+    refs.isobathBaleari?.setImagery(imagery)
 
     const setVis = (layer, visible) => {
       if (!layer) return
@@ -662,6 +672,7 @@ export default function MapView({
     setVis(refs.isobathVector, layers.isobaths)
     setVis(refs.isobathHd, layers.isobaths)
     setVis(refs.isobathLiguria, layers.isobaths)
+    setVis(refs.isobathBaleari, layers.isobaths)
     setVis(refs.seamarks, layers.seamarks)
     setVis(refs.coastBand, layers.coastBand)
   }, [baseStyle, layers.bathy, layers.posidonia, layers.shomRelief, layers.isobaths, layers.seamarks, layers.coastBand, mapReady])
@@ -673,10 +684,11 @@ export default function MapView({
     if (!mapReady || !map) return
     const refs = tileLayerRefs.current
     if (!refs.depthZones) refs.depthZones = new DepthZoneLayer({ attribution: '© EMODnet Bathymetry' })
-    // In Liguria: fasce di dettaglio dalle isobate della Regione; lì le EMODnet si tolgono
+    // In Liguria e alle Baleari: fasce di dettaglio dalle isobate di dettaglio; lì le EMODnet si tolgono
     if (!refs.fineDepthZones) {
       refs.fineDepthZones = new FineDepthZoneLayer({
-        attribution: '© Regione Liguria – isobate di dettaglio',
+        sources: [LIGURIA_ISOBATH_SOURCE, BALEARI_ISOBATH_SOURCE],
+        attribution: '© Regione Liguria – isobate di dettaglio · © MITECO – Ecocartografía del litoral (2008)',
         onCoverage: (rings) => refs.depthZones.setHdCoverage(rings),
       })
     }
