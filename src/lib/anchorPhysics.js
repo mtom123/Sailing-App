@@ -18,13 +18,18 @@
 const RHO_AIR = 1.225
 const G = 9.81
 const STEEL_IN_WATER = 0.87 // peso apparente dell'acciaio in acqua di mare
-const CD = 1.2
-const YAW = 1.4 // imbardata all'ancora
-// Raffiche, onda e strappi: con questo il carico è vicino alle tabelle ABYC
-// per l'ancoraggio (barca di 12 m a 30 nodi ≈ 500 kg)
-const DYNAMIC = 1.8
+// Resistenza della barca vista di prua con l'imbardata all'ancora (Cd × imbardata).
+// Tarato sull'esperienza dell'utente (Le Grazie, fango, 63 kn, Ultra con 50 m
+// di catena e pesce da 8 kg: ha tenuto): 1,7 dava carichi e catene troppo abbondanti
+const CD_YAW = 1.0
+// Strappi da onda e raffica: pochi in una baia ridossata, molti con mare
+// (si stima dall'onda prevista; senza dato, valore medio)
+const dynamicFactor = (waveM) => (Number.isFinite(waveM) ? 1.2 + 0.3 * Math.min(2, Math.max(0, waveM)) : 1.5)
 // Angolo della catena sull'ancora: sotto questo le ancore tengono ancora bene
-export const MAX_ANGLE_DEG = 6
+export const MAX_ANGLE_DEG = 12
+// Angolo che va ancora bene: con 50 m di catena e 8–9 m di fondo a 63 kn la
+// catena arrivava all'ancora a 7–8° e l'Ultra ha tenuto senza problemi
+export const GOOD_ANGLE_DEG = 8
 const KN = 0.5144
 
 // Massa della catena (kg/m) dal diametro del filo (mm), catena calibrata a
@@ -33,22 +38,23 @@ export const chainKgPerM = (mm) => 0.0219 * mm * mm
 
 // kgf di tenuta per kg di ancora, in sabbia compatta (indicativi)
 export const ANCHOR_TYPES = [
-  { key: 'ultra', label: 'Ultra (Ultra Marine)', factor: 60 },
-  { key: 'newgen', label: 'Nuova generazione (Rocna, Spade, Mantus, Vulcan)', factor: 60 },
-  { key: 'delta', label: 'Delta', factor: 40 },
-  { key: 'cqr', label: 'CQR / aratro', factor: 35 },
-  { key: 'bruce', label: 'Bruce / artiglio', factor: 30 },
-  { key: 'danforth', label: 'Danforth / Fortress', factor: 45 },
+  { key: 'ultra', label: 'Ultra (Ultra Marine)', factor: 75 },
+  { key: 'newgen', label: 'Nuova generazione (Rocna, Spade, Mantus, Vulcan)', factor: 75 },
+  { key: 'delta', label: 'Delta', factor: 45 },
+  { key: 'cqr', label: 'CQR / aratro', factor: 40 },
+  { key: 'bruce', label: 'Bruce / artiglio', factor: 35 },
+  { key: 'danforth', label: 'Danforth / Fortress', factor: 50 },
 ]
 
 // Fondo: moltiplicatore della tenuta dell'ancora, attrito della catena
 // adagiata (coefficiente) e calumo minimo da buona pratica
 export const BOTTOMS = [
-  { key: 'sand', label: 'Sabbia', factor: 1, friction: 0.7, minScope: 4 },
-  { key: 'mud', label: 'Fango', factor: 0.6, friction: 0.5, minScope: 5 },
-  { key: 'weed', label: 'Posidonia / alghe', factor: 0.3, friction: 0.4, minScope: 6 },
-  { key: 'rock', label: 'Roccia / coralligeno', factor: 0.2, friction: 0.5, minScope: 6 },
-  { key: 'unknown', label: 'Non so', factor: 0.6, friction: 0.5, minScope: 5 },
+  { key: 'sand', label: 'Sabbia', factor: 1, friction: 0.7, minScope: 3 },
+  { key: 'mud', label: 'Fango (buon tenitore)', factor: 0.8, friction: 0.5, minScope: 4 },
+  { key: 'softmud', label: 'Fango molle', factor: 0.45, friction: 0.4, minScope: 5 },
+  { key: 'weed', label: 'Posidonia / alghe', factor: 0.3, friction: 0.4, minScope: 5 },
+  { key: 'rock', label: 'Roccia / coralligeno', factor: 0.2, friction: 0.5, minScope: 5 },
+  { key: 'unknown', label: 'Non so', factor: 0.6, friction: 0.5, minScope: 4 },
 ]
 // Margine voluto tra tenuta (ancora + catena sul fondo) e carico alla raffica
 const HOLD_MARGIN = 1.5
@@ -59,9 +65,9 @@ const HOLD_MARGIN = 1.5
  * il carico medio che decide la forma della catena (gli strappi brevi la
  * catena li assorbe sollevandosi un momento)
  */
-export function windLoadN(windKn, windageM2, dynamic = true) {
+export function windLoadN(windKn, windageM2, dynamic = 1) {
   const v = windKn * KN
-  return 0.5 * RHO_AIR * CD * YAW * (dynamic ? DYNAMIC : 1) * windageM2 * v * v
+  return 0.5 * RHO_AIR * CD_YAW * dynamic * windageM2 * v * v
 }
 
 /**
@@ -96,11 +102,13 @@ export function anchorAngleDeg(H, w, L, h) {
  *   level: 'ok' | 'warn' | 'danger', reasons: string[]
  * }}
  */
-export function anchorCheck({ depthM, bowHeightM, chainM, chainMm, anchorKg, anchorType, bottom, gustKn, windageM2, loaM }) {
+export function anchorCheck({ depthM, bowHeightM, chainM, chainMm, anchorKg, anchorType, bottom, gustKn, windageM2, loaM, kelletKg = 0, waveM = null }) {
   const h = Math.max(0.5, depthM + bowHeightM)
-  const w = chainKgPerM(chainMm > 0 ? chainMm : 10) * G * STEEL_IN_WATER // N/m
-  const H = windLoadN(gustKn, windageM2, false)
-  const loadN = windLoadN(gustKn, windageM2, true)
+  // Peso in acqua della catena; il pesce (sentinella) aggiunge il suo, come
+  // se fosse spalmato sulla catena: abbassa la catena e assorbe gli strappi
+  const w = (chainKgPerM(chainMm > 0 ? chainMm : 10) + (kelletKg > 0 ? kelletKg / Math.max(chainM, 1) : 0)) * G * STEEL_IN_WATER // N/m
+  const H = windLoadN(gustKn, windageM2, 1)
+  const loadN = windLoadN(gustKn, windageM2, dynamicFactor(waveM))
   const suspendedM = Math.sqrt(h * h + (2 * h * H) / w)
   const lyingM = Math.max(0, chainM - suspendedM)
   const angleDeg = anchorAngleDeg(H, w, chainM, h)
@@ -117,7 +125,11 @@ export function anchorCheck({ depthM, bowHeightM, chainM, chainMm, anchorKg, anc
   // Catena consigliata: catena sul fondo alla raffica (catenaria) e calumo
   // minimo del fondo. L'attrito della catena adagiata è piccolo (pochi kg):
   // se l'ancora non tiene, più catena non basta, serve un fondo o un'ancora migliore
-  const chainNeededM = Math.ceil(Math.max(suspendedM + 2, h * bt.minScope))
+  // Catena che tiene l'angolo sull'ancora entro GOOD_ANGLE_DEG alla raffica
+  let catNeedM = Math.ceil(h * 2)
+  while (catNeedM < 400 && anchorAngleDeg(H, w, catNeedM, h) > GOOD_ANGLE_DEG) catNeedM += 1
+  const scopeNeedM = Math.ceil(h * bt.minScope)
+  const chainNeededM = Math.max(catNeedM, scopeNeedM)
   // Raggio massimo: catena tutta tesa più la barca
   const radiusM = Math.sqrt(Math.max(0, chainM * chainM - h * h)) + loaM
 
@@ -128,10 +140,10 @@ export function anchorCheck({ depthM, bowHeightM, chainM, chainMm, anchorKg, anc
   }
   if (!chainOk) {
     worse('danger')
-    reasons.push(`Alla raffica la catena tira l'ancora verso l'alto (${angleDeg.toFixed(0)}°): servono almeno ${Math.ceil(chainNeededM)} m`)
-  } else if (angleDeg > 0) {
+    reasons.push(`Alla raffica la catena tira l'ancora verso l'alto (${angleDeg.toFixed(0)}°): servono almeno ${catNeedM} m`)
+  } else if (angleDeg > GOOD_ANGLE_DEG) {
     worse('warn')
-    reasons.push(`Alla raffica la catena si stende fino all'ancora (${angleDeg.toFixed(0)}°): meglio ${Math.ceil(chainNeededM)} m`)
+    reasons.push(`Alla raffica la catena arriva all'ancora a ${angleDeg.toFixed(0)}°: meglio ${catNeedM} m`)
   }
   if (holdRatio < 1) {
     worse('danger')
@@ -140,9 +152,9 @@ export function anchorCheck({ depthM, bowHeightM, chainM, chainMm, anchorKg, anc
     worse('warn')
     reasons.push('Tenuta indicativa con poco margine per la raffica prevista')
   }
-  if (chainOk && chainM < chainNeededM) {
+  if (chainM < scopeNeedM) {
     worse('warn')
-    reasons.push(`Su ${bt.label.toLowerCase()} si consiglia almeno ${bt.minScope}:1, cioè ${chainNeededM} m`)
+    reasons.push(`Su ${bt.label.toLowerCase()} si consiglia almeno ${bt.minScope}:1, cioè ${scopeNeedM} m`)
   }
   if (bottom === 'weed') reasons.push("Su posidonia l'ancora tiene male, e in molte aree protette è vietato")
   if (bottom === 'rock') reasons.push("Su roccia la presa è incerta e l'ancora può incastrarsi")
@@ -178,5 +190,8 @@ export function windAhead(hourly, hours = 12, now = Date.now()) {
   // Escursione della direzione (gradi), per sapere quanto girerà la barca
   let span = 0
   for (const a of dirs) for (const b of dirs) span = Math.max(span, Math.abs(((a - b + 540) % 360) - 180))
-  return { gustKn: max.gust ?? max.wind ?? 0, windKn: max.wind ?? 0, at: max.t, dir: max.windDir, dirSpan: span }
+  // Onda massima nelle stesse ore (strappi sull'ancora); null se il dato manca
+  const waves = next.map((h) => h.wave).filter(Number.isFinite)
+  const waveM = waves.length ? Math.max(...waves) : null
+  return { gustKn: max.gust ?? max.wind ?? 0, windKn: max.wind ?? 0, at: max.t, dir: max.windDir, dirSpan: span, waveM }
 }

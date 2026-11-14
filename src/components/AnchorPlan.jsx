@@ -99,6 +99,8 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
       gustKn: wind.gustKn,
       windageM2: boat.windageM2 ?? 12,
       loaM: boat.loaM ?? 12.5,
+      kelletKg: boat.kelletKg ?? 0,
+      waveM: wind.waveM,
     })
   }, [depth, wind, chain, bottom, boat])
 
@@ -158,7 +160,9 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
         {wind
           ? `Prossime ${HOURS} h: raffica max ${Math.round(wind.gustKn)} kn alle ${hhmm(wind.at)}${
               Number.isFinite(wind.dir) ? ` da ${cardinal(wind.dir)}` : ''
-            }${wind.dirSpan >= 45 ? ` · il vento ruota di ${Math.round(wind.dirSpan)}°` : ''}`
+            }${wind.dirSpan >= 45 ? ` · il vento ruota di ${Math.round(wind.dirSpan)}°` : ''}${
+              Number.isFinite(wind.waveM) ? ` · onda fino a ${wind.waveM.toFixed(1).replace('.', ',')} m` : ''
+            }`
           : weather?.loading
           ? 'Previsione in arrivo…'
           : 'Previsione del vento non disponibile'}
@@ -194,7 +198,7 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
       <button type="button" onClick={openSettings} className="flex w-full justify-between text-left text-fog hover:text-paper">
         <span className="truncate">
           {ANCHOR_TYPES.find((t) => t.key === boat.anchorType)?.label.split(' (')[0] ?? 'Ancora'} {boat.anchorKg ?? 20} kg · catena{' '}
-          {boat.chainMm ?? 10} mm × {boat.chainLengthM ?? 60} m
+          {boat.chainMm ?? 10} mm × {boat.chainLengthM ?? 60} m{boat.kelletKg ? ` · pesce ${boat.kelletKg} kg` : ''}
         </span>
         <span className="flex-none text-phos">Ancora ›</span>
       </button>

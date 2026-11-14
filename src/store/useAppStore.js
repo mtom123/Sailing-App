@@ -104,6 +104,7 @@ export const useAppStore = create(
         bowHeightM: 1.2,
         windageM2: 12,
         loaM: 12.5,
+        kelletKg: 0, // pesce (sentinella) sulla catena
         // Weather routing: 'sail', 'motor' o 'hybrid' (motore sotto motorBelowKn a vela)
         propulsion: 'hybrid',
         motorBelowKn: 4,
