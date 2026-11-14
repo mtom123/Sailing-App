@@ -194,7 +194,7 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
         />
         <span>
           {boat.kelletKg > 0
-            ? `Pesce messo (${boat.kelletKg} kg, come ~${Math.round(boat.kelletKg * KELLET_M_PER_KG)} m di catena in più)`
+            ? `Pesce messo (${String(boat.kelletKg).replace('.', ',')} kg, come ~${Math.round(boat.kelletKg * KELLET_M_PER_KG)} m di catena in più)`
             : 'Pesce: imposta il peso in Ancora ›'}
         </span>
       </label>
