@@ -95,14 +95,12 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
   const gustKn = manualGust ?? wind?.gustKn ?? null
   const waveM = manualGust != null ? null : wind?.waveM ?? null
   const h = (depth ?? 0) + (boat.bowHeightM ?? 1.2)
-  const chain = Math.min(boat.chainLengthM ?? 60, chainM ?? Math.round(Math.max(h * 5, 20)))
-
-  const result = useMemo(() => {
+  const maxChain = boat.chainLengthM ?? 60
+  const input = useMemo(() => {
     if (depth == null || gustKn == null) return null
-    return anchorCheck({
+    return {
       depthM: depth,
       bowHeightM: boat.bowHeightM ?? 1.2,
-      chainM: chain,
       chainMm: boat.chainMm ?? 10,
       anchorKg: boat.anchorKg ?? 20,
       anchorType: boat.anchorType ?? 'delta',
@@ -112,8 +110,14 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
       loaM: boat.loaM ?? 12.5,
       kelletKg: boat.kelletOn ? boat.kelletKg ?? 0 : 0,
       waveM,
-    })
-  }, [depth, gustKn, waveM, chain, bottom, boat])
+    }
+  }, [depth, gustKn, waveM, bottom, boat])
+  // La catena consigliata non dipende da quella calata: la barra parte da lì
+  // (e la segue) finché non la si sposta a mano
+  const recommended = input ? anchorCheck({ ...input, chainM: maxChain }).chainNeededM : Math.round(Math.max(h * 5, 20))
+  const chainAuto = chainM == null
+  const chain = Math.max(10, Math.min(maxChain, chainM ?? recommended))
+  const result = useMemo(() => (input ? anchorCheck({ ...input, chainM: chain }) : null), [input, chain])
 
   const openSettings = () => {
     useAppStore.getState().setSettingsOpen(true)
@@ -166,6 +170,19 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
         <span className="w-20 text-right font-mono text-paper">
           {chain} m · {depth != null ? `${(chain / h).toFixed(1).replace('.', ',')}:1` : '—'}
         </span>
+      </div>
+      <div className="-mt-1 pl-[4.375rem] text-fog-dim">
+        {chainAuto ? (
+          recommended > maxChain ? (
+            <span className="text-warn">Consigliati {recommended} m: a bordo ne hai {maxChain}</span>
+          ) : (
+            'Consigliata per fondo, raffica e pesce'
+          )
+        ) : (
+          <button type="button" onClick={() => setChainM(null)} className="text-phos">
+            Torna alla consigliata ({Math.min(recommended, maxChain)} m)
+          </button>
+        )}
       </div>
       <label className={`flex items-center gap-1.5 ${boat.kelletKg > 0 ? 'text-paper' : 'text-fog-dim'}`}>
         <input
