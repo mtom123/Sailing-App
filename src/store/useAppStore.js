@@ -4,6 +4,26 @@ import { BAND_DEFAULTS } from '../lib/coastBand.js'
 import { EMPTY_COURSE } from '../lib/race.js'
 import { DEFAULT_DEPTH_ZONES } from '../lib/isobaths.js'
 
+// Traccia all'ancora: chiave a parte (si aggiorna spesso, lo stato principale è grande)
+const TRAIL_KEY = 'timone.anchorTrail'
+const TRAIL_MAX = 3000
+function loadAnchorTrail() {
+  try {
+    const t = JSON.parse(localStorage.getItem(TRAIL_KEY))
+    return Array.isArray(t) ? t : []
+  } catch {
+    return []
+  }
+}
+function saveAnchorTrail(t) {
+  try {
+    if (t.length) localStorage.setItem(TRAIL_KEY, JSON.stringify(t))
+    else localStorage.removeItem(TRAIL_KEY)
+  } catch {
+    // spazio pieno o archiviazione non disponibile: la traccia resta in memoria
+  }
+}
+
 /**
  * App store — single source of truth per stato globale
  * Sostituisce l'hook soup di v1 con stato persistente pulito
@@ -219,8 +239,19 @@ export const useAppStore = create(
       windAlarm: { on: false, threshold: 30 },
       setWindAlarm: (windAlarm) =>
         set((s) => ({ windAlarm: { ...s.windAlarm, ...windAlarm } })),
-      anchorWatch: null,
-      setAnchorWatch: (anchorWatch) => set({ anchorWatch }),
+      anchorWatch: null, // { lat, lon, radius }: salvato, così l'allarme riparte se l'app si riapre
+      setAnchorWatch: (anchorWatch) => {
+        saveAnchorTrail([])
+        set({ anchorWatch, anchorTrail: [] })
+      },
+      // Posizioni della barca all'ancora [[lat, lon, t]], per vedere il borneggio
+      anchorTrail: loadAnchorTrail(),
+      addAnchorTrail: (p) =>
+        set((s) => {
+          const anchorTrail = [...s.anchorTrail.slice(-(TRAIL_MAX - 1)), p]
+          saveAnchorTrail(anchorTrail)
+          return { anchorTrail }
+        }),
       anchorRadius: 40,
       setAnchorRadius: (anchorRadius) => set({ anchorRadius }),
       // Fasce di profondità colorate (impostazioni): [{ id, name, from, to, color, on }]
@@ -258,6 +289,7 @@ export const useAppStore = create(
         dayTheme: s.dayTheme,
         textScale: s.textScale,
         anchorRadius: s.anchorRadius,
+        anchorWatch: s.anchorWatch,
         depthZones: s.depthZones,
       }),
     }

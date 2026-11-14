@@ -462,6 +462,16 @@ export default function App() {
     return () => stopAlarm()
   }, [anchorAlarmActive, alarmMuted])
 
+  // Traccia del borneggio: un punto ogni 3 m di spostamento o ogni minuto
+  useEffect(() => {
+    if (!anchorWatch || geo.lat == null) return
+    const st = useAppStore.getState()
+    const last = st.anchorTrail[st.anchorTrail.length - 1]
+    const now = Date.now()
+    if (last && haversine(last[0], last[1], geo.lat, geo.lon) < 3 && now - last[2] < 60000) return
+    st.addAnchorTrail([Math.round(geo.lat * 1e6) / 1e6, Math.round(geo.lon * 1e6) / 1e6, now])
+  }, [anchorWatch, geo.lat, geo.lon])
+
   const dropAnchor = () => {
     if (geo.lat == null) return
     armAudio()

@@ -944,6 +944,47 @@ export default function MapView({
     }
   }, [geo.lat, geo.lon, boatDepth, depthLive?.depth, depthLive?.shallow, boatCfg.draftM, boatCfg.safetyMarginM, mapReady])
 
+  // === Ancora: cerchio dell'allarme e traccia del borneggio ===
+  const anchorWatch = useAppStore((s) => s.anchorWatch)
+  const anchorTrail = useAppStore((s) => s.anchorTrail)
+  const anchorOut =
+    anchorWatch && geo.lat != null && haversine(geo.lat, geo.lon, anchorWatch.lat, anchorWatch.lon) > anchorWatch.radius
+  useEffect(() => {
+    const map = mapRef.current
+    if (!mapReady || !map) return
+    const m = markersRef.current
+    if (!anchorWatch) {
+      if (m.watch) map.removeLayer(m.watch)
+      m.watch = null
+      return
+    }
+    const color = anchorOut ? '#FF4545' : '#FFB020'
+    if (!m.watch) {
+      const trail = L.polyline([], { color: '#FFFFFF', weight: 2, opacity: 0.85, interactive: false })
+      const circle = L.circle([anchorWatch.lat, anchorWatch.lon], {
+        radius: anchorWatch.radius,
+        weight: 2,
+        dashArray: '6 4',
+        interactive: false,
+      })
+      const icon = L.divIcon({
+        className: '',
+        html: '<div style="color:#FFB020;font-size:20px;line-height:20px;text-align:center;text-shadow:0 0 3px #000,0 0 6px #000">&#9875;</div>',
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+      })
+      const pin = L.marker([anchorWatch.lat, anchorWatch.lon], { icon, interactive: false, zIndexOffset: 900 })
+      m.watch = L.layerGroup([circle, trail, pin]).addTo(map)
+      m.watchParts = { circle, trail, pin }
+    }
+    const { circle, trail, pin } = m.watchParts
+    circle.setLatLng([anchorWatch.lat, anchorWatch.lon])
+    circle.setRadius(anchorWatch.radius)
+    circle.setStyle({ color, fillColor: color, fillOpacity: anchorOut ? 0.18 : 0.06 })
+    pin.setLatLng([anchorWatch.lat, anchorWatch.lon])
+    trail.setLatLngs(anchorTrail.map((p) => [p[0], p[1]]))
+  }, [anchorWatch, anchorTrail, anchorOut, mapReady])
+
   // === MOB marker ===
   useEffect(() => {
     if (!mapReady) return
