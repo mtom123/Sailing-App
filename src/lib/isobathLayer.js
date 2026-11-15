@@ -320,6 +320,9 @@ export const IsobathLayer = L.Layer.extend({
         renderer: this._renderer,
         color,
         weight: shallow ? 1.6 : 0.9,
+        // Sotto i 10 m la griglia da ~115 m è solo indicativa: tratteggio,
+        // per distinguerle dalle isobate dei rilievi di dettaglio (continue)
+        dashArray: shallow ? '7 5' : null,
         opacity: 1,
         interactive: false,
       }).addTo(this._group)

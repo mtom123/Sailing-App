@@ -61,12 +61,60 @@ export function splitOnFrame(ring, width, height) {
   return runs
 }
 
+// Sotto costa EMODnet ha spesso una striscia di celle a ~0 m o senza dato
+// (che qui vale +1) larga 2–3 celle IN MARE: a Finale arrivava a 250 m dalla
+// spiaggia, dove ci sono 15–30 m. Trattata come riva, metteva lì le isobate
+// da 2, 5 e 10 m. Quelle celle, se toccano il mare, prendono il valore del
+// mare accanto (fino a COAST_GAP celle): le isobate basse tornano vicino alla
+// terra vera (quota > 1,5 m), e la costa OSM taglia il resto
+const COAST_GAP = 3
+function fillCoastalGaps({ width, height, values }) {
+  const out = Float32Array.from(values)
+  const unknown = (v) => v > -0.5 && v <= 1.5
+  let filled = new Uint8Array(width * height)
+  for (let i = 0; i < out.length; i++) if (out[i] <= -0.5) filled[i] = 1
+  for (let step = 0; step < COAST_GAP; step++) {
+    const next = Uint8Array.from(filled)
+    let changed = 0
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = y * width + x
+        if (filled[i] || !unknown(values[i])) continue
+        let sum = 0
+        let n = 0
+        for (let dy = -1; dy <= 1; dy++) {
+          const yy = y + dy
+          if (yy < 0 || yy >= height) continue
+          for (let dx = -1; dx <= 1; dx++) {
+            const xx = x + dx
+            if ((!dx && !dy) || xx < 0 || xx >= width) continue
+            const j = yy * width + xx
+            if (filled[j]) {
+              sum += out[j]
+              n++
+            }
+          }
+        }
+        if (n) {
+          out[i] = sum / n
+          next[i] = 1
+          changed++
+        }
+      }
+    }
+    filled = next
+    if (!changed) break
+  }
+  return out
+}
+
 /**
  * @param grid  griglia unita (mergeBlocks)
  * @returns {{ lines: {depth, path: [lat, lon][]}[], bands: {color, opacity, rings: [lat, lon][][]}[] }}
  */
 export function buildIsobaths(grid) {
-  const { width, height, values } = grid
+  const { width, height } = grid
+  const values = fillCoastalGaps(grid)
   const toLatLng = projector(grid)
   const gen = contours().size([width, height])
   const ringsAt = new Map()
