@@ -59,6 +59,7 @@ export const useAppStore = create(
         parks: true,
         coastBand: true,
         ordinances: true,
+        beachBars: true,
         rain: false,
         current: false,
         offlineZones: true,
@@ -239,6 +240,11 @@ export const useAppStore = create(
           activeDrawer: 'route',
         })),
 
+      // Le mie note sui baretti sulla spiaggia, per id del locale (beachBarsLayer.js):
+      // { name, lat, lon, flags: { tender, buoys, … }, phone, text }
+      barNotes: {},
+      setBarNote: (id, patch) => set((s) => ({ barNotes: { ...s.barNotes, [id]: { ...s.barNotes[id], ...patch } } })),
+
       // Zone vietate inserite a mano dalla lente (avvisi ai naviganti):
       // [{ id, name, points: [[lat, lon]], created, until }]: until (ms) o null = finché non la togli
       userZones: [],
@@ -309,6 +315,7 @@ export const useAppStore = create(
         anchorWatch: s.anchorWatch,
         depthZones: s.depthZones,
         userZones: s.userZones,
+        barNotes: s.barNotes,
       }),
     }
   )

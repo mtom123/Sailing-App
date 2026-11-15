@@ -11,6 +11,8 @@ const TILEJSON_URL = 'https://tiles.openfreemap.org/planet'
 const MAX_TILE_ZOOM = 14 // massimo dettaglio dei tasselli OpenMapTiles
 const MAX_TILES = 24
 
+const BAR_CLASSES = new Set(['bar', 'cafe', 'restaurant', 'ice_cream', 'fast_food', 'beach_resort', 'pub'])
+
 let templatePromise = null
 const tiles = new Map() // "z/x/y" -> Promise<{ ocean, ring: [lat, lon][] }[]>
 
@@ -43,7 +45,7 @@ export function loadTile(z, x, y) {
           return polys.flat().map((ring) => ring.map(([lon, lat]) => [lat, lon]))
         }
         // Acqua; spiagge e porti (solo nei tasselli z14) per la fascia costiera
-        const tile = { water: [], beaches: [], harbors: [] }
+        const tile = { water: [], beaches: [], harbors: [], bars: [] }
         const each = (name, fn) => {
           const l = layers[name]
           if (l) for (let i = 0; i < l.length; i++) fn(l.feature(i))
@@ -56,9 +58,15 @@ export function loadTile(z, x, y) {
           if (f.properties.subclass === 'beach') tile.beaches.push(...rings(f))
         })
         each('poi', (f) => {
-          if (f.properties.class !== 'harbor') return
-          const [lon, lat] = f.toGeoJSON(x, y, z).geometry.coordinates
-          tile.harbors.push([lat, lon])
+          const p = f.properties
+          if (p.class === 'harbor') {
+            const [lon, lat] = f.toGeoJSON(x, y, z).geometry.coordinates
+            tile.harbors.push([lat, lon])
+          } else if (BAR_CLASSES.has(p.subclass) || BAR_CLASSES.has(p.class)) {
+            // Bar, caffè, ristoranti, gelaterie, stabilimenti: i baretti sulla spiaggia (beachBars.js)
+            const [lon, lat] = f.toGeoJSON(x, y, z).geometry.coordinates
+            if (p.name) tile.bars.push({ id: f.id, name: p.name, kind: p.subclass || p.class, lat, lon })
+          }
         })
         return tile
       })
@@ -127,5 +135,6 @@ export async function coastFeatures(bounds, maxTiles = 36) {
     sea: loaded.flatMap((t) => t.water.filter((r) => r.ocean).map((r) => r.ring)),
     beaches: loaded.flatMap((t) => t.beaches),
     harbors: loaded.flatMap((t) => t.harbors),
+    bars: loaded.flatMap((t) => t.bars),
   }
 }

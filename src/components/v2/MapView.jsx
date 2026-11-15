@@ -17,6 +17,7 @@ import { BALEARI_ISOBATH_SOURCE } from '../../lib/baleariIsobaths.js'
 import { CoastBandLayer } from '../../lib/coastBandLayer.js'
 import { ProtectedAreasLayer } from '../../lib/protectedAreasLayer.js'
 import { OrdinancesLayer } from '../../lib/ordinancesLayer.js'
+import { BeachBarsLayer } from '../../lib/beachBarsLayer.js'
 import { ampContext, ampPageFor, ampPopupHTML } from '../../lib/ampRules.js'
 import { LiguriaHabitatLayer, LiguriaPosidoniaOverview } from '../../lib/liguriaHabitat.js'
 
@@ -1493,6 +1494,23 @@ export default function MapView({
     if (!layers.ordinances && map.hasLayer(layer)) map.removeLayer(layer)
   }, [layers.ordinances, mapReady, route.editing])
 
+  // === Baretti sulla spiaggia (da zoom 14), con le mie note ===
+  useEffect(() => {
+    if (!mapReady) return
+    const map = mapRef.current
+    if (!tileLayerRefs.current.beachBars) {
+      tileLayerRefs.current.beachBars = new BeachBarsLayer({
+        interactive: true,
+        getNote: (id) => useAppStore.getState().barNotes[id],
+        setNote: (id, patch) => useAppStore.getState().setBarNote(id, patch),
+      })
+    }
+    const layer = tileLayerRefs.current.beachBars
+    layer.setInteractive(!route.editing)
+    if (layers.beachBars && !map.hasLayer(layer)) map.addLayer(layer)
+    if (!layers.beachBars && map.hasLayer(layer)) map.removeLayer(layer)
+  }, [layers.beachBars, mapReady, route.editing])
+
   // === Zone vietate inserite a mano dalla lente (avvisi ai naviganti) ===
   const userZones = useAppStore((s) => s.userZones)
   const removeUserZone = useAppStore((s) => s.removeUserZone)
@@ -2043,6 +2061,7 @@ function LayerPopover({ onClose, onDownloadArea }) {
         { key: 'marks', label: 'I miei marker' },
         { key: 'sightings', label: 'I miei avvistamenti' },
         { key: 'seamarks', label: 'Fari e boe' },
+        { key: 'beachBars', label: 'Baretti e bagni sulla spiaggia (da zoom 14)' },
         { key: 'ais', label: 'Navi AIS' },
       ],
     ],
