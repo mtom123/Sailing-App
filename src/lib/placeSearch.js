@@ -1,4 +1,6 @@
+import L from 'leaflet'
 import { ANCHORAGES } from '../data/anchorages.js'
+import { coastFeatures } from './waterMask.js'
 
 /*
  * Ricerca della lente sulla carta: coordinate scritte a mano (gradi decimali,
@@ -107,3 +109,82 @@ export async function searchOnline(text, view) {
     return { lat: Number(p.lat), lon: Number(p.lon), name, detail: rest.slice(0, 3).join(', '), kind: 'place' }
   })
 }
+
+// Metri locali attorno a (lat0, lon0)
+const M = 111320
+const toXY = (lat0, lon0) => ([lat, lon]) => [(lon - lon0) * M * Math.cos((lat0 * Math.PI) / 180), (lat - lat0) * M]
+
+// Dentro l'acqua? Regola nonzero sugli anelli insieme (come li disegna la carta)
+function inWater(rings, xy, p) {
+  let wn = 0
+  const [px, py] = p
+  for (const ring of rings) {
+    for (let i = 0; i < ring.length - 1; i++) {
+      const [ax, ay] = xy(ring[i])
+      const [bx, by] = xy(ring[i + 1])
+      const side = (bx - ax) * (py - ay) - (px - ax) * (by - ay)
+      if (ay <= py) {
+        if (by > py && side > 0) wn++
+      } else if (by <= py && side < 0) wn--
+    }
+  }
+  return wn !== 0
+}
+
+/**
+ * Un paese o un capo cercato cade a terra (Gaeta: in centro città). Si porta
+ * il punto in mare: il porto più vicino entro 2 km se c'è, poi il punto di
+ * mare più vicino (costa OpenStreetMap), 40 m oltre la riva. Senza rete o
+ * senza costa vicina resta dov'è.
+ */
+export async function seaPoint(lat, lon) {
+  const d = 0.02
+  const f = await coastFeatures(L.latLngBounds([lat - d, lon - d * 1.3], [lat + d, lon + d * 1.3])).catch(() => null)
+  if (!f?.sea?.length) return null
+  const xy = toXY(lat, lon)
+  const rings = f.sea
+  let start = [0, 0]
+  let via = 'costa'
+  let best = Infinity
+  for (const h of f.harbors) {
+    const [x, y] = xy(h)
+    const dist = Math.hypot(x, y)
+    if (dist < 2000 && dist < best) {
+      best = dist
+      start = [x, y]
+      via = 'porto'
+    }
+  }
+  const back = ([x, y]) => [lat + y / M, lon + x / (M * Math.cos((lat * Math.PI) / 180))]
+  if (inWater(rings, xy, start)) return via === 'porto' ? { ...toLL(back(start)), via } : null
+  // Punto della riva più vicino
+  let near = null
+  let nd = Infinity
+  for (const ring of rings) {
+    for (let i = 0; i < ring.length - 1; i++) {
+      const [ax, ay] = xy(ring[i])
+      const [bx, by] = xy(ring[i + 1])
+      const dx = bx - ax
+      const dy = by - ay
+      const len2 = dx * dx + dy * dy || 1e-9
+      const t = Math.max(0, Math.min(1, ((start[0] - ax) * dx + (start[1] - ay) * dy) / len2))
+      const qx = ax + t * dx
+      const qy = ay + t * dy
+      const dd = Math.hypot(qx - start[0], qy - start[1])
+      if (dd < nd) {
+        nd = dd
+        near = [qx, qy]
+      }
+    }
+  }
+  if (!near || nd > 5000) return null
+  // 40 m oltre la riva, nella direzione da terra verso il mare
+  const ux = (near[0] - start[0]) / (nd || 1)
+  const uy = (near[1] - start[1]) / (nd || 1)
+  for (const step of [40, 80, 15, 150]) {
+    const p = [near[0] + ux * step, near[1] + uy * step]
+    if (inWater(rings, xy, p)) return { ...toLL(back(p)), via }
+  }
+  return { ...toLL(back(near)), via }
+}
+const toLL = ([lat, lon]) => ({ lat, lon })

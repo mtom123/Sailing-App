@@ -9,6 +9,7 @@ import { SEAGRASS_WMS_URL, SEAGRASS_LAYER, seagrassSld } from '../../lib/seagras
 import { DepthZoneLayer, IsobathLayer } from '../../lib/isobathLayer.js'
 import { FineDepthZoneLayer } from '../../lib/fineDepthZones.js'
 import SearchBox from './SearchBox.jsx'
+import { seaPoint } from '../../lib/placeSearch.js'
 import { ShomReliefLayer } from '../../lib/shomRelief.js'
 import { HdIsobathLayer } from '../../lib/hdIsobathLayer.js'
 import { LIGURIA_ISOBATH_SOURCE } from '../../lib/liguriaIsobaths.js'
@@ -991,10 +992,16 @@ export default function MapView({
 
   // === Ricerca: la carta va sul risultato e lo segna con una spilla (toccala per toglierla) ===
   const searchPin = useRef(null)
-  const pickPlace = (r) => {
+  const pickPlace = async (picked) => {
     const map = mapRef.current
     setSearchOpen(false)
     if (!map) return
+    // Paesi e capi cadono a terra: il punto va sul mare accanto (porto o riva)
+    let r = picked
+    if (picked.kind === 'place') {
+      const sea = await seaPoint(picked.lat, picked.lon).catch(() => null)
+      if (sea) r = { ...picked, lat: sea.lat, lon: sea.lon, name: sea.via === 'porto' ? `${picked.name} · porto` : picked.name }
+    }
     setFollow(false)
     map.setView([r.lat, r.lon], Math.max(map.getZoom(), r.kind === 'place' ? 14 : 15), { animate: false })
     if (searchPin.current) map.removeLayer(searchPin.current)
