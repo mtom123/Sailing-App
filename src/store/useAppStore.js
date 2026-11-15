@@ -237,8 +237,9 @@ export const useAppStore = create(
         })),
 
       // Zone vietate inserite a mano dalla lente (avvisi ai naviganti):
-      // [{ id, name, points: [[lat, lon]], created }]
+      // [{ id, name, points: [[lat, lon]], created, until }]: until (ms) o null = finché non la togli
       userZones: [],
+      updateUserZone: (id, patch) => set((s) => ({ userZones: s.userZones.map((z) => (z.id === id ? { ...z, ...patch } : z)) })),
       addUserZone: (z) => set((s) => ({ userZones: [...s.userZones, { id: `z${Date.now().toString(36)}`, created: Date.now(), ...z }] })),
       removeUserZone: (id) => set((s) => ({ userZones: s.userZones.filter((z) => z.id !== id) })),
 
@@ -315,3 +316,12 @@ setUserZones(useAppStore.getState().userZones)
 useAppStore.subscribe((s, prev) => {
   if (s.userZones !== prev.userZones) setUserZones(s.userZones)
 })
+
+// Una zona scaduta (l'avviso è finito) si toglie da sola, anche con l'app aperta
+function dropExpiredZones() {
+  const now = Date.now()
+  const zones = useAppStore.getState().userZones
+  if (zones.some((z) => z.until && z.until <= now)) useAppStore.setState({ userZones: zones.filter((z) => !z.until || z.until > now) })
+}
+dropExpiredZones()
+setInterval(dropExpiredZones, 30000)

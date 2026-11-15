@@ -998,7 +998,7 @@ export default function MapView({
     if (!map) return
     // Zona da un avviso ai naviganti: si salva e si inquadra
     if (picked.kind === 'zone') {
-      useAppStore.getState().addUserZone({ name: picked.zoneName, points: picked.points })
+      useAppStore.getState().addUserZone({ name: picked.zoneName, points: picked.points, until: picked.until || null })
       setFollow(false)
       map.fitBounds(L.latLngBounds(picked.points), { padding: [60, 60], maxZoom: 15, animate: false })
       return
@@ -1496,6 +1496,7 @@ export default function MapView({
   // === Zone vietate inserite a mano dalla lente (avvisi ai naviganti) ===
   const userZones = useAppStore((s) => s.userZones)
   const removeUserZone = useAppStore((s) => s.removeUserZone)
+  const updateUserZone = useAppStore((s) => s.updateUserZone)
   useEffect(() => {
     if (!mapReady) return undefined
     const map = mapRef.current
@@ -1524,9 +1525,27 @@ export default function MapView({
           <div style="font-size:calc(11px*var(--fs));color:var(--color-fog);font-family:ui-monospace,monospace;line-height:1.35">${z.points
             .map(([la, lo], i) => `${String.fromCharCode(65 + i)}  ${formatCoord(la, true)}  ${formatCoord(lo, false)}`)
             .join('<br>')}</div>`
+        // Scadenza: si cambia da qui, vuota = finché non la togli
+        const row = document.createElement('label')
+        row.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px;font-size:calc(11px*var(--fs));color:var(--color-fog)'
+        row.innerHTML = '<span style="font-weight:600;color:var(--color-paper)">Valida fino al</span>'
+        const input = document.createElement('input')
+        input.type = 'datetime-local'
+        const pad = (n) => String(n).padStart(2, '0')
+        const local = (t) => {
+          const d = new Date(t)
+          return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+        }
+        input.value = z.until ? local(z.until) : ''
+        input.style.cssText = 'padding:3px 6px;border:1px solid var(--color-line, #33414d);border-radius:6px;background:transparent;color:var(--color-paper)'
+        input.onchange = () => updateUserZone(z.id, { until: input.value ? new Date(input.value).getTime() : null })
+        const hint = document.createElement('span')
+        hint.textContent = z.until ? 'poi si toglie da sola' : 'vuoto: finché non la togli'
+        row.append(input, hint)
+        el.appendChild(row)
         const btn = document.createElement('button')
         btn.textContent = 'Togli la zona'
-        btn.style.cssText = 'margin-top:8px;padding:6px 10px;border:1px solid #FF5252;border-radius:6px;color:#FF5252;background:transparent;font-weight:700;font-size:calc(11px*var(--fs))'
+        btn.style.cssText = 'display:block;margin-top:8px;padding:6px 10px;border:1px solid #FF5252;border-radius:6px;color:#FF5252;background:transparent;font-weight:700;font-size:calc(11px*var(--fs))'
         btn.onclick = () => {
           poly.closePopup()
           removeUserZone(z.id)
@@ -1536,7 +1555,7 @@ export default function MapView({
       })
     }
     return () => group.remove()
-  }, [userZones, route.editing, mapReady, removeUserZone])
+  }, [userZones, route.editing, mapReady, removeUserZone, updateUserZone])
 
   const [rulerOn, setRulerOn] = useState(false)
   const [areaOn, setAreaOn] = useState(false) // rettangolo per la zona offline
