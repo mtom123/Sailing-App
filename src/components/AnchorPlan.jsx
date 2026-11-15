@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useAppStore } from '../store/useAppStore.js'
 import { ANCHOR_TYPES, BOTTOMS, KELLET_M_PER_KG, anchorCheck, windAhead } from '../lib/anchorPhysics.js'
 import { depthAt } from '../lib/depthAt.js'
+import { coastalDepthEstimate } from '../lib/depthEstimate.js'
 import { habitatAt } from '../lib/liguriaHabitat.js'
 import { fineDepthAt } from '../lib/imagePixels.js'
 import { cardinal } from '../lib/geo.js'
@@ -56,6 +57,7 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
   const [chart, setChart] = useState(null) // { depth, source }
   const [habitat, setHabitat] = useState(undefined)
   const [depthInput, setDepthInput] = useState('')
+  const [depthFocus, setDepthFocus] = useState(false)
   const [bottomPick, setBottomPick] = useState(null)
   const [chainM, setChainM] = useState(null)
   const [gustInput, setGustInput] = useState('') // raffica inserita a mano (es. quella di domani)
@@ -72,8 +74,16 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
       if (fine != null) {
         if (alive) setChart({ depth: fine, source: 'rilievo di dettaglio' })
       } else {
+        // Vicino a riva EMODnet non vale (celle che mescolano mare e terra):
+        // si stima tra la riva e il primo fondale affidabile al largo
         const d = await depthAt(lat, lon).catch(() => null)
-        if (alive && d) setChart({ depth: d.depth, source: d.reliable ? d.source : `${d.source}, indicativa` })
+        if (d?.reliable) {
+          if (alive) setChart({ depth: d.depth, source: d.source })
+        } else {
+          const est = await coastalDepthEstimate(lat, lon).catch(() => null)
+          if (alive && est) setChart(est)
+          else if (alive && d) setChart({ depth: d.depth, source: `${d.source}, indicativa` })
+        }
       }
       const h = await habitatAt(lat, lon).catch(() => null)
       if (alive) setHabitat(h)
@@ -139,17 +149,26 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
     <div className="space-y-1.5 text-[calc(10px*var(--fs))]">
       <div className="flex items-center gap-1.5">
         <span className="w-16 text-fog">Profondità</span>
+        {/* La stima (scandaglio o carta) si vede come valore; toccando il
+            campo si svuota (stima in grigio) e si scrive; lasciato vuoto torna la stima */}
         <input
           type="text"
           inputMode="decimal"
           placeholder={depth != null ? depth.toFixed(1).replace('.', ',') : '—'}
-          value={depthInput}
+          value={depthInput !== '' || depthFocus ? depthInput : depth != null ? depth.toFixed(1).replace('.', ',') : ''}
+          onFocus={() => setDepthFocus(true)}
+          onBlur={() => setDepthFocus(false)}
           onChange={(e) => setDepthInput(e.target.value)}
           className={`${field} w-14 text-right tabular-nums`}
           aria-label="Profondità in metri"
         />
         <span className="text-fog">m</span>
-        <span className="min-w-0 flex-1 truncate text-fog-dim">{depthSource || 'nessun dato: inseriscila'}</span>
+        <span className="min-w-0 flex-1 leading-tight text-fog-dim">{depthSource || 'nessun dato: inseriscila'}</span>
+        {depthInput !== '' && (sounder != null || chart) && (
+          <button type="button" onClick={() => setDepthInput('')} className="flex-none text-phos">
+            {sounder != null ? 'Scandaglio' : 'Carta'}
+          </button>
+        )}
       </div>
       <div className="flex items-center gap-1.5">
         <span className="w-16 text-fog">Fondo</span>
