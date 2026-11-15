@@ -353,6 +353,116 @@ function chamfer(dist, w, h) {
   return INF
 }
 
+// Per ogni cella la cella di partenza più vicina (seed: indice, -1 nessuna)
+// e il quadrato della distanza, in due passate (propagazione dei vicini).
+// Colonna e riga di ogni indice da tabelle: niente divisioni nel ciclo
+const XY = { w: 0, h: 0, x: null, y: null }
+function nearestSeed(seed, dist2, w, h, box = [0, 0, w - 1, h - 1]) {
+  const n2 = w * h
+  if (XY.w !== w || XY.h !== h) {
+    XY.x = new Int16Array(n2)
+    XY.y = new Int16Array(n2)
+    for (let i = 0; i < n2; i++) {
+      XY.x[i] = i % w
+      XY.y[i] = (i / w) | 0
+    }
+    XY.w = w
+    XY.h = h
+  }
+  const X = XY.x
+  const Y = XY.y
+  // Solo nel riquadro dei seed allargato (box: x0, y0, x1, y1)
+  const [bx0, by0, bx1, by1] = box
+  for (let i = 0; i < n2; i++) dist2[i] = seed[i] >= 0 ? 0 : 1e18
+  const pass = (i, j, x, y) => {
+    const s = seed[j]
+    if (s < 0) return
+    const dx = X[s] - x
+    const dy = Y[s] - y
+    const d = dx * dx + dy * dy
+    if (d < dist2[i]) {
+      dist2[i] = d
+      seed[i] = s
+    }
+  }
+  for (let y = by0; y <= by1; y++) {
+    const row = y * w
+    for (let x = bx0; x <= bx1; x++) {
+      const i = row + x
+      if (dist2[i] === 0) continue
+      if (x > 0) pass(i, i - 1, x, y)
+      if (y > 0) {
+        pass(i, i - w, x, y)
+        if (x > 0) pass(i, i - w - 1, x, y)
+        if (x < w - 1) pass(i, i - w + 1, x, y)
+      }
+    }
+    for (let x = Math.min(w - 2, bx1); x >= bx0; x--) if (dist2[row + x] !== 0) pass(row + x, row + x + 1, x, y)
+  }
+  for (let y = by1; y >= by0; y--) {
+    const row = y * w
+    for (let x = bx1; x >= bx0; x--) {
+      const i = row + x
+      if (dist2[i] === 0) continue
+      if (x < w - 1) pass(i, i + 1, x, y)
+      if (y < h - 1) {
+        pass(i, i + w, x, y)
+        if (x < w - 1) pass(i, i + w + 1, x, y)
+        if (x > 0) pass(i, i + w - 1, x, y)
+      }
+    }
+    for (let x = Math.max(1, bx0); x <= bx1; x++) if (dist2[row + x] !== 0) pass(row + x, row + x - 1, x, y)
+  }
+}
+
+// Pezzetti d'isobata isolati (più corti di FRAG_M e senza un'altra linea
+// della stessa profondità entro FRAG_M): bordi del rilievo, non fondale. A
+// Finale tre pezzetti da 5, 6 e 7 m impilati facevano 5,5 m su un'area larga
+// 300 m. Le isobate tratteggiate (pezzetti vicini tra loro) restano
+const FRAG_M = 40
+function dropFragments(lines) {
+  const M = 111000
+  const lenM = (p) => {
+    let L = 0
+    for (let q = 1; q < p.length; q++) {
+      const dy = (p[q][0] - p[q - 1][0]) * M
+      const dx = (p[q][1] - p[q - 1][1]) * M * Math.cos((p[q][0] * Math.PI) / 180)
+      L += Math.hypot(dx, dy)
+    }
+    return L
+  }
+  // Punti di ogni profondità in caselle di ~FRAG_M
+  const cell = FRAG_M / M
+  const buckets = new Map()
+  lines.forEach((l, idx) => {
+    for (const [lat, lon] of l.path) {
+      const k = `${l.depth}|${Math.floor(lat / cell)}|${Math.floor(lon / cell)}`
+      let b = buckets.get(k)
+      if (!b) buckets.set(k, (b = []))
+      b.push(idx, lat, lon)
+    }
+  })
+  const near = (idx, l) => {
+    for (const [lat, lon] of l.path) {
+      const cy = Math.floor(lat / cell)
+      const cx = Math.floor(lon / cell)
+      for (let a = -1; a <= 1; a++)
+        for (let c = -1; c <= 1; c++) {
+          const b = buckets.get(`${l.depth}|${cy + a}|${cx + c}`)
+          if (!b) continue
+          for (let t = 0; t < b.length; t += 3) {
+            if (b[t] === idx) continue
+            const dy = (b[t + 1] - lat) * M
+            const dx = (b[t + 2] - lon) * M * Math.cos((lat * Math.PI) / 180)
+            if (Math.hypot(dx, dy) < FRAG_M) return true
+          }
+        }
+    }
+    return false
+  }
+  return lines.filter((l, idx) => lenM(l.path) >= FRAG_M || near(idx, l))
+}
+
 // bbox [s, w, n, e]; lines [{ depth, path: [[lat, lon]] }]; water: anelli [[lat, lon]] (mare)
 function buildFineGrid({ bbox, lines, water }) {
   const [s, wLon, n, e] = bbox
@@ -377,69 +487,92 @@ function buildFineGrid({ bbox, lines, water }) {
   const sea = new Uint8Array(w * h)
   for (let i = 0; i < sea.length; i++) sea[i] = px[i * 4 + 3] > 127 ? 1 : 0
 
+  lines = dropFragments(lines)
   // Livelli: 0 = riva, poi le profondità delle isobate presenti
   const levels = [0, ...[...new Set(lines.map((l) => l.depth))].sort((a, b) => a - b)]
   const byLevel = levels.map(() => [])
   for (const line of lines) byLevel[levels.indexOf(line.depth)].push(line.path)
   const INF = 1e9
   const n2 = w * h
-  // Isobate: segmenti tracciati cella per cella
-  const mark = (field, x0, y0, x1, y1) => {
-    const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 2))
-    for (let k = 0; k <= steps; k++) {
-      const x = Math.floor(x0 + ((x1 - x0) * k) / steps)
-      const y = Math.floor(y0 + ((y1 - y0) * k) / steps)
-      if (x >= 0 && y >= 0 && x < w && y < h) field[y * w + x] = 0
-    }
-  }
   // Celle toccate da un'isobata (qualsiasi livello): per l'area del rilievo
   const onLine = new Uint8Array(n2)
-  // Campo delle distanze di un livello (0 = riva: le celle di terra)
-  const fieldOf = (k, field) => {
-    field.fill(INF)
+  // Celle di partenza di un livello (riva: la terra), per nearestSeed
+  // Oltre questa distanza (celle, ~1 km) un livello non conta per la cella
+  const REACH = 90
+  const seedsOf = (k, out) => {
+    out.fill(-1)
     if (k === 0) {
-      for (let i = 0; i < n2; i++) if (!sea[i]) field[i] = 0
-    } else {
-      for (const path of byLevel[k]) {
-        for (let q = 1; q < path.length; q++) {
-          const [x0, y0] = toPx(path[q - 1][0], path[q - 1][1])
-          const [x1, y1] = toPx(path[q][0], path[q][1])
-          mark(field, x0, y0, x1, y1)
+      for (let i = 0; i < n2; i++) if (!sea[i]) out[i] = i
+      return [0, 0, w - 1, h - 1]
+    }
+    let mx0 = w
+    let my0 = h
+    let mx1 = -1
+    let my1 = -1
+    for (const path of byLevel[k]) {
+      for (let q = 1; q < path.length; q++) {
+        const [x0, y0] = toPx(path[q - 1][0], path[q - 1][1])
+        const [x1, y1] = toPx(path[q][0], path[q][1])
+        const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 2))
+        for (let m = 0; m <= steps; m++) {
+          const x = Math.floor(x0 + ((x1 - x0) * m) / steps)
+          const y = Math.floor(y0 + ((y1 - y0) * m) / steps)
+          if (x >= 0 && y >= 0 && x < w && y < h) {
+            out[y * w + x] = y * w + x
+            onLine[y * w + x] = 1
+            if (x < mx0) mx0 = x
+            if (x > mx1) mx1 = x
+            if (y < my0) my0 = y
+            if (y > my1) my1 = y
+          }
         }
       }
-      for (let i = 0; i < n2; i++) if (field[i] === 0) onLine[i] = 1
     }
-    chamfer(field, w, h)
-    return field
+    if (mx1 < 0) return null
+    return [Math.max(0, mx0 - REACH), Math.max(0, my0 - REACH), Math.min(w - 1, mx1 + REACH), Math.min(h - 1, my1 + REACH)]
   }
   // Un livello alla volta (con le Baleari, un'isobata ogni metro, i campi
-  // tutti insieme sarebbero decine di MB): per ogni cella si tengono il
-  // livello più vicino e le distanze dai due livelli accanto
-
-  const bestK = new Int16Array(n2)
-  const best = new Float32Array(n2).fill(INF)
-  const up = new Float32Array(n2).fill(INF)
-  const down = new Float32Array(n2).fill(INF)
-  let prev = null
-  let cur = fieldOf(0, new Float32Array(n2))
-  let next = levels.length > 1 ? fieldOf(1, new Float32Array(n2)) : null
-  let spare = new Float32Array(n2)
+  // tutti insieme sarebbero decine di MB). Per ogni cella si tengono i TOP
+  // livelli più vicini, riva compresa, con il punto più vicino di ciascuno;
+  // poi si interpola tra il più vicino e il primo che sta DALL'ALTRA PARTE
+  // della cella. Prima si prendevano i livelli accanto (5 → 4 o 6) anche se
+  // erano dalla stessa parte: tra la riva e l'isobata dei 5 m veniva 5,5 m
+  // invece di salire verso la riva (Finale, 14/11/2026)
+  const TOP = 4
+  // La riva si tiene sempre a parte: è il riferimento quando le isobate
+  // vicine stanno tutte dalla stessa parte
+  const shoreS = new Int32Array(n2).fill(-1)
+  const shoreD = new Float32Array(n2).fill(INF)
+  const topK = new Int16Array(n2 * TOP).fill(-1)
+  const topS = new Int32Array(n2 * TOP).fill(-1)
+  const topD = new Float32Array(n2 * TOP).fill(INF)
+  const seed = new Int32Array(n2)
+  const dist2 = new Float32Array(n2)
   for (let k = 0; k < levels.length; k++) {
-    for (let i = 0; i < n2; i++) {
-      const d = cur[i]
-      if (d < best[i] || k === 0) {
-        best[i] = d
-        bestK[i] = k
-        up[i] = prev ? prev[i] : INF
-        down[i] = next ? next[i] : INF
-      }
+    const box = seedsOf(k, seed)
+    if (!box) continue
+    nearestSeed(seed, dist2, w, h, box)
+    if (k === 0) {
+      shoreS.set(seed)
+      shoreD.set(dist2)
     }
-    // Finestra di tre campi che scorre: il più vecchio si riusa
-    const old = prev
-    prev = cur
-    cur = next
-    next = k + 2 < levels.length ? fieldOf(k + 2, old || spare) : null
-    if (!old) spare = null
+    for (let y = box[1]; y <= box[3]; y++) for (let i = y * w + box[0]; i <= y * w + box[2]; i++) {
+      if (!sea[i] || seed[i] < 0) continue
+      const d = dist2[i]
+      if (d > REACH * REACH) continue
+      const o = i * TOP
+      if (d >= topD[o + TOP - 1]) continue
+      let t = TOP - 1
+      while (t > 0 && topD[o + t - 1] > d) {
+        topD[o + t] = topD[o + t - 1]
+        topK[o + t] = topK[o + t - 1]
+        topS[o + t] = topS[o + t - 1]
+        t--
+      }
+      topD[o + t] = d
+      topK[o + t] = k
+      topS[o + t] = seed[i]
+    }
   }
   // Area del rilievo: isobate e riva, con gli spazi tra loro riempiti
   // (chiusura morfologica di raggio SURVEY_GAP: dilatazione poi erosione), ma
@@ -470,19 +603,45 @@ function buildFineGrid({ bbox, lines, water }) {
   const depth = new Float32Array(n2).fill(NaN)
   for (let i = 0; i < n2; i++) {
     if (!sea[i] || !covered[i]) continue
-    // Livello più vicino, poi il più vicino tra i due adiacenti
-    const k1 = bestK[i]
-    const d1 = best[i]
-    if (d1 === 0) {
+    // Il livello più vicino e il primo dall'altra parte della cella
+    const o = i * TOP
+    const k1 = topK[o]
+    if (k1 < 0) continue
+    if (topD[o] === 0) {
       depth[i] = levels[k1]
       continue
     }
-    if (up[i] >= INF && down[i] >= INF) {
+    const cx = i % w
+    const cy = (i - cx) / w
+    const ax = (topS[o] % w) - cx
+    const ay = Math.floor(topS[o] / w) - cy
+    const la = Math.hypot(ax, ay)
+    // Dall'altra parte: angolo tra le due direzioni oltre ~110°
+    const opposite = (s2) => {
+      const bx = (s2 % w) - cx
+      const by = Math.floor(s2 / w) - cy
+      return ax * bx + ay * by < -0.35 * la * Math.hypot(bx, by)
+    }
+    let k2 = -1
+    let d2sq = INF
+    for (let t = 1; t < TOP && topK[o + t] >= 0; t++) {
+      if (opposite(topS[o + t])) {
+        k2 = topK[o + t]
+        d2sq = topD[o + t]
+        break
+      }
+    }
+    if (k2 < 0 && k1 !== 0 && shoreS[i] >= 0 && opposite(shoreS[i])) {
+      k2 = 0
+      d2sq = shoreD[i]
+    }
+    if (k2 < 0) {
+      // Nessun livello dall'altra parte: oltre l'ultima linea, si resta al suo valore
       depth[i] = levels[k1]
       continue
     }
-    const k2 = up[i] <= down[i] ? k1 - 1 : k1 + 1
-    const d2 = k2 < k1 ? up[i] : down[i]
+    const d1 = Math.sqrt(topD[o])
+    const d2 = Math.sqrt(d2sq)
     depth[i] = levels[k1] + ((levels[k2] - levels[k1]) * d1) / (d1 + d2)
   }
   // Contorno esatto dell'area con la profondità di dettaglio (lat, lon): lì e
