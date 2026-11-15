@@ -8,6 +8,7 @@ import { EMODNET_WMS_URL, EMODNET_DEPTH_LAYER, isobathSld } from '../../lib/isob
 import { SEAGRASS_WMS_URL, SEAGRASS_LAYER, seagrassSld } from '../../lib/seagrass.js'
 import { DepthZoneLayer, IsobathLayer } from '../../lib/isobathLayer.js'
 import { FineDepthZoneLayer } from '../../lib/fineDepthZones.js'
+import SearchBox from './SearchBox.jsx'
 import { ShomReliefLayer } from '../../lib/shomRelief.js'
 import { HdIsobathLayer } from '../../lib/hdIsobathLayer.js'
 import { LIGURIA_ISOBATH_SOURCE } from '../../lib/liguriaIsobaths.js'
@@ -47,6 +48,7 @@ import {
   Crosshair,
   Hand,
   Layers,
+  Search,
   LifeBuoy,
   Moon,
   Navigation2,
@@ -307,6 +309,7 @@ export default function MapView({
   })
 
   const [mapReady, setMapReady] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   const [meteoPoint, setMeteoPoint] = useState(null)
   const [waypointPopupId, setWaypointPopupId] = useState(null)
 
@@ -986,6 +989,31 @@ export default function MapView({
     trail.setLatLngs(anchorTrail.map((p) => [p[0], p[1]]))
   }, [anchorWatch, anchorTrail, anchorOut, mapReady])
 
+  // === Ricerca: la carta va sul risultato e lo segna con una spilla (toccala per toglierla) ===
+  const searchPin = useRef(null)
+  const pickPlace = (r) => {
+    const map = mapRef.current
+    setSearchOpen(false)
+    if (!map) return
+    setFollow(false)
+    map.setView([r.lat, r.lon], Math.max(map.getZoom(), r.kind === 'place' ? 14 : 15), { animate: false })
+    if (searchPin.current) map.removeLayer(searchPin.current)
+    const icon = L.divIcon({
+      className: '',
+      html: '<svg width="30" height="40" viewBox="0 0 30 40"><path d="M15 39C15 39 28 23 28 14A13 13 0 0 0 2 14C2 23 15 39 15 39Z" fill="#FF8A00" stroke="#fff" stroke-width="2"/><circle cx="15" cy="14" r="5" fill="#fff"/></svg>',
+      iconSize: [30, 40],
+      iconAnchor: [15, 39],
+    })
+    const pin = L.marker([r.lat, r.lon], { icon, zIndexOffset: 1500, title: r.name })
+      .bindTooltip(r.name, { direction: 'top', offset: [0, -36], permanent: true, className: 'search-pin-label' })
+      .addTo(map)
+    pin.on('click', () => {
+      map.removeLayer(pin)
+      if (searchPin.current === pin) searchPin.current = null
+    })
+    searchPin.current = pin
+  }
+
   // === MOB marker ===
   useEffect(() => {
     if (!mapReady) return
@@ -1631,6 +1659,8 @@ export default function MapView({
         )}
       </div>
 
+      {searchOpen && <SearchBox onPick={pickPlace} onClose={() => setSearchOpen(false)} />}
+
       {/* Top-right controls; sotto, le linguette dei pannelli (non si sovrappongono) */}
       <div className="absolute right-0 top-3 z-[1000] flex flex-col items-end gap-2">
         {/* MOB in cima: stesso stile dei pulsanti, ma rosso pieno e più alto */}
@@ -1646,6 +1676,9 @@ export default function MapView({
           <span className="text-[10px] font-extrabold leading-none tracking-wider">MOB</span>
         </button>
         <div className="mr-3 flex flex-col gap-2">
+        <MapButton title="Cerca località o coordinate" active={searchOpen} onClick={() => setSearchOpen(!searchOpen)}>
+          <Search size={18} />
+        </MapButton>
         <MapButton title="Mani bagnate: strumenti giganti" onClick={() => useAppStore.getState().setWetOn(true)}>
           <Hand size={18} />
         </MapButton>
