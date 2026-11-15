@@ -188,3 +188,83 @@ export async function seaPoint(lat, lon) {
   return { ...toLL(back(near)), via }
 }
 const toLL = ([lat, lon]) => ({ lat, lon })
+
+// Gradi [primi [secondi]] → gradi decimali, o null
+function dms(parts) {
+  if (!parts.length || parts.length > 3) return null
+  const [d, m = '0', sec = '0'] = parts
+  if (Number(m) >= 60 || Number(sec) >= 60 || (parts.length > 1 && !/^\d+$/.test(d))) return null
+  return Number(d) + Number(m) / 60 + Number(sec) / 3600
+}
+
+/**
+ * Zona da un avviso ai naviganti o da un'ordinanza: tre o più punti, con le
+ * lettere N/E (prima o dopo i numeri) o separati da punto e virgola.
+ * Le parole prima del primo numero diventano il nome.
+ * Esempio: "Esercitazione 41°10,0'N 013°30,0'E 41°12'N 13°35'E 41°08'N 13°36'E"
+ * → { name: 'Esercitazione', points: [[lat, lon], …] }, o null.
+ */
+export function parseZone(text) {
+  const raw = String(text || '')
+  const name = raw
+    .split(/[\d°]/)[0]
+    .replace(/[^\p{L}\s'’-]/gu, ' ')
+    .split(/\s+/)
+    .filter((w) => w && !/^(n|s|e|w|o|p|pt|punto|punti|lat|long|lon|latitudine|longitudine|dal|da|tra)$/i.test(w))
+    .join(' ')
+  let s = raw.toUpperCase().replace(/[°º˚'’′"”″]/g, ' ')
+  if (!s.includes('.')) s = s.replace(/(\d),(\d)/g, '$1.$2')
+  // Etichette dei vertici ("1)", "punto 2", "P3") e parole: restano numeri e lettere N S E W O isolate
+  s = s.replace(/\b\d{1,2}\)/g, ' ').replace(/\b(PUNTO|PUNTI|PT|P)\.?\s*\d{1,2}\b(?!\.)(?!\s+\d+\s+[NSEWO]\b)/g, ' ')
+  s = s.replace(/[A-Z]+/g, (w) => (/^[NSEWO]$/.test(w) ? ` ${w} ` : ' '))
+
+  let points = null
+  const tokens = s.match(/[NSEWO]|\d+(?:\.\d+)?/g) || []
+  if (tokens.some((t) => /[NSEWO]/.test(t))) {
+    // Gruppi di numeri con la loro lettera
+    const groups = []
+    const before = /[NSEWO]/.test(tokens[0])
+    let cur = before ? null : []
+    for (const t of tokens) {
+      const letter = /[NSEWO]/.test(t)
+      if (before) {
+        if (letter) {
+          if (cur?.nums.length) groups.push(cur)
+          cur = { h: t, nums: [] }
+        } else cur?.nums.push(t)
+      } else if (letter) {
+        if (cur.length) groups.push({ h: t, nums: cur })
+        cur = []
+      } else cur.push(t)
+    }
+    if (before && cur?.nums.length) groups.push(cur)
+    if (groups.length >= 6 && groups.length % 2 === 0) {
+      points = []
+      for (let i = 0; i < groups.length; i += 2) {
+        let [a, b] = [groups[i], groups[i + 1]]
+        if ('EWO'.includes(a.h)) [a, b] = [b, a]
+        if (!'NS'.includes(a.h) || !'EWO'.includes(b.h)) return null
+        let lat = dms(a.nums)
+        let lon = dms(b.nums)
+        if (lat == null || lon == null) return null
+        if (a.h === 'S') lat = -lat
+        if (b.h !== 'E') lon = -lon
+        points.push([lat, lon])
+      }
+    }
+  } else {
+    // Senza lettere: un punto per pezzo, separati da punto e virgola o a capo
+    const chunks = raw.split(/[;\n]/).map((c) => c.trim()).filter((c) => /\d/.test(c))
+    if (chunks.length >= 3) {
+      points = chunks.map((c) => parseCoords(c.replace(/^[^\d+-]*/, '')))
+      if (points.some((p) => !p)) return null
+      points = points.map((p) => [p.lat, p.lon])
+    }
+  }
+  if (!points || points.length < 3) return null
+  if (points.some(([la, lo]) => Math.abs(la) > 90 || Math.abs(lo) > 180)) return null
+  // Il primo punto ripetuto in fondo per chiudere la zona
+  const [f, l] = [points[0], points[points.length - 1]]
+  if (points.length > 3 && f[0] === l[0] && f[1] === l[1]) points = points.slice(0, -1)
+  return { name, points }
+}

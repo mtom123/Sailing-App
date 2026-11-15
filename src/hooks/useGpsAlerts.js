@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { bandText } from '../lib/coastBand.js'
 import { areaLookup, protectedAreas } from '../lib/protectedAreas.js'
 import useCoastBandAt from './useCoastBandAt.js'
+import { useAppStore } from '../store/useAppStore.js'
 
 /*
  * Avvisi sulla posizione GPS:
@@ -20,6 +21,7 @@ export default function useGpsAlerts(geo) {
 
   // Aree protette e militari: ricontrolla ogni ~50 m
   const [zone, setZone] = useState(null)
+  const userZones = useAppStore((s) => s.userZones)
   const key = ok ? `${(geo.lat / 0.0005).toFixed(0)},${(geo.lon / 0.0005).toFixed(0)}` : null
   useEffect(() => {
     if (!key) {
@@ -40,7 +42,7 @@ export default function useGpsAlerts(geo) {
       alive = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- posizione arrotondata in key
-  }, [key])
+  }, [key, userZones])
 
   // Fermi dentro la fascia
   const slow = geo.sog != null && geo.sog < 1

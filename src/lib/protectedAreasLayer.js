@@ -77,7 +77,8 @@ export const ProtectedAreasLayer = L.Layer.extend({
       return
     }
     const b = map.getBounds().pad(0.2)
-    const areas = await protectedAreas([b.getSouth(), b.getWest(), b.getNorth(), b.getEast()])
+    // Le zone inserite a mano le disegna MapView, con la scheda per toglierle
+    const areas = (await protectedAreas([b.getSouth(), b.getWest(), b.getNorth(), b.getEast()])).filter((a) => !a.user)
     if (gen !== this._gen || !this._map) return
     this._group.clearLayers()
     for (const area of [...areas].sort((x, y) => ORDER[x.kind] - ORDER[y.kind])) {

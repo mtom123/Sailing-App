@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { formatDeg, metersToNm, haversine, bearing, cardinal } from '../../lib/geo.js'
+import { formatCoord, formatDeg, metersToNm, haversine, bearing, cardinal } from '../../lib/geo.js'
 import { useAppStore } from '../../store/useAppStore.js'
 import { logStep, failStep, hideLoadingScreen } from '../../lib/debugLogger.js'
 import { EMODNET_WMS_URL, EMODNET_DEPTH_LAYER, isobathSld } from '../../lib/isobaths.js'
@@ -996,6 +996,13 @@ export default function MapView({
     const map = mapRef.current
     setSearchOpen(false)
     if (!map) return
+    // Zona da un avviso ai naviganti: si salva e si inquadra
+    if (picked.kind === 'zone') {
+      useAppStore.getState().addUserZone({ name: picked.zoneName, points: picked.points })
+      setFollow(false)
+      map.fitBounds(L.latLngBounds(picked.points), { padding: [60, 60], maxZoom: 15, animate: false })
+      return
+    }
     // Paesi e capi cadono a terra: il punto va sul mare accanto (porto o riva)
     let r = picked
     if (picked.kind === 'place') {
@@ -1485,6 +1492,51 @@ export default function MapView({
     if (layers.ordinances && !map.hasLayer(layer)) map.addLayer(layer)
     if (!layers.ordinances && map.hasLayer(layer)) map.removeLayer(layer)
   }, [layers.ordinances, mapReady, route.editing])
+
+  // === Zone vietate inserite a mano dalla lente (avvisi ai naviganti) ===
+  const userZones = useAppStore((s) => s.userZones)
+  const removeUserZone = useAppStore((s) => s.removeUserZone)
+  useEffect(() => {
+    if (!mapReady) return undefined
+    const map = mapRef.current
+    // SVG, non canvas (memoria di Safari su iPad)
+    const renderer = L.svg({ padding: 0.2 })
+    const group = L.layerGroup().addTo(map)
+    for (const z of userZones) {
+      const poly = L.polygon(z.points, {
+        renderer,
+        color: '#FF5252',
+        weight: 2.5,
+        dashArray: '8 5',
+        fillColor: '#FF5252',
+        fillOpacity: 0.16,
+        interactive: !route.editing,
+      }).addTo(group)
+      poly.bindTooltip(`⚠ ${z.name || 'Zona da avviso'}`, { permanent: true, direction: 'center', className: 'user-zone-label', interactive: false })
+      if (route.editing) continue
+      poly.bindPopup(() => {
+        const el = document.createElement('div')
+        el.style.cssText = 'min-width:190px;max-width:260px'
+        const date = new Date(z.created).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
+        const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+        el.innerHTML = `<div style="font-weight:600;color:var(--color-paper);font-size:calc(12px*var(--fs))">${esc(z.name || 'Zona da avviso')}</div>
+          <div style="font-size:calc(11px*var(--fs));color:var(--color-fog);margin:2px 0 4px">Inserita da te il ${date} · vale come zona vietata per allarme e rotte</div>
+          <div style="font-size:calc(11px*var(--fs));color:var(--color-fog);font-family:ui-monospace,monospace;line-height:1.35">${z.points
+            .map(([la, lo], i) => `${String.fromCharCode(65 + i)}  ${formatCoord(la, true)}  ${formatCoord(lo, false)}`)
+            .join('<br>')}</div>`
+        const btn = document.createElement('button')
+        btn.textContent = 'Togli la zona'
+        btn.style.cssText = 'margin-top:8px;padding:6px 10px;border:1px solid #FF5252;border-radius:6px;color:#FF5252;background:transparent;font-weight:700;font-size:calc(11px*var(--fs))'
+        btn.onclick = () => {
+          poly.closePopup()
+          removeUserZone(z.id)
+        }
+        el.appendChild(btn)
+        return el
+      })
+    }
+    return () => group.remove()
+  }, [userZones, route.editing, mapReady, removeUserZone])
 
   const [rulerOn, setRulerOn] = useState(false)
   const [areaOn, setAreaOn] = useState(false) // rettangolo per la zona offline

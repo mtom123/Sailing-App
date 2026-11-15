@@ -177,6 +177,18 @@ body,
 .leaflet-tooltip.ruler-label::before {
   display: none;
 }
+.leaflet-tooltip.user-zone-label {
+  background: rgb(var(--rgb-abyss) / 0.85);
+  color: #ff8a80;
+  border: 1.5px solid #ff5252;
+  border-radius: 6px;
+  box-shadow: none;
+  font: 700 calc(11px * var(--fs)) var(--font-mono);
+  padding: 1px 6px;
+}
+.leaflet-tooltip.user-zone-label::before {
+  display: none;
+}
 /* Crediti: chiusi in "ⓘ Fonti", aperti leggibili su più righe */
 .leaflet-control-attribution {
   cursor: pointer;

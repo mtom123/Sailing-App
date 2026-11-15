@@ -599,7 +599,9 @@ export default function App() {
                     {gpsAlerts.zone.name}
                   </b>
                   <span className="text-[calc(10px*var(--fs))] opacity-70">
-                    {gpsAlerts.zone.kind === 'military'
+                    {gpsAlerts.zone.user
+                      ? 'Zona inserita da te'
+                      : gpsAlerts.zone.kind === 'military'
                       ? 'Verifica gli avvisi ai naviganti'
                       : gpsAlerts.zone.kind === 'restricted'
                       ? 'Transito libero'

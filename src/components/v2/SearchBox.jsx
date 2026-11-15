@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Anchor, Bookmark, Crosshair, MapPin, Search, X } from 'lucide-react'
+import { Anchor, Bookmark, Crosshair, MapPin, Search, TriangleAlert, X } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore.js'
-import { parseCoords, searchLocal, searchOnline } from '../../lib/placeSearch.js'
+import { parseCoords, parseZone, searchLocal, searchOnline } from '../../lib/placeSearch.js'
 import { formatCoord } from '../../lib/geo.js'
 
 /*
  * Lente sulla carta: coordinate, i miei marker e gli ancoraggi subito (anche
  * senza rete), luoghi OpenStreetMap con CERCA. Toccando un risultato la carta
- * ci va e lo segna con una spilla.
+ * ci va e lo segna con una spilla. Tre o più punti (avviso ai naviganti,
+ * ordinanza) diventano una zona vietata.
  */
 
-const ICON = { coords: Crosshair, mark: Bookmark, anchorage: Anchor, place: MapPin }
+const ICON = { coords: Crosshair, zone: TriangleAlert, mark: Bookmark, anchorage: Anchor, place: MapPin }
 
 export default function SearchBox({ onPick, onClose }) {
   const [text, setText] = useState('')
@@ -24,8 +25,13 @@ export default function SearchBox({ onPick, onClose }) {
   }, [])
 
   const coords = useMemo(() => parseCoords(text), [text])
-  const local = useMemo(() => (coords ? [] : searchLocal(text, marks)), [text, coords, marks])
+  const zone = useMemo(() => (coords ? null : parseZone(text)), [text, coords])
+  const fixed = coords || zone
+  const local = useMemo(() => (fixed ? [] : searchLocal(text, marks)), [text, fixed, marks])
   const results = [
+    ...(zone
+      ? [{ ...zone, zoneName: zone.name, lat: zone.points[0][0], lon: zone.points[0][1], name: `Zona vietata da ${zone.points.length} punti${zone.name ? ` · ${zone.name}` : ''}`, detail: 'Tocca per disegnarla: vale per allarme GPS e rotte', kind: 'zone' }]
+      : []),
     ...(coords ? [{ ...coords, name: `${formatCoord(coords.lat, true)}  ${formatCoord(coords.lon, false)}`, detail: 'Coordinate', kind: 'coords' }] : []),
     ...local,
     ...(online.q === text.trim() ? online.list : []),
@@ -33,7 +39,7 @@ export default function SearchBox({ onPick, onClose }) {
 
   const searchNet = async () => {
     const q = text.trim()
-    if (q.length < 2 || coords) return
+    if (q.length < 2 || fixed) return
     setOnline({ q, list: [], state: 'loading' })
     try {
       const list = await searchOnline(q, view?.bounds)
@@ -58,7 +64,7 @@ export default function SearchBox({ onPick, onClose }) {
         className="flex items-center gap-2"
         onSubmit={(e) => {
           e.preventDefault()
-          if (coords) onPick(results[0])
+          if (fixed) onPick(results[0])
           else searchNet()
         }}
       >
@@ -67,7 +73,7 @@ export default function SearchBox({ onPick, onClose }) {
           ref={inputRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Località, marker o coordinate (44°10,5'N 8°19,6'E)"
+          placeholder="Località, marker, coordinate o i punti di un avviso"
           className="min-w-0 flex-1 bg-transparent py-2 text-[calc(14px*var(--fs))] text-paper outline-none placeholder:text-fog"
           enterKeyHint="search"
           autoCorrect="off"
@@ -75,7 +81,7 @@ export default function SearchBox({ onPick, onClose }) {
           spellCheck={false}
         />
         <button type="submit" className="touch flex-none rounded-md border border-phos bg-phos/15 px-3 py-2 text-[calc(11px*var(--fs))] font-bold tracking-widest text-phos">
-          {coords ? 'VAI' : 'CERCA'}
+          {fixed ? 'VAI' : 'CERCA'}
         </button>
         <button type="button" onClick={onClose} className="touch flex-none p-2 text-fog" aria-label="Chiudi ricerca">
           <X size={18} />
@@ -103,8 +109,10 @@ export default function SearchBox({ onPick, onClose }) {
           {status && <div className="px-2 py-1.5 text-[calc(11px*var(--fs))] text-fog">{status}</div>}
         </div>
       )}
-      {!coords && text.trim().length >= 2 && online.q !== text.trim() && (
-        <div className="px-1 pt-1 text-[calc(10px*var(--fs))] text-fog">CERCA per i luoghi online (porti, paesi, capi, baie)</div>
+      {!fixed && text.trim().length >= 2 && online.q !== text.trim() && (
+        <div className="px-1 pt-1 text-[calc(10px*var(--fs))] text-fog">
+          CERCA per i luoghi online (porti, paesi, capi, baie). Una zona: scrivi i punti uno dopo l'altro, es. 44 10,5 N 8 19,6 E 44 11 N 8 20 E 44 10 N 8 21 E
+        </div>
       )}
     </div>
   )

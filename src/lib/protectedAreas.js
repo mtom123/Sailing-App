@@ -149,10 +149,35 @@ function loadAll() {
   return allPromise
 }
 
-/** Aree protette che toccano il riquadro [s, w, n, e] (gradi). */
+/*
+ * Zone vietate inserite a mano (avvisi ai naviganti, ordinanze lette al VHF):
+ * valgono come le zone A, per l'allarme GPS e il controllo e l'aggiramento
+ * della rotta. Le passa lo store (useAppStore.js) a ogni modifica.
+ */
+let userAreas = []
+export let userZonesVersion = 0
+export function setUserZones(zones) {
+  userZonesVersion++
+  userAreas = (zones || [])
+    .filter((z) => z.points?.length >= 3)
+    .map((z) => {
+      const lats = z.points.map((p) => p[0])
+      const lons = z.points.map((p) => p[1])
+      return {
+        id: `user/${z.id}`,
+        kind: 'nogo',
+        user: true,
+        name: z.name || 'Zona da avviso',
+        rings: [[...z.points, z.points[0]]],
+        bbox: [Math.min(...lats), Math.min(...lons), Math.max(...lats), Math.max(...lons)],
+      }
+    })
+}
+
+/** Aree protette che toccano il riquadro [s, w, n, e] (gradi), con le zone inserite a mano */
 export async function protectedAreas([s, w, n, e]) {
   const all = await loadAll()
-  return all.filter((a) => a.bbox[0] <= n && a.bbox[2] >= s && a.bbox[1] <= e && a.bbox[3] >= w)
+  return [...all, ...userAreas].filter((a) => a.bbox[0] <= n && a.bbox[2] >= s && a.bbox[1] <= e && a.bbox[3] >= w)
 }
 
 /** Punto dentro l'area (riquadro, poi anelli pari/dispari)? */

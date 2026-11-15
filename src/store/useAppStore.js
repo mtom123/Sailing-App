@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import { BAND_DEFAULTS } from '../lib/coastBand.js'
 import { EMPTY_COURSE } from '../lib/race.js'
 import { DEFAULT_DEPTH_ZONES } from '../lib/isobaths.js'
+import { setUserZones } from '../lib/protectedAreas.js'
 
 // Traccia all'ancora: chiave a parte (si aggiorna spesso, lo stato principale è grande)
 const TRAIL_KEY = 'timone.anchorTrail'
@@ -235,6 +236,12 @@ export const useAppStore = create(
           activeDrawer: 'route',
         })),
 
+      // Zone vietate inserite a mano dalla lente (avvisi ai naviganti):
+      // [{ id, name, points: [[lat, lon]], created }]
+      userZones: [],
+      addUserZone: (z) => set((s) => ({ userZones: [...s.userZones, { id: `z${Date.now().toString(36)}`, created: Date.now(), ...z }] })),
+      removeUserZone: (id) => set((s) => ({ userZones: s.userZones.filter((z) => z.id !== id) })),
+
       // === Alarms ===
       windAlarm: { on: false, threshold: 30 },
       setWindAlarm: (windAlarm) =>
@@ -297,7 +304,14 @@ export const useAppStore = create(
         wetAuto: s.wetAuto,
         anchorWatch: s.anchorWatch,
         depthZones: s.depthZones,
+        userZones: s.userZones,
       }),
     }
   )
 )
+
+// Le zone inserite a mano valgono per allarmi e rotte (protectedAreas.js)
+setUserZones(useAppStore.getState().userZones)
+useAppStore.subscribe((s, prev) => {
+  if (s.userZones !== prev.userZones) setUserZones(s.userZones)
+})

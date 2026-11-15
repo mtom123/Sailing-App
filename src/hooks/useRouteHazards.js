@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { checkLeg } from '../lib/routeHazards.js'
+import { userZonesVersion } from '../lib/protectedAreas.js'
+import { useAppStore } from '../store/useAppStore.js'
 
 /*
  * Controllo della rotta: per ogni tratta, terra, zone vietate, fondali sotto minDepth
@@ -12,11 +14,13 @@ import { checkLeg } from '../lib/routeHazards.js'
 const DEBOUNCE_MS = 500
 const cache = new Map() // "lat,lon>lat,lon@minDepth" -> Promise<risultato>
 
-const legKey = (a, b, minDepth) => `${a.lat.toFixed(6)},${a.lon.toFixed(6)}>${b.lat.toFixed(6)},${b.lon.toFixed(6)}@${minDepth}`
+// Con la versione delle zone inserite a mano: aggiunta o tolta una, si ricontrolla
+const legKey = (a, b, minDepth) => `${a.lat.toFixed(6)},${a.lon.toFixed(6)}>${b.lat.toFixed(6)},${b.lon.toFixed(6)}@${minDepth}#${userZonesVersion}`
 
 export default function useRouteHazards(waypoints, minDepth) {
   const [state, setState] = useState({ legs: [], checking: false })
   const reqRef = useRef(0)
+  const userZones = useAppStore((s) => s.userZones)
 
   useEffect(() => {
     const req = ++reqRef.current
@@ -44,7 +48,8 @@ export default function useRouteHazards(waypoints, minDepth) {
       }
     }, DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [waypoints, minDepth])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- userZones: la versione è in legKey
+  }, [waypoints, minDepth, userZones])
 
   return state
 }
