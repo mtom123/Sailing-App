@@ -9,7 +9,7 @@ import { clearStarts, readStarts } from '../lib/startLog.js'
 import { lastBackupAt, makeBackup, markBackupDone, readBackup, restoreBackup } from '../lib/backup.js'
 import { shareFile } from '../lib/route.js'
 import { DEFAULT_DEPTH_ZONES } from '../lib/isobaths.js'
-import { ANCHOR_TYPES, chainKgPerM } from '../lib/anchorPhysics.js'
+import { ANCHOR_TYPES, chainKgPerM, SNUBBER_TYPES } from '../lib/anchorPhysics.js'
 
 /*
  * Foglio impostazioni: tutto ciò che si configura una volta e poi si dimentica
@@ -627,6 +627,36 @@ export default function SettingsSheet({
                   <span>{label}</span>
                 </label>
               ))}
+            </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[calc(10px*var(--fs))] text-fog">
+              <span>Cima gancio–bitte</span>
+              <select
+                value={boat.snubberType ?? 'polyester'}
+                onChange={(e) => setBoat({ snubberType: e.target.value })}
+                className="rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-paper outline-none focus:border-phos"
+              >
+                {SNUBBER_TYPES.map((t) => (
+                  <option key={t.key} value={t.key}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+              {(boat.snubberType ?? 'polyester') !== 'none' && (
+                <label className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    value={boat.snubberM ?? 4}
+                    onChange={(e) => setBoat({ snubberM: Number(e.target.value) })}
+                    className="w-14 rounded-md border border-line bg-surface px-1.5 py-1.5 text-center text-xs text-paper outline-none focus:border-phos"
+                  />
+                  <span>m (un ramo della Y)</span>
+                </label>
+              )}
+            </div>
+            <div className="pt-1 text-[calc(10px*var(--fs))] text-fog-dim">
+              Cima: dal gancio sulla catena alla bitta, quella che lavora. Più è lunga ed elastica, meno strappi arrivano all'ancora: il nylon a tre legnoli si allunga ~20%, il poliestere di una scotta ~4%.
             </div>
             <div className="pt-1 text-[calc(10px*var(--fs))] text-fog-dim">
               Catena da {boat.chainMm ?? 10} mm: {chainKgPerM(boat.chainMm ?? 10).toFixed(1).replace('.', ',')} kg/m. Pesce: peso della sentinella (0 se non ce l'hai); se è messo lo dici nel pannello Ancora. Musone: altezza del rullo di prua sull'acqua. Superficie al vento: scafo, tuga e albero visti di prua (~12 m² per 12 m).

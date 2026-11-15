@@ -127,6 +127,9 @@ export const useAppStore = create(
         loaM: 12.5,
         kelletKg: 0, // pesce (sentinella) sulla catena
         kelletOn: false, // messo in questo ancoraggio (pannello Ancora)
+        // Cima tra gancio sulla catena e bitte (briglia a Y): lunghezza di un ramo e materiale
+        snubberM: 4,
+        snubberType: 'polyester',
         // Weather routing: 'sail', 'motor' o 'hybrid' (motore sotto motorBelowKn a vela)
         propulsion: 'hybrid',
         motorBelowKn: 4,

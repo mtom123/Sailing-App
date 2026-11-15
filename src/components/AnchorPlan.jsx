@@ -112,6 +112,8 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
       loaM: boat.loaM ?? 12.5,
       kelletKg: boat.kelletOn ? boat.kelletKg ?? 0 : 0,
       waveM,
+      snubberM: boat.snubberM ?? 4,
+      snubberType: boat.snubberType ?? 'polyester',
     }
   }, [depth, gustKn, waveM, bottom, boat])
   // La catena consigliata non dipende da quella calata: la barra parte da lì
@@ -256,10 +258,16 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
             <span className="text-right text-paper">~{Math.round(result.loadKgf)} kg</span>
             <span>Tenuta indicativa</span>
             <span className="text-right text-paper">~{Math.round(result.holdKgf)} kg</span>
+            <span>Strappi sul carico</span>
+            <span className="text-right text-paper">
+              +{Math.round((result.shock.factor - 1) * 100)}%{result.shock.absorbed >= 0.05 ? ` (smorzati ${Math.round(result.shock.absorbed * 100)}%)` : ''}
+            </span>
             {result.holdMaxKn != null && (
               <>
-                <span>L'ancora regge fino a</span>
+                <span>Regge, con margine, fino a</span>
                 <span className="text-right text-paper">~{Math.round(result.holdMaxKn)} kn di raffica</span>
+                <span>Senza margine arerebbe verso</span>
+                <span className="text-right text-paper">~{Math.round(result.dragKn)} kn</span>
               </>
             )}
             <span>Catena consigliata</span>
