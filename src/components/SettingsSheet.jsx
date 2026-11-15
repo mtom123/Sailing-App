@@ -1,4 +1,4 @@
-import { Radio, Ship, Wifi, X, Sailboat, Gauge, Activity, Upload, FileText, Trash, Type, Cable, Layers, Plus, Anchor } from 'lucide-react'
+import { Radio, Ship, Wifi, X, Sailboat, Gauge, Activity, Upload, FileText, Trash, Type, Cable, Layers, Plus, Anchor, Hand } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { useAppStore } from '../store/useAppStore.js'
 import { BOAT_LIBRARY, registerCustomPolar, listAvailablePolars } from '../routing/polarSolver.js'
@@ -831,6 +831,8 @@ export default function SettingsSheet({
             </div>
           </Section>
 
+          <WetSection />
+
           {weatherError && (
             <Section title="Avvisi">
               <div className="text-[calc(10px*var(--fs))] text-warn">{weatherError}</div>
@@ -852,5 +854,38 @@ export default function SettingsSheet({
         </div>
       </div>
     </div>
+  )
+}
+
+// Mani bagnate: apertura automatica sopra la soglia di vento, navigando
+function WetSection() {
+  const wetAuto = useAppStore((s) => s.wetAuto)
+  const setWetAuto = useAppStore((s) => s.setWetAuto)
+  return (
+    <Section title="Mani bagnate" icon={Hand}>
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setWetAuto({ on: !wetAuto.on })}
+          className={`h-7 w-12 flex-none rounded-full border transition-colors ${wetAuto.on ? 'border-phos bg-phos/25' : 'border-line bg-surface'}`}
+        >
+          <span className={`block h-5 w-5 rounded-full transition-transform ${wetAuto.on ? 'translate-x-6 bg-phos' : 'translate-x-0.5 bg-fog'}`} />
+        </button>
+        <span className="flex-1 text-xs text-paper">Apri da sola oltre</span>
+        <input
+          type="number"
+          min="10"
+          max="60"
+          value={wetAuto.threshold}
+          onChange={(e) => setWetAuto({ threshold: Number(e.target.value) || 25 })}
+          className="w-16 rounded-md border border-line bg-surface px-2 py-2 text-center text-sm text-paper outline-none focus:border-phos"
+        />
+        <span className="text-[calc(10px*var(--fs))] text-fog">kn</span>
+      </div>
+      <div className="pt-1.5 text-[calc(10px*var(--fs))] text-fog">
+        Strumenti giganti e MOB enorme, per quando il mare è formato. Si apre sempre dal pulsante con la mano sulla carta; da sola solo navigando
+        (oltre 2 kn) con vento misurato a bordo o raffica prevista oltre la soglia. Se la chiudi non si riapre finché il vento non cala.
+      </div>
+    </Section>
   )
 }

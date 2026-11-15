@@ -4,6 +4,7 @@ import RoutePanel from './components/v2/RoutePanel.jsx'
 import WeatherTimeline from './components/v2/WeatherTimeline.jsx'
 import ConnectivityIndicator from './components/v2/ConnectivityIndicator.jsx'
 import InstrumentPanel from './components/InstrumentPanel.jsx'
+import WetMode from './components/WetMode.jsx'
 import RacePanel from './components/RacePanel.jsx'
 import MarksPanel from './components/MarksPanel.jsx'
 import SightingsPanel from './components/SightingsPanel.jsx'
@@ -191,6 +192,9 @@ export default function App() {
     setRouteOptions,
     raceCourse,
     setRaceCourse,
+    wetOn,
+    setWetOn,
+    wetAuto,
   } = useAppStore()
 
   // Strumenti di bordo (Signal K): GPS della barca al posto di quello
@@ -509,8 +513,45 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- solo ai cambi di stato
   }, [gpsAlarmKey])
 
+  // Mani bagnate da sole sopra la soglia (vento misurato a bordo, se c'è, o
+  // raffica prevista), navigando. Chiuse a mano, non si riaprono finché il vento non
+  // scende 5 kn sotto la soglia
+  const wetWind = boatWind?.tws ?? gustNow
+  const wetDismissed = useRef(false)
+  useEffect(() => {
+    if (!wetAuto.on || wetWind == null) return
+    if (wetWind < wetAuto.threshold - 5) wetDismissed.current = false
+    // Solo in navigazione (oltre 2 kn): all'ancora o in porto la carta resta
+    else if (wetWind >= wetAuto.threshold && (geo.sog ?? 0) >= 2 && !wetDismissed.current && !useAppStore.getState().wetOn) setWetOn(true)
+  }, [wetAuto.on, wetAuto.threshold, wetWind, geo.sog, setWetOn])
+  const closeWet = () => {
+    wetDismissed.current = true
+    setWetOn(false)
+  }
+  const wetAlarm = mob
+    ? null
+    : anchorAlarmActive
+    ? `⊕ ANCORA SCARROCCIA · ${watchDistance.toFixed(0)} m`
+    : windAlarmActive
+    ? `RAFFICA ${Math.round(gustNow)} kn`
+    : null
+
   return (
     <div className="relative flex h-full w-full overflow-hidden bg-abyss text-paper" style={{ minHeight: 0 }}>
+      {wetOn && (
+        <WetMode
+          geo={geo}
+          depthLive={depthLive}
+          boat={boat}
+          liveWind={boatWind?.twd != null ? boatWind : null}
+          forecastWind={weather.wind}
+          nav={route.nav}
+          mob={mob}
+          alarm={wetAlarm}
+          onMob={dropMob}
+          onClose={closeWet}
+        />
+      )}
       {/* LEFT panel (instruments) */}
       {leftPanelOpen && (
         <div className="h-full w-[calc(280px*var(--fs))] min-w-[200px] max-w-[45%] flex-none" style={{ minHeight: 0 }}>

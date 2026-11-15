@@ -252,6 +252,11 @@ export const useAppStore = create(
           saveAnchorTrail(anchorTrail)
           return { anchorTrail }
         }),
+      // Mani bagnate: aperta ora (non salvata) e apertura automatica sopra la soglia
+      wetOn: false,
+      setWetOn: (wetOn) => set({ wetOn }),
+      wetAuto: { on: false, threshold: 25 },
+      setWetAuto: (v) => set((s) => ({ wetAuto: { ...s.wetAuto, ...v } })),
       anchorRadius: 40,
       setAnchorRadius: (anchorRadius) => set({ anchorRadius }),
       // Fasce di profondità colorate (impostazioni): [{ id, name, from, to, color, on }]
@@ -289,6 +294,7 @@ export const useAppStore = create(
         dayTheme: s.dayTheme,
         textScale: s.textScale,
         anchorRadius: s.anchorRadius,
+        wetAuto: s.wetAuto,
         anchorWatch: s.anchorWatch,
         depthZones: s.depthZones,
       }),

@@ -45,6 +45,7 @@ import { OfflineZonesLayer } from '../../lib/offlineZonesLayer.js'
 import {
   Anchor,
   Crosshair,
+  Hand,
   Layers,
   LifeBuoy,
   Moon,
@@ -1645,6 +1646,9 @@ export default function MapView({
           <span className="text-[10px] font-extrabold leading-none tracking-wider">MOB</span>
         </button>
         <div className="mr-3 flex flex-col gap-2">
+        <MapButton title="Mani bagnate: strumenti giganti" onClick={() => useAppStore.getState().setWetOn(true)}>
+          <Hand size={18} />
+        </MapButton>
         <MapButton title="Layer" onClick={() => setActiveDrawer('layers')}>
           <Layers size={18} />
         </MapButton>
