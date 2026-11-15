@@ -41,6 +41,34 @@ export function ensurePane(map, name, zIndex) {
 // Con `lowRes: true` disegna a risoluzione normale anche sugli schermi Retina:
 // per veli di colore e linee sottili il dettaglio doppio non serve e su iPad
 // la memoria dei canvas è poca (zoom veloce col pizzico = app bloccata)
+// Tratteggio obliquo grigio, leggibile su carta chiara e scura
+let hatchTile = null
+function hatchPattern(ctx) {
+  if (!hatchTile) {
+    hatchTile = document.createElement('canvas')
+    hatchTile.width = hatchTile.height = 10
+    const c = hatchTile.getContext('2d')
+    c.strokeStyle = 'rgba(110, 120, 130, 0.55)'
+    c.lineWidth = 1.5
+    c.beginPath()
+    c.moveTo(-2, 12)
+    c.lineTo(12, -2)
+    c.moveTo(-2, 2)
+    c.lineTo(2, -2)
+    c.moveTo(8, 12)
+    c.lineTo(12, 8)
+    c.stroke()
+  }
+  return ctx.createPattern(hatchTile, 'repeat')
+}
+
+// Fascia costiera incerta: toglie i colori sotto e ci mette il tratteggio
+export function addUncertainStrip(group, renderer, rings) {
+  if (!rings?.length) return
+  L.polygon(rings, { renderer, cut: true, stroke: false, interactive: false }).addTo(group)
+  L.polygon(rings, { renderer, hatch: true, stroke: false, interactive: false }).addTo(group)
+}
+
 export const MaskedCanvas = L.Canvas.extend({
   _update() {
     if (!this.options.lowRes) return L.Canvas.prototype._update.call(this)
@@ -60,7 +88,16 @@ export const MaskedCanvas = L.Canvas.extend({
   },
 
   _fillStroke(ctx, layer) {
-    const { mask, cut } = layer.options
+    const { mask, cut, hatch } = layer.options
+    if (hatch) {
+      // Righe oblique "dato incerto"
+      ctx.save()
+      ctx.globalAlpha = 1
+      ctx.fillStyle = hatchPattern(ctx)
+      ctx.fill('nonzero')
+      ctx.restore()
+      return undefined
+    }
     if (!mask && !cut) return L.Canvas.prototype._fillStroke.call(this, ctx, layer)
     ctx.save()
     ctx.globalCompositeOperation = mask ? 'destination-in' : 'destination-out'
@@ -312,6 +349,7 @@ export const IsobathLayer = L.Layer.extend({
           interactive: false,
         }).addTo(this._group)
       }
+      addUncertainStrip(this._group, this._renderer, this._data.uncertainRings)
     }
     this._lines = this._data.lines.map((line) => {
       const shallow = line.depth <= SHALLOW_LIMIT
@@ -407,6 +445,7 @@ export const DepthZoneLayer = IsobathLayer.extend({
         interactive: false,
       }).addTo(this._group)
     }
+    addUncertainStrip(this._group, this._renderer, this._data.uncertainRings)
     this._setMask()
   },
 })

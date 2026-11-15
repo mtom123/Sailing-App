@@ -68,6 +68,7 @@ export function splitOnFrame(ring, width, height) {
 // mare accanto (fino a COAST_GAP celle): le isobate basse tornano vicino alla
 // terra vera (quota > 1,5 m), e la costa OSM taglia il resto
 const COAST_GAP = 3
+const UNCERTAIN_CELLS = 2
 function fillCoastalGaps({ width, height, values }) {
   const out = Float32Array.from(values)
   const unknown = (v) => v > -0.5 && v <= 1.5
@@ -144,6 +145,29 @@ export function buildIsobaths(grid) {
     if (ringsBand.length) bands.push({ color, opacity, rings: ringsBand })
     upper = depth
   }
+  // Fascia costiera incerta: entro UNCERTAIN_CELLS celle (~230 m) da celle di
+  // terra, a 0 m o senza dato. Lì la griglia da ~115 m "spalma" il fondale
+  // verso lo zero (Capo San Donato: 1–2 m per 300 m fuori dal porto): niente
+  // colori di profondità, ma un tratteggio "dato incerto"
+  const near = new Float64Array(width * height)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!(grid.values[y * width + x] > -0.5)) continue
+      for (let dy = -UNCERTAIN_CELLS; dy <= UNCERTAIN_CELLS; dy++) {
+        const yy = y + dy
+        if (yy < 0 || yy >= height) continue
+        for (let dx = -UNCERTAIN_CELLS; dx <= UNCERTAIN_CELLS; dx++) {
+          const xx = x + dx
+          if (xx >= 0 && xx < width && dx * dx + dy * dy <= UNCERTAIN_CELLS * UNCERTAIN_CELLS + 1) near[yy * width + xx] = 1
+        }
+      }
+    }
+  }
+  const uncertainRings = gen
+    .contour(near, 0.5)
+    .coordinates.flat()
+    .map((r) => chaikin(r, true).map(toLatLng))
+
   // Anelli lisci (lat, lon) dell'area meno profonda di `depth` (terra compresa),
   // per le fasce personali: calcolati alla prima richiesta e tenuti
   const smooth = new Map()
@@ -151,5 +175,5 @@ export function buildIsobaths(grid) {
     if (!smooth.has(depth)) smooth.set(depth, rings(depth).map((r) => chaikin(r, true).map(toLatLng)))
     return smooth.get(depth)
   }
-  return { lines, bands, ringsLatLng }
+  return { lines, bands, ringsLatLng, uncertainRings }
 }
