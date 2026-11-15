@@ -6,7 +6,7 @@
  */
 import L from 'leaflet'
 import { prepareDepth } from './depthAt.js'
-import { waterRings } from './waterMask.js'
+import { coastFeatures, waterRings } from './waterMask.js'
 
 const M = 111320
 const STEP_M = 40
@@ -34,9 +34,16 @@ function distToEdge(rings, lat, lon) {
   return best
 }
 
-/** { depth, source } stimata tra riva e carta, o null */
+// In porto le banchine sono verticali e i bacini dragati: la discesa dalla
+// riva non vale (alla Fiera di Genova dava 0,6–1,6 m)
+const HARBOR_M = 600
+
+/** { depth, source } stimata tra riva e carta, { harbor: true } in porto, o null */
 export async function coastalDepthEstimate(lat, lon) {
   const kx = M * Math.cos((lat * Math.PI) / 180)
+  const near = L.latLngBounds([lat - HARBOR_M / M, lon - HARBOR_M / kx], [lat + HARBOR_M / M, lon + HARBOR_M / kx])
+  const f = await coastFeatures(near, 9).catch(() => null)
+  if (f?.harbors.some(([a, b]) => Math.hypot((a - lat) * M, (b - lon) * kx) <= HARBOR_M)) return { harbor: true }
   const rings = []
   for (let r = STEP_M; r <= MAX_M; r += STEP_M) {
     rings.push(

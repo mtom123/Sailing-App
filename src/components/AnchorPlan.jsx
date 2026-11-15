@@ -27,6 +27,19 @@ const PART = {
 // Profondità, fondo e catena dell'ultimo calcolo, per il marker di ANCORA CADUTA
 export const lastAnchorPlan = { current: null }
 const CELL = 0.05 // blocchi delle griglie di dettaglio (fineDepthZones.js)
+const SOUNDING_M = 100 // una mia misura vale fin qui
+
+// La mia misura più vicina entro SOUNDING_M, con la distanza
+function nearestSounding(list, lat, lon) {
+  if (lat == null || !list?.length) return null
+  const kx = 111320 * Math.cos((lat * Math.PI) / 180)
+  let best = null
+  for (const q of list) {
+    const d = Math.hypot((q.lat - lat) * 111320, (q.lon - lon) * kx)
+    if (d <= SOUNDING_M && (!best || d < best.distM)) best = { ...q, distM: d }
+  }
+  return best
+}
 const HOURS = 12
 
 // Profondità dallo scandaglio, misurata dalla superficie
@@ -54,6 +67,7 @@ async function fineDepth(lat, lon) {
 // una richiesta in più al servizio meteo
 export default function AnchorPlan({ position, depthLive, weather, onUseRadius }) {
   const boat = useAppStore((s) => s.boat)
+  const soundings = useAppStore((s) => s.soundings)
   const [chart, setChart] = useState(null) // { depth, source }
   const [habitat, setHabitat] = useState(undefined)
   const [depthInput, setDepthInput] = useState('')
@@ -81,7 +95,8 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
           if (alive) setChart({ depth: d.depth, source: d.source })
         } else {
           const est = await coastalDepthEstimate(lat, lon).catch(() => null)
-          if (alive && est) setChart(est)
+          if (alive && est?.harbor) setChart({ harbor: true })
+          else if (alive && est) setChart(est)
           else if (alive && d) setChart({ depth: d.depth, source: `${d.source}, indicativa` })
         }
       }
@@ -91,14 +106,36 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
     return () => {
       alive = false
     }
-    // La posizione si arrotonda a ~10 m: non si ricalcola a ogni fix
+    // La posizione si arrotonda a ~50 m: all'ancora la barca gira e la stima
+    // non deve saltare (1,6 → 1,2 → 0,6 m)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lat == null ? null : lat.toFixed(4), lon == null ? null : lon.toFixed(4)])
+  }, [lat == null ? null : Math.round(lat / 0.0005), lon == null ? null : Math.round(lon / 0.0005)])
 
   const sounder = sounderDepth(depthLive, boat)
   const typed = Number(String(depthInput).replace(',', '.'))
-  const depth = depthInput !== '' && typed > 0 ? typed : sounder ?? chart?.depth ?? null
-  const depthSource = depthInput !== '' && typed > 0 ? 'inserita' : sounder != null ? 'scandaglio' : chart?.source
+  // Dove galleggia la barca c'è almeno il pescaggio: una carta che dice meno
+  // sbaglia (e consiglierebbe poca catena), meglio non proporla
+  const minFloat = (boat.draftM ?? 1.9) + 0.5
+  const chartBad = !!chart && !chart.harbor && !position?.fromMap && chart.depth < minFloat
+  const chartDepth = chartBad || chart?.harbor ? null : chart?.depth ?? null
+  // Una profondità che ho scritto qui (entro 100 m) vale più della carta
+  const mine = nearestSounding(soundings, lat, lon)
+  const mineText = mine
+    ? `tua misura del ${new Date(mine.at).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}${mine.distM >= 15 ? ` (a ${Math.round(mine.distM)} m)` : ''}`
+    : null
+  const depth = depthInput !== '' && typed > 0 ? typed : sounder ?? mine?.depth ?? chartDepth
+  const depthSource =
+    depthInput !== '' && typed > 0
+      ? 'inserita: la ricordo per questo punto'
+      : sounder != null
+        ? 'scandaglio'
+        : mine
+          ? mineText
+          : chart?.harbor
+          ? 'in porto la carta non vale: scrivi quella dello scandaglio'
+          : chartBad
+          ? `la carta qui dà ${chart.depth.toFixed(1).replace('.', ',')} m, meno del pescaggio: non vale. Scrivi quella dello scandaglio`
+          : chart?.source
   const bottom = bottomPick ?? habitat?.bottom ?? 'unknown'
   const wind = useMemo(() => windAhead(weather?.hourly, HOURS), [weather?.hourly])
   const typedGust = Number(String(gustInput).replace(',', '.'))
@@ -157,16 +194,20 @@ export default function AnchorPlan({ position, depthLive, weather, onUseRadius }
           placeholder={depth != null ? depth.toFixed(1).replace('.', ',') : '—'}
           value={depthInput !== '' || depthFocus ? depthInput : depth != null ? depth.toFixed(1).replace('.', ',') : ''}
           onFocus={() => setDepthFocus(true)}
-          onBlur={() => setDepthFocus(false)}
+          onBlur={() => {
+            setDepthFocus(false)
+            // Si ricorda con la posizione: tornando qui la ripropone
+            if (typed > 0 && lat != null) useAppStore.getState().addSounding({ lat, lon, depth: typed })
+          }}
           onChange={(e) => setDepthInput(e.target.value)}
           className={`${field} w-14 text-right tabular-nums`}
           aria-label="Profondità in metri"
         />
         <span className="text-fog">m</span>
         <span className="min-w-0 flex-1 leading-tight text-fog-dim">{depthSource || 'nessun dato: inseriscila'}</span>
-        {depthInput !== '' && (sounder != null || chart) && (
+        {depthInput !== '' && (sounder != null || mine || chartDepth != null) && (
           <button type="button" onClick={() => setDepthInput('')} className="flex-none text-phos">
-            {sounder != null ? 'Scandaglio' : 'Carta'}
+            {sounder != null ? 'Scandaglio' : mine ? 'Mia misura' : 'Carta'}
           </button>
         )}
       </div>

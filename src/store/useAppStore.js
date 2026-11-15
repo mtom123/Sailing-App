@@ -240,6 +240,17 @@ export const useAppStore = create(
           activeDrawer: 'route',
         })),
 
+      // Profondità scritte a mano nel pannello Ancoraggio, con la posizione:
+      // TIMONE le ripropone tornando lì (AnchorPlan.jsx). [{ lat, lon, depth, at }]
+      soundings: [],
+      addSounding: (p) =>
+        set((s) => {
+          const kx = 111320 * Math.cos((p.lat * Math.PI) / 180)
+          const far = (q) => Math.hypot((q.lat - p.lat) * 111320, (q.lon - p.lon) * kx) > 30
+          // Una sola misura entro 30 m: la nuova sostituisce la vecchia
+          return { soundings: [...s.soundings.filter(far), { ...p, at: Date.now() }].slice(-500) }
+        }),
+
       // Le mie note sui baretti sulla spiaggia, per id del locale (beachBarsLayer.js):
       // { name, lat, lon, flags: { tender, buoys, … }, phone, text }
       barNotes: {},
@@ -316,6 +327,7 @@ export const useAppStore = create(
         depthZones: s.depthZones,
         userZones: s.userZones,
         barNotes: s.barNotes,
+        soundings: s.soundings,
       }),
     }
   )
