@@ -69,7 +69,7 @@ export function splitOnFrame(ring, width, height) {
 // terra vera (quota > 1,5 m), e la costa OSM taglia il resto
 const COAST_GAP = 3
 const UNCERTAIN_CELLS = 2
-function fillCoastalGaps({ width, height, values }) {
+export function fillCoastalGaps({ width, height, values }) {
   const out = Float32Array.from(values)
   const unknown = (v) => v > -0.5 && v <= 1.5
   let filled = new Uint8Array(width * height)
