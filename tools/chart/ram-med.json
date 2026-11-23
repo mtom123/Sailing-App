@@ -1,0 +1,270 @@
+{
+ "source": "Shom, Références Altimétriques Maritimes (RAM) édition 2025, Licence Ouverte Etalab",
+ "note": "zh = cote du zéro hydrographique dans le système altimétrique légal (m)",
+ "ports": [
+  {
+   "site": "Toulon",
+   "lat": 43.122678,
+   "lon": 5.914669,
+   "zh": -0.252,
+   "nm": 0.42,
+   "ref": "IGN69"
+  },
+  {
+   "site": "Banyuls-sur-Mer",
+   "lat": 42.481667,
+   "lon": 3.138167,
+   "zh": -0.538,
+   "nm": 0.57,
+   "ref": "IGN69"
+  },
+  {
+   "site": "Port-Vendres",
+   "lat": 42.520044,
+   "lon": 3.107369,
+   "zh": -0.392,
+   "nm": 0.52,
+   "ref": "IGN69"
+  },
+  {
+   "site": "Port-la-Nouvelle",
+   "lat": 43.015278,
+   "lon": 3.061944,
+   "zh": -0.421,
+   "nm": 0.55,
+   "ref": "IGN69"
+  },
+  {
+   "site": "Gruissan",
+   "lat": 43.106667,
+   "lon": 3.101667,
+   "zh": -0.427,
+   "nm": 0.68,
+   "ref": "IGN69"
+  },
+  {
+   "site": "Port de Sète",
+   "lat": 43.397642,
+   "lon": 3.699108,
+   "zh": -0.307,
+   "nm": 0.46,
+   "ref": "IGN69"
+  },
+  {
+   "site": "Port Camargue",
+   "lat": 43.520333,
+   "lon": 4.126333,
+   "zh": -0.285,
+   "nm": 0.53,
+   "ref": "IGN69"
+  },
+  {
+   "site": "Saintes-Maries-de-la-Mer",
+   "lat": 43.452167,
+   "lon": 4.398833,
+   "zh": -0.267,
+   "nm": 0.4,
+   "ref": "IGN69"
+  },
+  {
+   "site": "Fos-sur-Mer",
+   "lat": 43.416833,
+   "lon": 4.888833,
+   "zh": -0.334,
+   "nm": 0.49,
+   "ref": "IGN69"
+  },
+  {
+   "site": "Port-de-Bouc",
+   "lat": 43.398333,
+   "lon": 4.983611,
+   "zh": -0.32,
+   "nm": 0.53,
+   "ref": "IGN69"
+  },
+  {
+   "site": "Marseille (Corniche)",
+   "lat": 43.278789,
+   "lon": 5.353736,
+   "zh": -0.329,
+   "nm": 0.49,
+   "ref": "IGN69"
+  },
+  {
+   "site": "Le Petit Gaou",
+   "lat": 43.06945,
+   "lon": 5.793617,
+   "zh": -0.298,
+   "nm": 0.44,
+   "ref": "IGN69"
+  },
+  {
+   "site": "Port de la Salette",
+   "lat": 43.086667,
+   "lon": 6.08,
+   "zh": -0.225,
+   "nm": 0.49,
+   "ref": "IGN69"
+  },
+  {
+   "site": "Port Pothuau",
+   "lat": 43.115917,
+   "lon": 6.201733,
+   "zh": -0.306,
+   "nm": 0.47,
+   "ref": "IGN69"
+  },
+  {
+   "site": "Port Avis",
+   "lat": 43.0259,
+   "lon": 6.453817,
+   "zh": -0.274,
+   "nm": 0.43,
+   "ref": "IGN69"
+  },
+  {
+   "site": "Fort de Bregancon",
+   "lat": 43.095,
+   "lon": 6.323333,
+   "zh": -0.253,
+   "nm": 0.44,
+   "ref": "IGN69"
+  },
+  {
+   "site": "Cavalaire",
+   "lat": 43.1725,
+   "lon": 6.5355,
+   "zh": -0.19,
+   "nm": 0.32,
+   "ref": "IGN69"
+  },
+  {
+   "site": "Saint-Tropez",
+   "lat": 43.271667,
+   "lon": 6.634667,
+   "zh": -0.3,
+   "nm": 0.47,
+   "ref": "IGN69"
+  },
+  {
+   "site": "Port Ferréol",
+   "lat": 43.359067,
+   "lon": 6.7176,
+   "zh": -0.334,
+   "nm": 0.5,
+   "ref": "IGN69"
+  },
+  {
+   "site": "La Figueirette",
+   "lat": 43.483533,
+   "lon": 6.933767,
+   "zh": -0.329,
+   "nm": 0.51,
+   "ref": "IGN69"
+  },
+  {
+   "site": "Nice",
+   "lat": 43.6955,
+   "lon": 7.285267,
+   "zh": -0.344,
+   "nm": 0.54,
+   "ref": "IGN69"
+  },
+  {
+   "site": "Monaco",
+   "lat": 43.732814,
+   "lon": 7.423936,
+   "zh": -0.336,
+   "nm": 0.52,
+   "ref": "IGN69"
+  },
+  {
+   "site": "Centuri",
+   "lat": 42.966,
+   "lon": 9.350167,
+   "zh": -0.351,
+   "nm": 0.48,
+   "ref": "IGN78"
+  },
+  {
+   "site": "Macinaggio",
+   "lat": 42.959167,
+   "lon": 9.455833,
+   "zh": -0.396,
+   "nm": 0.46,
+   "ref": "IGN78"
+  },
+  {
+   "site": "Bastia",
+   "lat": 42.7,
+   "lon": 9.455,
+   "zh": -0.485,
+   "nm": 0.58,
+   "ref": "IGN78"
+  },
+  {
+   "site": "Saint-Florent",
+   "lat": 42.68,
+   "lon": 9.3,
+   "zh": -0.412,
+   "nm": 0.49,
+   "ref": "IGN78"
+  },
+  {
+   "site": "Île-Rousse",
+   "lat": 42.6395,
+   "lon": 8.936333,
+   "zh": -0.425,
+   "nm": 0.44,
+   "ref": "IGN78"
+  },
+  {
+   "site": "Calvi",
+   "lat": 42.566667,
+   "lon": 8.763333,
+   "zh": -0.407,
+   "nm": 0.44,
+   "ref": "IGN78"
+  },
+  {
+   "site": "Ajaccio",
+   "lat": 41.922703,
+   "lon": 8.762839,
+   "zh": -0.368,
+   "nm": 0.47,
+   "ref": "IGN78"
+  },
+  {
+   "site": "Solenzara",
+   "lat": 41.8568,
+   "lon": 9.403817,
+   "zh": -0.479,
+   "nm": 0.58,
+   "ref": "IGN78"
+  },
+  {
+   "site": "Propriano",
+   "lat": 41.676667,
+   "lon": 8.902167,
+   "zh": -0.37,
+   "nm": 0.3,
+   "ref": "IGN78"
+  },
+  {
+   "site": "Porto-Vecchio",
+   "lat": 41.590333,
+   "lon": 9.285667,
+   "zh": -0.385,
+   "nm": 0.47,
+   "ref": "IGN78"
+  },
+  {
+   "site": "Bonifacio",
+   "lat": 41.389297,
+   "lon": 9.163889,
+   "zh": -0.362,
+   "nm": 0.46,
+   "ref": "IGN78"
+  }
+ ]
+}

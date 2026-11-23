@@ -341,6 +341,8 @@ export function fineChunk(ci, cj, ctx) {
       }
     }
   }
+  // per la validazione: la superficie finale del riquadro
+  if (ctx.onGrid) ctx.onGrid({ iStart, jTop, W, u, water, em, dHd })
   const surveyDepths = new Set((ctx.surveyLines || []).map((l) => l.depth))
 
   // qualità: 2 rilievo, 1 modello, 0 senza dati o terra

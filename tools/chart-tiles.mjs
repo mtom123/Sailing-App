@@ -21,8 +21,8 @@ import { lonLatToMerc, tilePyramid } from './chart/tiler.js'
 
 const AREAS = {
   finale: { w: 8.3, s: 44.1, e: 8.45, n: 44.2 }, // prova veloce
-  // Alto Tirreno: Liguria, Corsica, Toscana fino a Piombino ed Elba
-  tirreno: { w: 7.4, s: 41.3, e: 10.6, n: 44.45 },
+  // Alto Tirreno e Costa Azzurra: da Marsiglia a Piombino ed Elba, Liguria e Corsica
+  tirreno: { w: 4.85, s: 41.3, e: 10.6, n: 44.45 },
 }
 const OUT = resolve(process.env.OUT || 'public/carta')
 const MIN_ZOOM = 5
@@ -205,7 +205,7 @@ writeFileSync(
     areas: names,
     bands: BANDS,
     attribution:
-      'Fondali: EMODnet Bathymetry (CC BY 4.0), Regione Liguria (rilievi multibeam, dati aperti), costa © OpenStreetMap (ODbL)',
+      'Fondali: EMODnet Bathymetry (CC BY 4.0), Litto3D® Shom-IGN (Licence Ouverte), Regione Liguria (rilievi multibeam, dati aperti), costa © OpenStreetMap (ODbL)',
   }),
 )
 // la carta vecchia va nel Cestino, la nuova al suo posto

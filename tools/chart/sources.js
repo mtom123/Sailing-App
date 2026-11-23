@@ -214,7 +214,8 @@ export async function waterTile(x, y, z = 14) {
   const raw = await cached(`ofm/${z}/${x}/${y}.pbf`, await ofmUrl(z, x, y), { binary: true })
   if (!raw.length) return null
   const buf = raw[0] === 0x1f && raw[1] === 0x8b ? gunzipSync(raw) : raw
-  const vt = new VectorTile(new Pbf(buf))
+  // copia: i Buffer di Node possono stare in un pool con byteOffset, e pbf legge i double sbagliati
+  const vt = new VectorTile(new Pbf(new Uint8Array(buf)))
   const layer = vt.layers.water
   const rings = []
   let extent = 4096
@@ -279,7 +280,7 @@ export async function litto3dSampler(w, s, e, n) {
     const r = Math.round((g.origin[1] - y) / cell)
     if (c < 0 || r < 0 || c >= size || r >= size) return NaN
     const v = g.values[r * size + c]
-    return v === nodata ? NaN : v / 10
+    return v === nodata ? NaN : v / 10 - zhRef(lon, lat)
   }
 }
 
@@ -376,6 +377,30 @@ export async function litto3dAscSampler(w, s, e, n) {
     const c = Math.round((x - g.x0) / g.cell)
     const r = Math.round((g.yTop - y) / g.cell)
     if (c < 0 || r < 0 || c >= g.ncols || r >= g.nrows) return NaN
-    return g.values[r * g.ncols + c]
+    return g.values[r * g.ncols + c] - zhRef(lon, lat)
   }
+}
+
+// ------------------------------------------------- zero idrografico (Shom RAM)
+// Litto3D dà quote nel sistema altimetrico legale (IGN69 sul continente, IGN78 in
+// Corsica); le carte nautiche danno i fondali sotto lo zero idrografico, che nel
+// Mediterraneo sta 0,19–0,54 m più in basso. Togliere la cota ZH/Ref (negativa)
+// rende il fondo meno profondo: correzione dalla parte della sicurezza.
+let ram = null
+function zhRef(lon, lat) {
+  if (!ram) ram = JSON.parse(readFileSync(new URL('./ram-med.json', import.meta.url), 'utf8')).ports
+  const corsica = lon > 8.3 && lon < 9.8 && lat > 41.2 && lat < 43.1
+  const ref = corsica ? 'IGN78' : 'IGN69'
+  let sw = 0
+  let sv = 0
+  for (const p of ram) {
+    if (p.ref !== ref) continue
+    const dx = (p.lon - lon) * Math.cos((lat * Math.PI) / 180)
+    const dy = p.lat - lat
+    const d2 = dx * dx + dy * dy + 1e-6
+    const w = 1 / d2
+    sw += w
+    sv += w * p.zh
+  }
+  return sv / sw
 }
