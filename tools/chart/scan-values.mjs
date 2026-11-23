@@ -1,6 +1,6 @@
 import fs from 'node:fs'; import path from 'node:path'
 import { VectorTile } from '@mapbox/vector-tile'; import Pbf from 'pbf'
-const root = 'public/carta'; let n = 0, bad = 0, ex = []
+const root = process.env.CARTA || 'tools/.cache/carta'; let n = 0, bad = 0, ex = []
 for (const z of ['12','13','14']) for (const x of fs.readdirSync(path.join(root, z))) for (const f of fs.readdirSync(path.join(root, z, x))) {
   const t = new VectorTile(new Pbf(new Uint8Array(fs.readFileSync(path.join(root, z, x, f)))))
   for (const ln of ['soundg','depcnt','depare']) { const L = t.layers[ln]; if (!L) continue

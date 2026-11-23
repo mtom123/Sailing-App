@@ -271,7 +271,7 @@ async function holdoutLiguria(name, a, emod) {
 // -------------------------------------------------- C. fedeltà dei tasselli pubblicati
 
 function readTile(z, x, y) {
-  const p = join('public/carta', String(z), String(x), `${y}.pbf`)
+  const p = join(process.env.CARTA || 'tools/.cache/carta', String(z), String(x), `${y}.pbf`)
   if (!existsSync(p)) return null
   let buf = readFileSync(p)
   if (buf[0] === 0x1f && buf[1] === 0x8b) buf = gunzipSync(buf)

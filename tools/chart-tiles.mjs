@@ -24,7 +24,8 @@ const AREAS = {
   // Alto Tirreno e Costa Azzurra: da Marsiglia a Piombino ed Elba, Liguria e Corsica
   tirreno: { w: 4.85, s: 41.3, e: 10.6, n: 44.45 },
 }
-const OUT = resolve(process.env.OUT || 'public/carta')
+// i tasselli z/x/y restano sul Mac (verifiche); online va il file unico PMTiles su R2
+const OUT = resolve(process.env.OUT || 'tools/.cache/carta')
 const MIN_ZOOM = 5
 const MAX_ZOOM = 14
 

@@ -53,6 +53,15 @@
 </div>
 <script type="module">
 import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.17.0/dist/maplibre-gl.mjs'
+import { PMTiles, Protocol } from 'https://unpkg.com/pmtiles@3.2.1/dist/index.js'
+
+// La carta è un file unico PMTiles su Cloudflare R2; ?pmtiles=<url> per provarne un altro,
+// ?pmtiles=zxy per tasselli z/x/y in una cartella carta/ accanto alla pagina (solo prove locali)
+const params = new URLSearchParams(location.search)
+const PM_PARAM = params.get('pmtiles') ?? 'https://carta.martinomotti.com/carta.pmtiles'
+const PM = PM_PARAM === 'zxy' ? null : new URL(PM_PARAM, location.href).href
+const protocol = new Protocol()
+maplibregl.addProtocol('pmtiles', protocol.tile)
 
 const base = new URL('./', location.href).href
 const map = new maplibregl.Map({
@@ -109,13 +118,24 @@ function hatch() {
 }
 
 map.on('load', async () => {
-  const meta = await fetch(base + 'carta/meta.json').then((r) => r.json()).catch(() => null)
-  if (meta) document.getElementById('info').textContent = `Carta del ${new Date(meta.version).toLocaleString('it-IT')}`
+  let meta = null
+  let src
+  if (PM) {
+    const p = new PMTiles(PM)
+    protocol.add(p)
+    const [h, md] = await Promise.all([p.getHeader(), p.getMetadata()]).catch(() => [null, null])
+    if (h) meta = { version: md?.version, attribution: md?.attribution, minzoom: h.minZoom, maxzoom: h.maxZoom, bounds: [h.minLon, h.minLat, h.maxLon, h.maxLat] }
+    src = { url: 'pmtiles://' + PM }
+  } else {
+    meta = await fetch(base + 'carta/meta.json').then((r) => r.json()).catch(() => null)
+    src = { tiles: [base + 'carta/{z}/{x}/{y}.pbf'] }
+  }
+  if (meta?.version) document.getElementById('info').textContent = `Carta del ${new Date(meta.version).toLocaleString('it-IT')}`
   for (const id of OW_LAYERS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none')
   map.addImage('hatch', hatch())
   map.addSource('carta', {
     type: 'vector',
-    tiles: [base + 'carta/{z}/{x}/{y}.pbf'],
+    ...src,
     minzoom: meta?.minzoom ?? 5,
     maxzoom: meta?.maxzoom ?? 14,
     bounds: meta?.bounds,
