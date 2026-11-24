@@ -23,14 +23,23 @@ const AREAS = {
   finale: { w: 8.3, s: 44.1, e: 8.45, n: 44.2 }, // prova veloce
   // Alto Tirreno e Costa Azzurra: da Marsiglia a Piombino ed Elba, Liguria e Corsica
   tirreno: { w: 4.85, s: 41.3, e: 10.6, n: 44.45 },
+  // resto d'Italia: riquadri lungo le coste (le sovrapposizioni si fanno una volta sola)
+  sardegna: { w: 7.9, s: 38.7, e: 10.0, n: 41.35 },
+  tirreno_sud: { w: 10.6, s: 37.9, e: 16.3, n: 43.0 }, // Toscana sud, Lazio, Campania, Calabria tirrenica, Eolie
+  sicilia: { w: 11.8, s: 35.4, e: 15.8, n: 38.4 }, // con Pantelleria, Pelagie e Malta
+  ionio: { w: 15.4, s: 37.8, e: 18.6, n: 40.6 }, // Calabria ionica, golfo di Taranto, Salento
+  adriatico_sud: { w: 15.0, s: 40.0, e: 18.6, n: 42.2 }, // Puglia, Gargano, Tremiti
+  adriatico_centro: { w: 12.2, s: 41.8, e: 16.2, n: 44.0 }, // Molise, Abruzzo, Marche, Romagna
+  adriatico_nord: { w: 12.0, s: 44.0, e: 14.0, n: 45.8 }, // Romagna, Venezia, Trieste
 }
+const ITALIA = ['tirreno', 'sardegna', 'tirreno_sud', 'sicilia', 'ionio', 'adriatico_sud', 'adriatico_centro', 'adriatico_nord']
 // i tasselli z/x/y restano sul Mac (verifiche); online va il file unico PMTiles su R2
 const OUT = resolve(process.env.OUT || 'tools/.cache/carta')
 const MIN_ZOOM = 5
 const MAX_ZOOM = 14
 
 console.log(`Litto3D: ${litto3dAscCount()} lastre a 5 m`)
-const names = process.argv.slice(2).length ? process.argv.slice(2) : ['tirreno']
+const names = process.argv.slice(2).length ? process.argv.slice(2).flatMap((a) => (a === 'italia' ? ITALIA : [a])) : ITALIA
 const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(0)} s]`, ...a)
 
@@ -80,16 +89,24 @@ for (const name of names) {
       const key = `${ci},${cj}`
       if (done.has(key)) continue
       done.add(key)
-      // fine se c'è costa o fondale sotto i 100 m (con 5 celle di margine)
+      // fine se c'è costa, un fondale sotto i 30 m (secche al largo) o un rilievo;
+      // il mare aperto sotto i 30 m (l'Adriatico!) basta alla griglia EMODnet
       let shallow = false
       let sea = false
       for (let i = ci * E - 5; i < (ci + 1) * E + 5 && !shallow; i++)
         for (let j = cj * E - 5; j < (cj + 1) * E + 5; j++) {
           const v = emod.at(i, j)
-          if (!Number.isFinite(v) || v > -100) shallow = true
+          if (!Number.isFinite(v) || v > -30) shallow = true
           if (v < 0) sea = true
           if (shallow) break
         }
+      if (!shallow && sea) {
+        const w = (ci * CHUNK) / FINE
+        const s = (cj * CHUNK) / FINE
+        const e = ((ci + 1) * CHUNK) / FINE
+        const nn = ((cj + 1) * CHUNK) / FINE
+        if ((await litto3dAscSampler(w, s, e, nn)) || (await liguriaIn(w, s, e, nn)).length) shallow = true
+      }
       if (shallow) fine.push([ci, cj])
       else if (sea) coarse.push([ci, cj])
     }

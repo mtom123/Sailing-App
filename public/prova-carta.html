@@ -33,6 +33,14 @@
   <button data-go="8.7250,42.5680,14">Calvi</button>
   <button data-go="7.0450,43.5150,14">Lérins</button>
   <button data-go="6.2000,43.0050,14">Porquerolles</button>
+  <button data-go="9.4100,41.2150,13">La Maddalena</button>
+  <button data-go="12.9600,40.8950,13">Ponza</button>
+  <button data-go="14.2400,40.5550,13">Capri</button>
+  <button data-go="13.3700,38.1300,13">Palermo</button>
+  <button data-go="12.6000,35.5000,13">Lampedusa</button>
+  <button data-go="16.8700,41.1350,13">Bari</button>
+  <button data-go="13.5050,43.6250,13">Ancona</button>
+  <button data-go="12.3900,45.4100,13">Venezia</button>
   <a href="./" style="align-self:center;margin-left:4px">← TIMONE</a>
 </div>
 <div id="meter" class="panel">
@@ -70,6 +78,7 @@ const map = new maplibregl.Map({
   center: [8.336, 44.1625],
   zoom: 14,
   attributionControl: { compact: true },
+  hash: true,
 })
 map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-right')
 map.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }), 'top-right')
