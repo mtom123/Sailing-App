@@ -17,10 +17,12 @@ import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { CHUNK, FINE, BANDS, coarseChunk, fineChunk } from './chart/fuse.js'
 import { EMOD, emodnetGrid, liguriaIn, litto3dAscCount, litto3dAscSampler, litto3dSampler, pool, waterTile } from './chart/sources.js'
+import { emiliaLinesIn, emiliaSampler } from './chart/emilia.js'
 import { lonLatToMerc, tilePyramid } from './chart/tiler.js'
 
 const AREAS = {
   finale: { w: 8.3, s: 44.1, e: 8.45, n: 44.2 }, // prova veloce
+  cesenatico: { w: 12.3, s: 44.1, e: 12.5, n: 44.3 }, // prova veloce Emilia-Romagna
   // Alto Tirreno e Costa Azzurra: da Marsiglia a Piombino ed Elba, Liguria e Corsica
   tirreno: { w: 4.85, s: 41.3, e: 10.6, n: 44.45 },
   // resto d'Italia: riquadri lungo le coste (le sovrapposizioni si fanno una volta sola)
@@ -105,7 +107,7 @@ for (const name of names) {
         const s = (cj * CHUNK) / FINE
         const e = ((ci + 1) * CHUNK) / FINE
         const nn = ((cj + 1) * CHUNK) / FINE
-        if ((await litto3dAscSampler(w, s, e, nn)) || (await liguriaIn(w, s, e, nn)).length) shallow = true
+        if ((await litto3dAscSampler(w, s, e, nn)) || (await liguriaIn(w, s, e, nn)).length || (await emiliaSampler(w, s, e, nn))) shallow = true
       }
       if (shallow) fine.push([ci, cj])
       else if (sea) coarse.push([ci, cj])
@@ -137,17 +139,23 @@ for (const name of names) {
     await pool(jobs, 6, async ([x, y]) => tiles.set(`${x},${y}`, await waterTile(x, y)))
 
     // rilievo della Regione Liguria
-    const surveyLines = await liguriaIn(w, s, e, nn)
+    // e isobate 2018 dell'Emilia-Romagna (solo come dati, vedi chart/emilia.js)
+    const surveyLines = [...(await liguriaIn(w, s, e, nn)), ...(await emiliaLinesIn(w, s, e, nn))]
     // Litto3D: lastre a 5 m dove ci sono, sennò le griglie a 10 m già in TIMONE
     const fine5 = await litto3dAscSampler(w, s, e, nn)
     const coarse10 = await litto3dSampler(w, s, e, nn)
-    const surveyGrid =
-      fine5 && coarse10
-        ? (lon, lat) => {
-            const v = fine5(lon, lat)
-            return Number.isFinite(v) ? v : coarse10(lon, lat)
+    // Emilia-Romagna: modello terra-mare 2012 a 5 m
+    const emilia = await emiliaSampler(w, s, e, nn)
+    const grids = [fine5, coarse10, emilia].filter(Boolean)
+    const surveyGrid = grids.length
+      ? (lon, lat) => {
+          for (const g of grids) {
+            const v = g(lon, lat)
+            if (Number.isFinite(v)) return v
           }
-        : fine5 || coarse10
+          return NaN
+        }
+      : null
 
     const r = fineChunk(ci, cj, {
       emod,
@@ -223,7 +231,7 @@ writeFileSync(
     areas: names,
     bands: BANDS,
     attribution:
-      'Fondali: EMODnet Bathymetry (CC BY 4.0), Litto3D® Shom-IGN (Licence Ouverte), Regione Liguria (rilievi multibeam, dati aperti), costa © OpenStreetMap (ODbL)',
+      'Fondali: EMODnet Bathymetry (CC BY 4.0), Litto3D® Shom-IGN (Licence Ouverte), Regione Liguria (rilievi multibeam, dati aperti), Regione Emilia-Romagna/ARPAE (isobate 2018 CC BY 4.0, DTM 2012 CC BY 3.0), costa © OpenStreetMap (ODbL)',
   }),
 )
 // la carta vecchia va nel Cestino, la nuova al suo posto

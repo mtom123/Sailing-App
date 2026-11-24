@@ -24,6 +24,7 @@ const R_HD = 40 // celle: oltre questa distanza dai rilievi torna EMODnet
 const R_NODATA = 30 // celle: più lontano di così da ogni dato = senza dati
 const R_HARBOR = 45 // celle (~450 m) intorno a un porto: la riva non è a 0 m
 const R_HARBOR_DATA = 12 // celle: lì vale solo ciò che è vicino a un dato vero
+const R_OVER = 30 // celle (~300 m): attorno alle isobate «over» la griglia del rilievo si ignora
 
 // Isobate: quelle del modello ovunque, le altre solo dove c'è il rilievo
 export const MODEL_LEVELS = [2, 5, 10, 20, 30, 50, 100, 200, 300, 500, 1000, 1500, 2000, 2500]
@@ -263,6 +264,9 @@ export function fineChunk(ci, cj, ctx) {
   const harborSeed = new Uint8Array(N)
   const water = waterMask(iStart, jTop, ctx.getWaterTile, em, harborSeed)
 
+  // griglia del rilievo prima delle isobate: serve da limite (vedi sotto)
+  const hdGrid = (ctx.surveyLines || []).some((l) => l.over) ? Float32Array.from(hd) : null
+
   // isobate del rilievo bruciate nella griglia
   const lineSeed = new Uint8Array(N)
   for (const { depth, pts } of ctx.surveyLines || []) {
@@ -283,6 +287,15 @@ export function fineChunk(ci, cj, ctx) {
         }
       }
     }
+  }
+
+  // isobate più recenti della griglia (Emilia-Romagna: 2018 sul modello 2012):
+  // vicino a loro il fondo della griglia, magari spostato, non guida la forma.
+  // La griglia resta però come limite OVUNQUE, anche sulle isobate: dei due
+  // rilievi vince sempre il meno profondo (moli, scogliere, barre spostate)
+  if (hdGrid) {
+    const dOver = distance(lineSeed, W, W)
+    for (let k = 0; k < N; k++) if (!lineSeed[k] && dOver[k] <= R_OVER) hd[k] = NaN
   }
 
   const land = new Uint8Array(N)
@@ -341,9 +354,10 @@ export function fineChunk(ci, cj, ctx) {
       }
     }
   }
+  if (hdGrid) for (let k = 0; k < N; k++) if (!land[k] && hdGrid[k] > u[k]) u[k] = hdGrid[k]
   // per la validazione: la superficie finale del riquadro
   if (ctx.onGrid) ctx.onGrid({ iStart, jTop, W, u, water, em, dHd })
-  const surveyDepths = new Set((ctx.surveyLines || []).map((l) => l.depth))
+  const surveyDepths = new Set((ctx.surveyLines || []).filter((l) => l.draw !== false).map((l) => l.depth))
 
   // qualità: 2 rilievo, 1 modello, 0 senza dati o terra
   const dHarbor = distance(harborSeed, W, W)
@@ -420,7 +434,8 @@ export function fineChunk(ci, cj, ctx) {
   const lon1 = ((ci + 1) * CHUNK) / FINE
   const lat0 = (cj * CHUNK) / FINE
   const lat1 = ((cj + 1) * CHUNK) / FINE
-  for (const { depth, pts } of ctx.surveyLines || []) {
+  for (const { depth, pts, draw } of ctx.surveyLines || []) {
+    if (draw === false) continue
     for (const a of clipLineSafe(pts, 0, lon0, lon1)) {
       for (const b of clipLineSafe(a, 1, lat0, lat1)) {
         const line = simplifyGrid(chaikin(b, false, 1), 0.00001).map(([lon, lat]) => lonLatToMerc(lon, lat))
