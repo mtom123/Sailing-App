@@ -144,7 +144,17 @@ export async function emodnetGrid({ w, s, e, n }) {
  * (WFS M2113:L7175, dati aperti): ambito 08 Loano–Finale (multibeam 2012),
  * 15 Tigullio (2008), 16-17-18 Sestri Levante–La Spezia–Magra (2019).
  * Tutto lo strato in una volta (a pagine da 5000), poi si cerca per riquadro.
+ *
+ * Zero idrografico: i metadati regionali (scheda 2112/2113, pagina open data
+ * P.T.A.M.C. C01) non dichiarano il riferimento verticale. I rilievi regionali
+ * italiani sono di norma ortometrici (livello medio mare Genova 1942), quindi
+ * dalla parte della sicurezza si porta lo zero alla marea astronomica minima
+ * ISPRA RMN 2024, interpolata in longitudine fra Imperia (−0,191 m) e Livorno
+ * (−0,237 m). Il rialzo del medio mare dal 1942 (che renderebbe i fondali più
+ * profondi) si trascura apposta. Le isobate diventano così ~0,2 m meno profonde
+ * e non cadono più su metri interi: si usano come dati, non si disegnano.
  */
+export const ligZh = (lon) => -0.191 + ((Math.min(Math.max(lon, 8.02), 10.3) - 8.02) / (10.3 - 8.02)) * (-0.237 + 0.191)
 let liguriaLines = null
 async function loadLiguria() {
   if (liguriaLines) return liguriaLines
@@ -183,7 +193,8 @@ async function loadLiguria() {
         if (y < s) s = y
         if (y > n) n = y
       }
-      liguriaLines.push({ depth, pts, bbox: [w, s, e, n] })
+      const zd = Math.round((depth + ligZh((w + e) / 2)) * 100) / 100 // sullo zero idrografico
+      if (zd > 0) liguriaLines.push({ depth: zd, pts, bbox: [w, s, e, n], draw: false })
     }
   }
   return liguriaLines
