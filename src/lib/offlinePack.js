@@ -328,6 +328,8 @@ async function dataJobs(plan) {
 
   const base = import.meta.env.BASE_URL
   jobs.push(() => fetch(`${base}protected-areas.json`).then((r) => r.json()))
+  jobs.push(() => fetch(`${base}park-zones.json`).then((r) => r.json()))
+  jobs.push(() => fetch(`${base}ordinance-zones.json`).then((r) => r.json()))
   jobs.push(() => fetch(`${base}ordinances.json`).then((r) => r.json()))
   return jobs
 }

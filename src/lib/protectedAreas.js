@@ -16,8 +16,9 @@
 
 const BASE = import.meta.env?.BASE_URL ?? '/'
 // Da OpenStreetMap (tools/protected-areas.mjs) e zone ufficiali che OSM non
-// ha, ricavate dai testi (tools/park-zones.mjs)
-const DATA_URLS = [`${BASE}protected-areas.json`, `${BASE}park-zones.json`]
+// ha, ricavate dai testi: parchi (tools/park-zones.mjs) e divieti di
+// ancoraggio delle ordinanze, con testo, stagione e fonte (tools/ordinance-zones.mjs)
+const DATA_URLS = [`${BASE}protected-areas.json`, `${BASE}park-zones.json`, `${BASE}ordinance-zones.json`]
 
 // Aree che non regolano la navigazione da diporto (enormi, solo habitat o
 // zone di adesione) e nomi che non sono aree in mare

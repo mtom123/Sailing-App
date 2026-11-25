@@ -15,6 +15,7 @@ import { HdIsobathLayer } from '../../lib/hdIsobathLayer.js'
 import { LIGURIA_ISOBATH_SOURCE } from '../../lib/liguriaIsobaths.js'
 import { BALEARI_ISOBATH_SOURCE } from '../../lib/baleariIsobaths.js'
 import { CoastBandLayer } from '../../lib/coastBandLayer.js'
+import { ruleTiming } from '../../data/coastRules.js'
 import { ProtectedAreasLayer } from '../../lib/protectedAreasLayer.js'
 import { OrdinancesLayer } from '../../lib/ordinancesLayer.js'
 import { BeachBarsLayer } from '../../lib/beachBarsLayer.js'
@@ -1457,6 +1458,19 @@ export default function MapView({
       tileLayerRefs.current.protectedAreas = new ProtectedAreasLayer({
         interactive: true,
         popup: (area, description, areas) => {
+          // Divieto da un'ordinanza: il testo, la stagione e la fonte
+          if (area.source) {
+            const t = area.season ? ruleTiming(area) : null
+            const lines = [{ label: 'Regola', value: area.note, color: 'var(--color-paper)' }]
+            if (t) lines.push({ label: 'Periodo', value: `${t.season} · ${t.inSeason ? 'in vigore ora' : 'ora fuori stagione'}`, color: t.inSeason ? 'rgb(var(--rgb-warn))' : 'var(--color-fog)' })
+            if (area.approx) lines.push({ label: 'Limite', value: area.approx, color: 'var(--color-fog)' })
+            lines.push({
+              label: 'Fonte',
+              value: `<a href="${area.source.url}" target="_blank" rel="noopener" style="color:#5EE6C8">${area.source.label}${area.source.article ? `, ${area.source.article}` : ''}</a>`,
+              color: 'var(--color-fog-dim)',
+            })
+            return popupHTML(area.name, lines)
+          }
           // Regole per zona dal regolamento dell'area marina, se l'app le ha
           if (area.kind !== 'military') {
             const ctx = ampContext(area, areas)

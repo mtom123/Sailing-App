@@ -3,11 +3,14 @@
  * con i contorni veri da OpenStreetMap e le zone ufficiali dei parchi
  * (park-zones.json): magenta le zone vietate (zone A, MA), arancio le aree
  * marine protette e le loro zone, rosso tratteggiato i poligoni militari,
- * azzurro i semplici divieti di ancoraggio e pesca (cavi, condotte).
+ * azzurro i semplici divieti di ancoraggio e pesca (cavi, condotte), viola a
+ * tratto e punto i divieti di ancoraggio delle ordinanze (ordinance-zones.json),
+ * sbiaditi fuori stagione.
  * Ridisegnato a ogni spostamento, da MIN_ZOOM. Da LETTERS_MIN_ZOOM le zone
  * hanno la loro sigla (A, B, C, MA…MD) sparsa su tutta la superficie.
  */
 import L from 'leaflet'
+import { ruleTiming } from '../data/coastRules.js'
 import { inArea, protectedAreas } from './protectedAreas.js'
 
 const MIN_ZOOM = 9
@@ -26,6 +29,12 @@ const STYLE = {
   military: { color: '#FF5252', weight: 1.5, dashArray: '3 5', fillOpacity: 0.08 },
   restricted: { color: '#7FA7C9', weight: 1.2, dashArray: '2 4', fillOpacity: 0.05 },
 }
+// Divieto di ancoraggio da un'ordinanza: viola a tratto e punto, per non
+// confondersi con la fascia dei bagnanti (rosso tratteggiato) e le zone
+// vietate (magenta pieno); fuori stagione resta, più tenue
+const ORDINANCE = { color: '#7C3AED', weight: 2.2, dashArray: '10 4 2 4', fillOpacity: 0.12 }
+const ORDINANCE_OFF = { ...ORDINANCE, opacity: 0.45, fillOpacity: 0.04 }
+const styleOf = (area) => (area.source ? (!area.season || ruleTiming(area).inSeason ? ORDINANCE : ORDINANCE_OFF) : STYLE[area.kind])
 const DESCRIPTION = {
   nogo: 'Zona vietata: niente navigazione, ancoraggio né balneazione',
   protected: 'Navigazione con regole (velocità, ancoraggio, pesca)',
@@ -82,7 +91,7 @@ export const ProtectedAreasLayer = L.Layer.extend({
     if (gen !== this._gen || !this._map) return
     this._group.clearLayers()
     for (const area of [...areas].sort((x, y) => ORDER[x.kind] - ORDER[y.kind])) {
-      const style = STYLE[area.kind]
+      const style = styleOf(area)
       const poly = L.polygon(area.rings, {
         ...style,
         fillColor: style.color,

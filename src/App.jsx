@@ -603,6 +603,8 @@ export default function App() {
                       ? 'Zona inserita da te'
                       : gpsAlerts.zone.kind === 'military'
                       ? 'Verifica gli avvisi ai naviganti'
+                      : gpsAlerts.zone.source
+                      ? 'Ancoraggio vietato: tocca la zona per il testo'
                       : gpsAlerts.zone.kind === 'restricted'
                       ? 'Transito libero'
                       : zoneSummary(ampRuleFor(gpsAlerts.zone.name), zoneLetter(gpsAlerts.zone.name)) || "Tocca l'area per le regole"}

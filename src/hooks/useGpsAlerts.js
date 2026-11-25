@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ruleTiming } from '../data/coastRules.js'
 import { bandText } from '../lib/coastBand.js'
 import { areaLookup, protectedAreas } from '../lib/protectedAreas.js'
 import useCoastBandAt from './useCoastBandAt.js'
@@ -31,8 +32,10 @@ export default function useGpsAlerts(geo) {
     let alive = true
     const { lat, lon } = geo
     protectedAreas([lat - 0.02, lon - 0.02, lat + 0.02, lon + 0.02])
-      .then((areas) => {
+      .then((all) => {
         if (!alive) return
+        // i divieti stagionali delle ordinanze valgono solo in stagione
+        const areas = all.filter((a) => !a.season || ruleTiming(a).inSeason)
         const civil = areaLookup(areas.filter((a) => a.kind !== 'military'))(lat, lon)
         const military = areaLookup(areas.filter((a) => a.kind === 'military'))(lat, lon)
         setZone(civil?.kind === 'nogo' ? civil : military || civil)
