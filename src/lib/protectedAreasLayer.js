@@ -31,10 +31,21 @@ const STYLE = {
 }
 // Divieto di ancoraggio da un'ordinanza: viola a tratto e punto, per non
 // confondersi con la fascia dei bagnanti (rosso tratteggiato) e le zone
-// vietate (magenta pieno); fuori stagione resta, più tenue
-const ORDINANCE = { color: '#7C3AED', weight: 2.2, dashArray: '10 4 2 4', fillOpacity: 0.12 }
-const ORDINANCE_OFF = { ...ORDINANCE, opacity: 0.45, fillOpacity: 0.04 }
-const styleOf = (area) => (area.source ? (!area.season || ruleTiming(area).inSeason ? ORDINANCE : ORDINANCE_OFF) : STYLE[area.kind])
+// vietate (magenta pieno). La linea del limite in mare (area.limit, come
+// "dal molo alla foce") si vede sempre, come sulle carte nautiche; fuori
+// stagione si schiarisce solo la tinta della zona
+const ORDINANCE_COLOR = '#7C3AED'
+const ORDINANCE = { color: ORDINANCE_COLOR, weight: 2.4, opacity: 0.95, dashArray: '10 4 2 4', fillOpacity: 0.14 }
+const ORDINANCE_OFF = { ...ORDINANCE, opacity: 0.8, fillOpacity: 0.06 }
+const LIMIT = { color: ORDINANCE_COLOR, weight: 3.5, opacity: 1, dashArray: '12 6', lineCap: 'butt' }
+const LIMIT_LABEL_MIN_ZOOM = 14
+const inSeason = (area) => !area.season || ruleTiming(area).inSeason
+function styleOf(area) {
+  if (!area.source) return STYLE[area.kind]
+  const style = inSeason(area) ? ORDINANCE : ORDINANCE_OFF
+  // con la linea del limite, il bordo lungo la riva non serve
+  return area.limit ? { ...style, stroke: false } : style
+}
 const DESCRIPTION = {
   nogo: 'Zona vietata: niente navigazione, ancoraggio né balneazione',
   protected: 'Navigazione con regole (velocità, ancoraggio, pesca)',
@@ -101,11 +112,40 @@ export const ProtectedAreasLayer = L.Layer.extend({
       })
       if (this.options.interactive) poly.bindPopup(() => this.options.popup(area, DESCRIPTION[area.kind], areas), { maxWidth: 320 })
       poly.addTo(this._group)
+      for (const line of area.limit || []) this._drawLimit(area, line, areas)
     }
     if (map.getZoom() < LETTERS_MIN_ZOOM) return
     // Dopo il gesto: se la carta si muove ancora, questo giro non serve più
     await new Promise((resolve) => setTimeout(resolve, LETTERS_DELAY_MS))
     if (gen === this._gen && this._map) this._drawLetters(areas)
+  },
+
+  // Limite in mare di un divieto d'ordinanza: linea piena di colore e, da
+  // vicino, la scritta a metà
+  _drawLimit(area, line, areas) {
+    const map = this._map
+    const pl = L.polyline(line, { ...LIMIT, renderer: this._renderer, interactive: !!this.options.interactive })
+    if (this.options.interactive) pl.bindPopup(() => this.options.popup(area, DESCRIPTION[area.kind], areas), { maxWidth: 320 })
+    pl.addTo(this._group)
+    if (map.getZoom() < LIMIT_LABEL_MIN_ZOOM) return
+    const a = map.latLngToLayerPoint(line[0])
+    const b = map.latLngToLayerPoint(line[line.length - 1])
+    let deg = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI
+    if (deg > 90) deg -= 180
+    if (deg < -90) deg += 180
+    const mid = L.latLng((line[0][0] + line[line.length - 1][0]) / 2, (line[0][1] + line[line.length - 1][1]) / 2)
+    L.marker(mid, {
+      pane: LETTERS_PANE,
+      interactive: false,
+      keyboard: false,
+      icon: L.divIcon({
+        className: 'timone-marker',
+        // ruota attorno al punto della linea, la scritta appena sopra
+        html: `<div style="position:absolute;left:0;top:0;width:0;height:0;transform:rotate(${deg.toFixed(1)}deg)"><div style="position:absolute;left:0;bottom:4px;transform:translateX(-50%);white-space:nowrap;font-size:11px;font-weight:700;color:${ORDINANCE_COLOR};text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 2px #fff">divieto di ancoraggio${inSeason(area) ? '' : ' · stagione balneare'}</div></div>`,
+        iconSize: [0, 0],
+        iconAnchor: [0, 0],
+      }),
+    }).addTo(this._group)
   },
 
   // Una zona alla volta, solo nel suo riquadro: a passo fitto, perché spesso è

@@ -100,6 +100,9 @@ function bayPolygon(coast, a, b) {
 }
 
 const round = (v) => Math.round(v * 1e6) / 1e6
+// Il limite in mare della zona (la linea dell'ordinanza), come [[lat, lon], …]:
+// la carta lo disegna ben visibile, il bordo lungo la riva no
+const limitLine = (coast, a, b) => [coast[a], coast[b]].map(([lo, la]) => [round(la), round(lo)])
 function toArea(geom, base) {
   const polys = geom.geometry.type === 'Polygon' ? [geom.geometry.coordinates] : geom.geometry.coordinates
   // la più grande se la differenza lascia schegge
@@ -129,6 +132,7 @@ const areas = []
       kind: 'restricted',
       name: 'Divieto di ancoraggio – Baia delle Favole',
       note: 'Vietati gli ormeggi all’ancora e alla ruota dentro la linea tra la testata del molo foraneo del porto e la punta del pennello alla foce del torrente Gromolo.',
+      limit: [limitLine(coast, moleHead, groyneTip)],
       season: SML_SEASON,
       source: { ...SML_53_2026, article: 'art. 30' },
     })
@@ -148,6 +152,7 @@ const areas = []
       name: 'Divieto di ancoraggio – Baia del Silenzio',
       note: 'Vietati gli ormeggi all’ancora e alla ruota nella baia di Portobello o del Silenzio.',
       approx: 'L’ordinanza non traccia il limite verso il largo: qui è la linea delle scogliere all’imboccatura.',
+      limit: [limitLine(coast, westPoint, eastBreakwater)],
       season: SML_SEASON,
       source: { ...SML_53_2026, article: 'art. 29' },
     })
