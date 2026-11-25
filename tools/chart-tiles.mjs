@@ -23,6 +23,10 @@ import { lonLatToMerc, tilePyramid } from './chart/tiler.js'
 const AREAS = {
   finale: { w: 8.3, s: 44.1, e: 8.45, n: 44.2 }, // prova veloce
   cesenatico: { w: 12.3, s: 44.1, e: 12.5, n: 44.3 }, // prova veloce Emilia-Romagna
+  liguria: { w: 7.5, s: 43.75, e: 10.1, n: 44.45 }, // taratura e prove del profilo di spiaggia
+  finalemarina: { w: 8.33, s: 44.13, e: 8.43, n: 44.19 }, // prova del «non rilevato» sotto costa
+  chioggia: { w: 12.2, s: 45.1, e: 12.45, n: 45.3 }, // prova su costa bassa
+  sestri: { w: 9.33, s: 44.2, e: 9.45, n: 44.29 }, // prova veloce Liguria di Levante
   // Alto Tirreno e Costa Azzurra: da Marsiglia a Piombino ed Elba, Liguria e Corsica
   tirreno: { w: 4.85, s: 41.3, e: 10.6, n: 44.45 },
   // resto d'Italia: riquadri lungo le coste (le sovrapposizioni si fanno una volta sola)
@@ -69,6 +73,12 @@ function bandMinZoom(d) {
 
 const features = []
 const soundings = []
+// taratura del profilo di spiaggia: CALIB=<file.json> salva [x m, profondità, isobata?, lon, lat] dei rilievi
+const CALIB = process.env.CALIB
+const calib = []
+// profilo di spiaggia nei tratti senza rilievo: SHORE_MODEL=A,hc (prove), sennò spento
+const SHORE = process.env.SHORE_MODEL ? process.env.SHORE_MODEL.split(',').map(Number) : null
+const shoreModelAt = () => (SHORE ? { A: SHORE[0], hc: SHORE[1] } : null)
 const done = new Set() // riquadri già fatti (le zone possono sovrapporsi)
 let bounds = [Infinity, Infinity, -Infinity, -Infinity]
 
@@ -162,6 +172,8 @@ for (const name of names) {
       getWaterTile: (x, y) => tiles.get(`${x},${y}`) ?? null,
       surveyLines,
       surveyGrid,
+      shoreModel: shoreModelAt(w, s, e, nn),
+      onCalib: CALIB ? (pts) => calib.push(...pts) : null,
     })
     if (r) {
       features.push(...r.features)
@@ -204,6 +216,11 @@ log(`${features.length} elementi, ${soundings.length} quote: taglio i tasselli�
 
 // ---------------------------------------------------------------- tasselli
 
+if (CALIB) {
+  const { writeFileSync: wf } = await import('node:fs')
+  wf(CALIB, JSON.stringify(calib.map((p) => p.map((v) => Math.round(v * 1e5) / 1e5))))
+  log('taratura', `${calib.length} punti in ${CALIB}`)
+}
 const tmp = `${OUT}.new`
 let count = 0
 let bytes = 0

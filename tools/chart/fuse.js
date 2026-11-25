@@ -70,6 +70,48 @@ function distance(seed, w, h) {
   return d
 }
 
+/** Distanza in metri (chamfer pesato, celle sx × sy metri) dalle celle con seed[k] = 1 */
+function distanceM(seed, w, h, sx, sy) {
+  const sd = Math.hypot(sx, sy)
+  const d = new Float32Array(w * h)
+  for (let k = 0; k < d.length; k++) d[k] = seed[k] ? 0 : 1e9
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const k = y * w + x
+      let v = d[k]
+      if (x > 0) v = Math.min(v, d[k - 1] + sx)
+      if (y > 0) {
+        v = Math.min(v, d[k - w] + sy)
+        if (x > 0) v = Math.min(v, d[k - w - 1] + sd)
+        if (x < w - 1) v = Math.min(v, d[k - w + 1] + sd)
+      }
+      d[k] = v
+    }
+  }
+  for (let y = h - 1; y >= 0; y--) {
+    for (let x = w - 1; x >= 0; x--) {
+      const k = y * w + x
+      let v = d[k]
+      if (x < w - 1) v = Math.min(v, d[k + 1] + sx)
+      if (y < h - 1) {
+        v = Math.min(v, d[k + w] + sy)
+        if (x < w - 1) v = Math.min(v, d[k + w + 1] + sd)
+        if (x > 0) v = Math.min(v, d[k + w - 1] + sd)
+      }
+      d[k] = v
+    }
+  }
+  return d
+}
+
+/**
+ * Profilo di spiaggia (Dean 1977, h = A·x^(2/3)) per i tratti senza rilievo:
+ * x distanza dalla riva in metri, h profondità; vale fino alla profondità di chiusura.
+ */
+export function deanDepth(x, A) {
+  return A * Math.cbrt(x * x)
+}
+
 /** SOR di Laplace sulle celle non fissate (Neumann sul bordo della griglia) */
 function relax(u, fixed, w, h, iterations, omega = 1.85) {
   for (let it = 0; it < iterations; it++) {
@@ -309,6 +351,40 @@ export function fineChunk(ci, cj, ctx) {
   if (!anyWater) return null
   const dShore = distance(land, W, W)
   const dHd = distance(hdSeed, W, W)
+  // distanza dalla riva in metri: la riva sta a mezza cella dal centro della cella di terra
+  const latC = (jTop - W / 2) / FINE
+  const sx = (111320 * Math.cos((latC * Math.PI) / 180)) / FINE
+  const sy = 110574 / FINE
+  const dShoreM = distanceM(land, W, W, sx, sy)
+  const xShore = (k) => Math.max(0, dShoreM[k] - Math.min(sx, sy) / 2)
+  const dHarbor0 = distance(harborSeed, W, W)
+  if (ctx.onCalib) {
+    const out = []
+    for (let k = 0; k < N; k++) {
+      if (!hdSeed[k] || dHarbor0[k] <= R_HARBOR) continue
+      const x = k % W
+      const y = (k - x) / W
+      if (x < BUF || y < BUF || x >= BUF + CHUNK || y >= BUF + CHUNK) continue // solo il riquadro, niente contesto doppio
+      out.push([xShore(k), -hd[k], lineSeed[k] ? 1 : 0, (iStart + x + 0.5) / FINE, (jTop - y + 0.5) / FINE])
+    }
+    ctx.onCalib(out)
+  }
+  // modello di spiaggia nei tratti senza rilievo (ctx.shoreModel: { A, hc } o null)
+  const model = ctx.shoreModel ? new Uint8Array(N) : null
+  if (model) {
+    // EMODnet (celle da ~115 m) vicino alla riva è inaffidabile: conta solo oltre emodMin metri
+    const { A, hc, minDist = R_HD, emodMin = 230 } = ctx.shoreModel
+    const xc = (hc / A) ** 1.5
+    for (let k = 0; k < N; k++) {
+      if (land[k] || hdSeed[k] || dHd[k] <= minDist || dHarbor0[k] <= R_HARBOR) continue
+      const x = xShore(k)
+      if (x > xc) continue
+      const h = deanDepth(x, A)
+      // dalla parte della sicurezza: fra modello ed EMODnet vince il meno profondo
+      hd[k] = x > emodMin && Number.isFinite(em[k]) && em[k] > -h ? Math.min(0, em[k]) : -h
+      model[k] = 1
+    }
+  }
 
   // valori fissati e incognite
   const u = new Float32Array(N)
@@ -318,7 +394,7 @@ export function fineChunk(ci, cj, ctx) {
     if (land[k]) {
       fixed[k] = 1
       u[k] = 0
-    } else if (hdSeed[k]) {
+    } else if (hdSeed[k] || model?.[k]) {
       fixed[k] = 1
       u[k] = hd[k]
       dataSeed[k] = 1
@@ -357,7 +433,7 @@ export function fineChunk(ci, cj, ctx) {
   if (hdGrid) for (let k = 0; k < N; k++) if (!land[k] && hdGrid[k] > u[k]) u[k] = hdGrid[k]
   // per la validazione: la superficie finale del riquadro
   if (ctx.onGrid) ctx.onGrid({ iStart, jTop, W, u, water, em, dHd })
-  const surveyDepths = new Set((ctx.surveyLines || []).filter((l) => l.draw !== false).map((l) => l.depth))
+  const surveyDepths = new Set((ctx.surveyLines || []).filter((l) => l.draw !== false).map((l) => l.label ?? l.depth))
 
   // qualità: 2 rilievo, 1 modello, 0 senza dati o terra
   const dHarbor = distance(harborSeed, W, W)
@@ -434,8 +510,9 @@ export function fineChunk(ci, cj, ctx) {
   const lon1 = ((ci + 1) * CHUNK) / FINE
   const lat0 = (cj * CHUNK) / FINE
   const lat1 = ((cj + 1) * CHUNK) / FINE
-  for (const { depth, pts, draw } of ctx.surveyLines || []) {
+  for (const { depth: dataDepth, label, pts, draw } of ctx.surveyLines || []) {
     if (draw === false) continue
+    const depth = label ?? dataDepth // il numero dell'isobata (metro intero, per difetto)
     for (const a of clipLineSafe(pts, 0, lon0, lon1)) {
       for (const b of clipLineSafe(a, 1, lat0, lat1)) {
         const line = simplifyGrid(chaikin(b, false, 1), 0.00001).map(([lon, lat]) => lonLatToMerc(lon, lat))

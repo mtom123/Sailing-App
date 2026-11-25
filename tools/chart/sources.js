@@ -194,7 +194,10 @@ async function loadLiguria() {
         if (y > n) n = y
       }
       const zd = Math.round((depth + ligZh((w + e) / 2)) * 100) / 100 // sullo zero idrografico
-      if (zd > 0) liguriaLines.push({ depth: zd, pts, bbox: [w, s, e, n], draw: false })
+      // la linea si disegna così com'è (tutto il dettaglio del rilievo) col metro intero
+      // sotto: l'isobata dei 4,8 m porta il numero 4 (dalla parte della sicurezza)
+      const label = Math.floor(zd + 1e-9)
+      if (zd > 0) liguriaLines.push({ depth: zd, label, pts, bbox: [w, s, e, n], draw: label >= 1 })
     }
   }
   return liguriaLines
