@@ -85,7 +85,7 @@ map.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAc
 map.addControl(new maplibregl.ScaleControl({ unit: 'nautical' }), 'bottom-right')
 
 const OW_LAYERS = ['depth-shading', 'depth-areas', 'unsurveyed', 'depth-hillshade', 'contour-lines', 'contour-labels', 'soundings']
-const groups = { ow: OW_LAYERS, carta: ['carta-depare', 'carta-nodata', 'carta-depcnt', 'carta-safety', 'carta-labels'], soundg: ['carta-soundg'], liguria: [] }
+const groups = { ow: OW_LAYERS, carta: ['carta-depare', 'carta-nodata', 'carta-estimate', 'carta-estimate-label', 'carta-depcnt', 'carta-safety', 'carta-labels'], soundg: ['carta-soundg'], liguria: [] }
 
 // Fondale di sicurezza: quello scelto qui, sennò pescaggio della barca in TIMONE + 1 m
 let safety = 3
@@ -126,6 +126,16 @@ function hatch() {
   return g.getImageData(0, 0, 16, 16)
 }
 
+// puntinato della «stima» (fondale non misurato, EMODnet sbaglia la costa)
+function dots() {
+  const c = document.createElement('canvas')
+  c.width = c.height = 12
+  const g = c.getContext('2d')
+  g.fillStyle = 'rgba(80,95,110,0.55)'
+  g.beginPath(); g.arc(3, 3, 1.1, 0, 2 * Math.PI); g.arc(9, 9, 1.1, 0, 2 * Math.PI); g.fill()
+  return g.getImageData(0, 0, 12, 12)
+}
+
 map.on('load', async () => {
   let meta = null
   let src
@@ -142,6 +152,7 @@ map.on('load', async () => {
   if (meta?.version) document.getElementById('info').textContent = `Carta del ${new Date(meta.version).toLocaleString('it-IT')}`
   for (const id of OW_LAYERS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none')
   map.addImage('hatch', hatch())
+  map.addImage('dots', dots())
   map.addSource('carta', {
     type: 'vector',
     ...src,
@@ -157,6 +168,7 @@ map.on('load', async () => {
     paint: { 'fill-color': bandColor(), 'fill-antialias': false },
   }, before)
   map.addLayer({ id: 'carta-nodata', type: 'fill', source: 'carta', 'source-layer': 'nodata', paint: { 'fill-pattern': 'hatch', 'fill-color': '#d9dde1' } }, before)
+  map.addLayer({ id: 'carta-estimate', type: 'fill', source: 'carta', 'source-layer': 'estimate', paint: { 'fill-pattern': 'dots' } }, before)
   map.addLayer({
     id: 'carta-depcnt', type: 'line', source: 'carta', 'source-layer': 'depcnt',
     paint: {
@@ -177,6 +189,11 @@ map.on('load', async () => {
       'text-size': 11, 'text-max-angle': 25, 'symbol-spacing': 280, 'text-keep-upright': true,
     },
     paint: { 'text-color': '#2f5b85', 'text-halo-color': 'rgba(255,255,255,0.9)', 'text-halo-width': 1.4 },
+  })
+  map.addLayer({
+    id: 'carta-estimate-label', type: 'symbol', source: 'carta', 'source-layer': 'estimate', minzoom: 13,
+    layout: { 'text-field': 'stima', 'text-font': ['Noto Sans Italic'], 'text-size': 11, 'text-padding': 20 },
+    paint: { 'text-color': '#55687a', 'text-halo-color': 'rgba(255,255,255,0.85)', 'text-halo-width': 1.2 },
   })
   map.addLayer({
     id: 'carta-soundg', type: 'symbol', source: 'carta', 'source-layer': 'soundg', minzoom: 9,

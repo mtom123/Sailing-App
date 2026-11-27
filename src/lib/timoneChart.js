@@ -62,10 +62,26 @@ function hatch() {
   return data
 }
 
+// Puntinato della «stima» (fondale non misurato): più leggero del tratteggio
+function dots() {
+  const c = document.createElement('canvas')
+  c.width = c.height = 12
+  const g = c.getContext('2d')
+  g.fillStyle = 'rgba(80,95,110,0.55)'
+  g.beginPath()
+  g.arc(3, 3, 1.1, 0, 2 * Math.PI)
+  g.arc(9, 9, 1.1, 0, 2 * Math.PI)
+  g.fill()
+  const data = g.getImageData(0, 0, 12, 12)
+  c.width = c.height = 0
+  return data
+}
+
 async function addTimoneDepths(gl, safety) {
   const [h, md] = await Promise.all([pmtiles.getHeader(), pmtiles.getMetadata()]).catch(() => [null, null])
   if (!gl.getStyle()) return
   gl.addImage('hatch', hatch())
+  gl.addImage('dots', dots())
   gl.addSource('carta', {
     type: 'vector',
     url: 'pmtiles://' + CHART_PMTILES,
@@ -81,6 +97,8 @@ async function addTimoneDepths(gl, safety) {
     paint: { 'fill-color': bandColor(safety), 'fill-antialias': false },
   }, before)
   gl.addLayer({ id: 'carta-nodata', type: 'fill', source: 'carta', 'source-layer': 'nodata', paint: { 'fill-pattern': 'hatch', 'fill-color': '#d9dde1' } }, before)
+  // fondale a stima (EMODnet sbaglia la costa): le fasce restano, sopra un puntinato
+  gl.addLayer({ id: 'carta-estimate', type: 'fill', source: 'carta', 'source-layer': 'estimate', paint: { 'fill-pattern': 'dots' } }, before)
   gl.addLayer({
     id: 'carta-depcnt', type: 'line', source: 'carta', 'source-layer': 'depcnt',
     paint: {
@@ -101,6 +119,11 @@ async function addTimoneDepths(gl, safety) {
       'text-size': 11, 'text-max-angle': 25, 'symbol-spacing': 280, 'text-keep-upright': true,
     },
     paint: { 'text-color': '#2f5b85', 'text-halo-color': 'rgba(255,255,255,0.9)', 'text-halo-width': 1.4 },
+  })
+  gl.addLayer({
+    id: 'carta-estimate-label', type: 'symbol', source: 'carta', 'source-layer': 'estimate', minzoom: 13,
+    layout: { 'text-field': 'stima', 'text-font': ['Noto Sans Italic'], 'text-size': 11, 'text-padding': 20 },
+    paint: { 'text-color': '#55687a', 'text-halo-color': 'rgba(255,255,255,0.85)', 'text-halo-width': 1.2 },
   })
   gl.addLayer({
     id: 'carta-soundg', type: 'symbol', source: 'carta', 'source-layer': 'soundg', minzoom: 9,

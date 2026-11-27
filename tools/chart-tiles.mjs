@@ -7,6 +7,7 @@
  *   depcnt  isobate: d (m), q = 1 rilievo, 0 modello (EMODnet / interpolato)
  *   soundg  quote: d (m), q
  *   nodata  zone d'acqua senza dati affidabili (porti non rilevati)
+ *   estimate  fondale a stima: EMODnet sbaglia la costa, niente quote né isobate
  *
  * Uso:
  *   node --max-old-space-size=8192 tools/chart-tiles.mjs [zona …]   (zone in AREAS, di base tutte)
@@ -16,7 +17,7 @@ import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { CHUNK, FINE, BANDS, coarseChunk, fineChunk } from './chart/fuse.js'
-import { EMOD, emodnetGrid, liguriaIn, litto3dAscCount, litto3dAscSampler, litto3dSampler, pool, waterTile } from './chart/sources.js'
+import { EMOD, emodnetGrid, iimLiguriaIn, liguriaIn, litto3dAscCount, litto3dAscSampler, litto3dSampler, pool, waterTile } from './chart/sources.js'
 import { emiliaLinesIn, emiliaSampler } from './chart/emilia.js'
 import { lonLatToMerc, tilePyramid } from './chart/tiler.js'
 
@@ -27,6 +28,8 @@ const AREAS = {
   finalemarina: { w: 8.33, s: 44.13, e: 8.43, n: 44.19 }, // prova del «non rilevato» sotto costa
   chioggia: { w: 12.2, s: 45.1, e: 12.45, n: 45.3 }, // prova su costa bassa
   sestri: { w: 9.33, s: 44.2, e: 9.45, n: 44.29 }, // prova veloce Liguria di Levante
+  grazie: { w: 9.78, s: 44.03, e: 9.92, n: 44.12 }, // prova delle isobate IIM nei buchi (Seno delle Grazie)
+  tavolara: { w: 9.55, s: 40.78, e: 9.76, n: 40.96 }, // prova della «stima» dove EMODnet sbaglia la costa
   // Alto Tirreno e Costa Azzurra: da Marsiglia a Piombino ed Elba, Liguria e Corsica
   tirreno: { w: 4.85, s: 41.3, e: 10.6, n: 44.45 },
   // resto d'Italia: riquadri lungo le coste (le sovrapposizioni si fanno una volta sola)
@@ -172,6 +175,8 @@ for (const name of names) {
       getWaterTile: (x, y) => tiles.get(`${x},${y}`) ?? null,
       surveyLines,
       surveyGrid,
+      // isobate IIM della Regione Liguria: solo nei buchi (Seno delle Grazie, porticcioli)
+      gapLines: await iimLiguriaIn(w, s, e, nn),
       shoreModel: shoreModelAt(w, s, e, nn),
       onCalib: CALIB ? (pts) => calib.push(...pts) : null,
     })
@@ -248,7 +253,7 @@ writeFileSync(
     areas: names,
     bands: BANDS,
     attribution:
-      'Fondali: EMODnet Bathymetry (CC BY 4.0), Litto3D® Shom-IGN (Licence Ouverte), Regione Liguria (rilievi multibeam, dati aperti), Regione Emilia-Romagna/ARPAE (isobate 2018 CC BY 4.0, DTM 2012 CC BY 3.0), costa © OpenStreetMap (ODbL)',
+      'Fondali: EMODnet Bathymetry (CC BY 4.0), Litto3D® Shom-IGN (Licence Ouverte), Regione Liguria (rilievi multibeam, dati aperti; isobate IIM solo dove mancano altri dati), Regione Emilia-Romagna/ARPAE (isobate 2018 CC BY 4.0, DTM 2012 CC BY 3.0), costa © OpenStreetMap (ODbL)',
   }),
 )
 // la carta vecchia va nel Cestino, la nuova al suo posto

@@ -24,6 +24,7 @@ const R_HD = 40 // celle: oltre questa distanza dai rilievi torna EMODnet
 const R_NODATA = 30 // celle: più lontano di così da ogni dato = senza dati
 const R_HARBOR = 45 // celle (~450 m) intorno a un porto: la riva non è a 0 m
 const R_HARBOR_DATA = 12 // celle: lì vale solo ciò che è vicino a un dato vero
+const R_EST = 15 // celle (~150 m) attorno a dove EMODnet sbaglia la costa: «stima»
 const R_OVER = 30 // celle (~300 m): attorno alle isobate «over» la griglia del rilievo si ignora
 
 // Isobate: quelle del modello ovunque, le altre solo dove c'è il rilievo
@@ -386,6 +387,47 @@ export function fineChunk(ci, cj, ctx) {
     }
   }
 
+  // EMODnet vale qui (lontano dalla riva e dai rilievi)?
+  const emodOk = (k) => dHd[k] > R_HD && dShore[k] > R_SHORE && em[k] < -0.5
+
+  // Isobate di riserva (IIM, ctx.gapLines): solo dove la carta sarebbe
+  // "senza dati" (stessa regola della qualità più sotto), mai sopra un dato
+  // migliore. Si allarga il buco di poco perché la linea entri intera
+  const gap = new Float32Array(N).fill(NaN)
+  let dGap = null // distanza dalle isobate di riserva bruciate
+  if (ctx.gapLines?.length) {
+    const seed0 = new Uint8Array(N)
+    for (let k = 0; k < N; k++) if (!land[k] && (hdSeed[k] || model?.[k] || emodOk(k))) seed0[k] = 1
+    const dData0 = distance(seed0, W, W)
+    const hole = new Uint8Array(N)
+    for (let k = 0; k < N; k++) {
+      if (land[k]) continue
+      if (dData0[k] > R_NODATA || (dHarbor0[k] <= R_HARBOR && dData0[k] > R_HARBOR_DATA)) hole[k] = 1
+    }
+    const dHole = distance(hole, W, W)
+    for (const { depth, pts } of ctx.gapLines) {
+      for (let i = 0; i < pts.length - 1; i++) {
+        const x0 = pts[i][0] * FINE - iStart
+        const y0 = jTop + 1 - pts[i][1] * FINE
+        const x1 = pts[i + 1][0] * FINE - iStart
+        const y1 = jTop + 1 - pts[i + 1][1] * FINE
+        const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 2))
+        for (let s = 0; s <= steps; s++) {
+          const x = Math.floor(x0 + ((x1 - x0) * s) / steps)
+          const y = Math.floor(y0 + ((y1 - y0) * s) / steps)
+          if (x < 0 || y < 0 || x >= W || y >= W) continue
+          const k = y * W + x
+          // dalla parte della sicurezza: fra due linee nella stessa cella la meno profonda
+          if (water[k] && dHole[k] <= 3 * 6 && !(gap[k] > -depth)) gap[k] = -depth
+        }
+      }
+    }
+    const gapSeed = new Uint8Array(N)
+    let any = false
+    for (let k = 0; k < N; k++) if (Number.isFinite(gap[k])) any = gapSeed[k] = 1
+    if (any) dGap = distance(gapSeed, W, W)
+  }
+
   // valori fissati e incognite
   const u = new Float32Array(N)
   const fixed = new Uint8Array(N)
@@ -398,9 +440,13 @@ export function fineChunk(ci, cj, ctx) {
       fixed[k] = 1
       u[k] = hd[k]
       dataSeed[k] = 1
-    } else if (dHd[k] > R_HD && dShore[k] > R_SHORE && em[k] < -0.5) {
+    } else if (emodOk(k)) {
       fixed[k] = 1
       u[k] = em[k]
+      dataSeed[k] = 1
+    } else if (Number.isFinite(gap[k])) {
+      fixed[k] = 1
+      u[k] = gap[k]
       dataSeed[k] = 1
     } else u[k] = Number.isFinite(em[k]) ? Math.min(0, em[k]) : 0
   }
@@ -441,8 +487,27 @@ export function fineChunk(ci, cj, ctx) {
   for (let k = 0; k < N; k++) {
     if (land[k]) continue
     if (dData[k] > R_NODATA) continue
-    if (dHarbor[k] <= R_HARBOR && dData[k] > R_HARBOR_DATA) continue
+    // nei porti solo vicino a un dato vero; fra le isobate di riserva (buchi
+    // come il Seno delle Grazie, dove sono l'unico dato) un po' più lontano
+    if (dHarbor[k] <= R_HARBOR && dData[k] > R_HARBOR_DATA && !(dGap && dGap[k] <= 2 * R_HARBOR_DATA)) continue
     quality[k] = dHd[k] <= R_HD ? 2 : 1
+  }
+
+  // «Stima»: dove EMODnet dice terra (≥ −0,5 m) ben dentro il mare di
+  // OpenStreetMap (oltre R_SHORE dalla riva) la sua costa è sbagliata, e il
+  // fondale lì intorno è solo un raccordo fra la riva a 0 m e il primo dato
+  // lontano (Sardegna: Porto San Paolo, Porto Istana). Le fasce restano come
+  // avviso, ma niente quote né isobate inventate, e la zona si segna
+  const broken = new Uint8Array(N)
+  let anyBroken = false
+  for (let k = 0; k < N; k++) {
+    if (land[k] || dHd[k] <= R_HD || (dGap && dGap[k] <= R_HD)) continue
+    if (dShore[k] > R_SHORE && !(em[k] < -0.5)) anyBroken = broken[k] = 1
+  }
+  const est = new Uint8Array(N)
+  if (anyBroken) {
+    const dBroken = distance(broken, W, W)
+    for (let k = 0; k < N; k++) if (quality[k] === 1 && dBroken[k] <= R_EST) est[k] = 1
   }
 
   // sotto-griglia del riquadro con una cella in più per lato
@@ -451,6 +516,7 @@ export function fineChunk(ci, cj, ctx) {
   const lineVals = new Float64Array(S * S)
   const bandVals = new Float64Array(S * S)
   const noData = new Float64Array(S * S)
+  const estimate = new Float64Array(S * S)
   for (let y = 0; y < S; y++) {
     for (let x = 0; x < S; x++) {
       const k = (y + o) * W + (x + o)
@@ -458,6 +524,7 @@ export function fineChunk(ci, cj, ctx) {
       lineVals[y * S + x] = v
       bandVals[y * S + x] = !land[k] && !quality[k] ? -99999 : v
       noData[y * S + x] = !land[k] && !quality[k] ? 1 : 0
+      estimate[y * S + x] = est[k]
     }
   }
   const proj = makeProjector(iStart + o, jTop - o)
@@ -467,7 +534,7 @@ export function fineChunk(ci, cj, ctx) {
     const y = Math.min(S - 1, Math.max(0, Math.floor(Y)))
     const k = (y + o) * W + (x + o)
     if (dLine[k] <= R_HD && surveyDepths.has(d)) return 0
-    return quality[k]
+    return est[k] ? 0 : quality[k]
   }
   const gen = contours().size([S, S])
   const features = []
@@ -534,6 +601,12 @@ export function fineChunk(ci, cj, ctx) {
   const nd = gen.contour(noData, 0.5)
   const ndPolys = nd.coordinates.map((poly) => poly.map((ring) => simplifyGrid(ring, 0.3).map(proj))).filter((p) => p[0].length >= 4)
   if (ndPolys.length) features.push({ layer: 'nodata', type: 3, props: {}, geom: ndPolys })
+  // zone a stima (fondale non misurato, vedi sopra)
+  if (anyBroken) {
+    const es = gen.contour(estimate, 0.5)
+    const esPolys = es.coordinates.map((poly) => poly.map((ring) => simplifyGrid(ring, 0.3).map(proj))).filter((p) => p[0].length >= 4)
+    if (esPolys.length) features.push({ layer: 'estimate', type: 3, props: {}, geom: esPolys })
+  }
 
   // quote: in ogni blocco (20 celle col rilievo, 48 col modello) la più bassa
   // della sua metà centrale, così restano distanziate ma non a griglia
@@ -550,7 +623,7 @@ export function fineChunk(ci, cj, ctx) {
         for (let y = BUF + by + q0; y < BUF + by + step - q0; y++) {
           for (let x = BUF + bx + q0; x < BUF + bx + step - q0; x++) {
             const k = y * W + x
-            if (quality[k] !== want || dShore[k] < 3) continue
+            if (quality[k] !== want || est[k] || dShore[k] < 3) continue
             const depth = -u[k]
             if (depth >= minDepth && depth < bestDepth) {
               bestDepth = depth

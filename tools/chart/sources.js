@@ -209,6 +209,66 @@ export async function liguriaIn(w, s, e, n) {
   return lines.filter(({ bbox }) => bbox[0] <= e && bbox[2] >= w && bbox[1] <= n && bbox[3] >= s)
 }
 
+/*
+ * Isobate ogni 5 m (5, 10, 15, 20, 25, 40… fino a 200 m) dell'Istituto
+ * Idrografico della Marina, ritagliate dalla Regione Liguria sulla costa in
+ * scala 1:5000 (WFS M1022:L2481, "Isobate fino a 200 m di profondità").
+ * Condizioni della Regione: uso non a scopo di lucro, descrizione sommaria dei
+ * fondali, non valide per la navigazione. Scelta dell'utente (2026-11-27):
+ * servono SOLO a riempire i buchi dove nessun altro dato arriva (Seno delle
+ * Grazie, porticcioli): in fuse.js entrano solo nelle zone che sarebbero
+ * "senza dati". Profondità già sullo zero idrografico delle carte IIM.
+ */
+let iimLines = null
+async function loadIimLiguria() {
+  if (iimLines) return iimLines
+  const file = join(CACHE, 'liguria-iim-L2481.json')
+  if (!existsSync(file)) {
+    const all = []
+    for (let start = 0; ; start += 5000) {
+      const url =
+        'https://geoservizi.regione.liguria.it/geoserver/M1022/wfs?service=WFS&version=2.0.0&request=GetFeature&typeNames=M1022:L2481' +
+        `&outputFormat=application/json&srsName=EPSG:4326&count=5000&startIndex=${start}&sortBy=ogr_fid`
+      const r = await fetch(url, { headers: { 'User-Agent': 'timone-chart/1.0' } })
+      if (!r.ok) throw new Error(`Liguria IIM WFS ${r.status}`)
+      const page = await r.json()
+      all.push(...page.features)
+      if (page.features.length < 5000) break
+    }
+    mkdirSync(CACHE, { recursive: true })
+    writeFileSync(file, JSON.stringify({ type: 'FeatureCollection', features: all }))
+  }
+  const json = JSON.parse(readFileSync(file, 'utf8'))
+  iimLines = []
+  for (const f of json.features) {
+    const depth = -Number(f.properties.elevation)
+    if (!(depth > 0) || !f.geometry) continue
+    const parts = f.geometry.type === 'LineString' ? [f.geometry.coordinates] : f.geometry.coordinates
+    for (const raw of parts) {
+      if (raw.length < 2) continue
+      const pts = raw.map((p) => [p[0], p[1]])
+      let w = Infinity
+      let s = Infinity
+      let e = -Infinity
+      let n = -Infinity
+      for (const [x, y] of pts) {
+        if (x < w) w = x
+        if (x > e) e = x
+        if (y < s) s = y
+        if (y > n) n = y
+      }
+      iimLines.push({ depth, pts, bbox: [w, s, e, n] })
+    }
+  }
+  return iimLines
+}
+
+/** Isobate IIM (solo per i buchi) che toccano il riquadro */
+export async function iimLiguriaIn(w, s, e, n) {
+  const lines = await loadIimLiguria()
+  return lines.filter(({ bbox }) => bbox[0] <= e && bbox[2] >= w && bbox[1] <= n && bbox[3] >= s)
+}
+
 // ---------------------------------------------------------- costa (OSM / OFM)
 
 let ofmTemplate = null
