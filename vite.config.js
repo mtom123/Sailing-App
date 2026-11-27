@@ -10,7 +10,8 @@ export default defineConfig({
     port: 5173,
   },
   build: {
-    target: 'es2019', // Safari 15 compat
+    // Safari 15 compat; es2020 per MapLibre (Carta TIMONE), che usa i BigInt
+    target: ['es2020', 'safari15'],
     sourcemap: false,
     chunkSizeWarningLimit: 1500,
     rollupOptions: {

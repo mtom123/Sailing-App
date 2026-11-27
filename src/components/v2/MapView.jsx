@@ -34,6 +34,7 @@ import { depthAt } from '../../lib/depthAt.js'
 import MeteogramPopup from './MeteogramPopup.jsx'
 import WaypointPopup from './WaypointPopup.jsx'
 import { LandTintLayer } from '../../lib/landTintLayer.js'
+import { TimoneChartLayer } from '../../lib/timoneChartLayer.js'
 import RulerTool from './RulerTool.jsx'
 import { beforeStart, coursePoints, courseTarget, moveCoursePoint, moveLineEnd, pickOnCourse, raceStats, timerShown } from '../../lib/race.js'
 import RaceClock from '../RaceClock.jsx'
@@ -312,6 +313,8 @@ export default function MapView({
   })
 
   const [mapReady, setMapReady] = useState(false)
+  // Carta TIMONE non disponibile (niente WebGL, memoria): resta la carta Esri
+  const [chartFailed, setChartFailed] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [meteoPoint, setMeteoPoint] = useState(null)
   const [waypointPopupId, setWaypointPopupId] = useState(null)
@@ -388,6 +391,22 @@ export default function MapView({
       },
     }))
 
+  // Fondale di sicurezza della carta TIMONE: pescaggio + 1 m
+  const safetyDepth = (boat) => Math.max(1, Math.ceil((boat?.draftM || 2) + 1))
+  // Carta di base: la Carta TIMONE (MapLibre) o le carte Esri
+  const makeBase = (style) => {
+    if (style !== 'timone') return makeBaseLayer(style)
+    // Scelta di nuovo a mano: si riprova anche se prima era caduta
+    setChartFailed(false)
+    const st = useAppStore.getState()
+    return new TimoneChartLayer({
+      safety: safetyDepth(st.boat),
+      seamarks: !!st.layers.seamarks,
+      fallback: () => makeBaseLayer('chart'),
+      onFallback: () => setChartFailed(true),
+    })
+  }
+
   // === Init map (once) ===
   useEffect(() => {
     logStep('MapView useEffect starting')
@@ -431,7 +450,8 @@ export default function MapView({
       // Tile layers — zIndex fisso: l'ordine resta giusto anche
       // quando un livello viene spento e riacceso
       const imagery = baseStyle === 'satellite'
-      tileLayerRefs.current.base = makeBaseLayer(baseStyle)
+      const timoneOn = baseStyle === 'timone'
+      tileLayerRefs.current.base = makeBase(baseStyle)
       tileLayerRefs.current.baseStyle = baseStyle
       tileLayerRefs.current.bathy = L.tileLayer(TILES.bathy.url, {
         attribution: TILES.bathy.attribution,
@@ -533,15 +553,18 @@ export default function MapView({
       // Add base + overlays based on layer state
       map.addLayer(tileLayerRefs.current.base)
       // Sul satellite il rilievo EMODnet coprirebbe il fondale visibile
-      if (layers.bathy && !imagery) map.addLayer(tileLayerRefs.current.bathy)
+      // La Carta TIMONE ha già fondali, isobate, fari e boe: quelli degli
+      // altri strati si accendono solo con le carte Esri
+      if (layers.bathy && !imagery && !timoneOn) map.addLayer(tileLayerRefs.current.bathy)
       if (layers.posidonia) map.addLayer(tileLayerRefs.current.posidonia)
-      if (layers.shomRelief) map.addLayer(tileLayerRefs.current.shomRelief)
-      if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobaths)
-      if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobathVector)
-      if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobathHd)
-      if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobathLiguria)
-      if (layers.isobaths) map.addLayer(tileLayerRefs.current.isobathBaleari)
-      if (layers.seamarks) map.addLayer(tileLayerRefs.current.seamarks)
+      const depths = layers.isobaths && !timoneOn
+      if (layers.shomRelief && !timoneOn) map.addLayer(tileLayerRefs.current.shomRelief)
+      if (depths) map.addLayer(tileLayerRefs.current.isobaths)
+      if (depths) map.addLayer(tileLayerRefs.current.isobathVector)
+      if (depths) map.addLayer(tileLayerRefs.current.isobathHd)
+      if (depths) map.addLayer(tileLayerRefs.current.isobathLiguria)
+      if (depths) map.addLayer(tileLayerRefs.current.isobathBaleari)
+      if (layers.seamarks && !timoneOn) map.addLayer(tileLayerRefs.current.seamarks)
       // Stessi strati (e URL) per scaricare la carta lungo le rotte
       setOfflineLayers({
         seamarks: tileLayerRefs.current.seamarks,
@@ -649,14 +672,17 @@ export default function MapView({
     if (!map) return
     const refs = tileLayerRefs.current
     const imagery = baseStyle === 'satellite'
+    // Carta TIMONE attiva e funzionante: i suoi fondali al posto degli altri
+    const timoneOn = baseStyle === 'timone' && !chartFailed
 
     // Carta di base
     if (refs.baseStyle !== baseStyle) {
       map.removeLayer(refs.base)
-      refs.base = makeBaseLayer(baseStyle)
+      refs.base = makeBase(baseStyle)
       refs.baseStyle = baseStyle
       map.addLayer(refs.base)
     }
+    refs.base.setSeamarks?.(!!layers.seamarks)
     // Isobate: senza riempimento e chiare sul satellite
     if (refs.isobaths && refs.isobathsImagery !== imagery) {
       refs.isobaths.setParams({ sld_body: isobathSld({ imagery }) })
@@ -672,17 +698,24 @@ export default function MapView({
       if (visible && !map.hasLayer(layer)) map.addLayer(layer)
       if (!visible && map.hasLayer(layer)) map.removeLayer(layer)
     }
-    setVis(refs.bathy, layers.bathy && !imagery)
+    const depths = layers.isobaths && !timoneOn
+    setVis(refs.bathy, layers.bathy && !imagery && !timoneOn)
     setVis(refs.posidonia, layers.posidonia)
-    setVis(refs.shomRelief, layers.shomRelief)
-    setVis(refs.isobaths, layers.isobaths)
-    setVis(refs.isobathVector, layers.isobaths)
-    setVis(refs.isobathHd, layers.isobaths)
-    setVis(refs.isobathLiguria, layers.isobaths)
-    setVis(refs.isobathBaleari, layers.isobaths)
-    setVis(refs.seamarks, layers.seamarks)
+    setVis(refs.shomRelief, layers.shomRelief && !timoneOn)
+    setVis(refs.isobaths, depths)
+    setVis(refs.isobathVector, depths)
+    setVis(refs.isobathHd, depths)
+    setVis(refs.isobathLiguria, depths)
+    setVis(refs.isobathBaleari, depths)
+    setVis(refs.seamarks, layers.seamarks && !timoneOn)
     setVis(refs.coastBand, layers.coastBand)
-  }, [baseStyle, layers.bathy, layers.posidonia, layers.shomRelief, layers.isobaths, layers.seamarks, layers.coastBand, mapReady])
+  }, [baseStyle, chartFailed, layers.bathy, layers.posidonia, layers.shomRelief, layers.isobaths, layers.seamarks, layers.coastBand, mapReady])
+
+  // Fondale di sicurezza della Carta TIMONE al cambio del pescaggio
+  const draftM = useAppStore((s) => s.boat?.draftM)
+  useEffect(() => {
+    if (mapReady) tileLayerRefs.current.base?.setSafety?.(safetyDepth({ draftM }))
+  }, [draftM, mapReady])
 
   // === Fasce di profondità personali (ancoraggio) ===
   const depthZones = useAppStore((s) => s.depthZones)
@@ -754,14 +787,15 @@ export default function MapView({
   // === Carta CHIARA: terra più scura, staccata dal mare ===
   useEffect(() => {
     const map = mapRef.current
-    if (!mapReady || !map || baseStyle !== 'chart') return undefined
-    const layer = new LandTintLayer().addTo(map)
-    // Carta di riserva sotto i tasselli: dove la carta Esri manca (offline)
+    if (!mapReady || !map || (baseStyle !== 'chart' && baseStyle !== 'timone')) return undefined
+    // Il velo sulla terra serve solo alla carta Esri (sulla TIMONE la terra è già staccata)
+    const layer = baseStyle === 'chart' ? new LandTintLayer().addTo(map) : null
+    // Carta di riserva sotto i tasselli: dove la carta manca (offline)
     // terra dalla costa OSM su sfondo mare
     const base = new LandTintLayer({ pane: 'offlineBasePane', zIndex: 150, color: '#efe9dc', fillOpacity: 1 }).addTo(map)
     map.getContainer().style.background = '#c4dbe9'
     return () => {
-      map.removeLayer(layer)
+      if (layer) map.removeLayer(layer)
       map.removeLayer(base)
       map.getContainer().style.background = ''
     }
@@ -2047,6 +2081,9 @@ function MapButton({ active, danger, onClick, title, children }) {
   )
 }
 
+// Con la Carta TIMONE questi fondali sono già nella carta
+const TIMONE_HAS = ['bathy', 'isobaths', 'shomRelief']
+
 function LayerPopover({ onClose, onDownloadArea }) {
   const { layers, toggleLayer, baseStyle, setBaseStyle } = useAppStore()
   // Voci raggruppate per argomento
@@ -2115,8 +2152,9 @@ function LayerPopover({ onClose, onDownloadArea }) {
           <CloudDownload size={13} /> SCARICA ZONA OFFLINE
         </button>
         <div className="label pb-2">Carta base</div>
-        <div className="mb-3 flex gap-1">
+        <div className="mb-3 grid grid-cols-2 gap-1">
           {[
+            ['timone', 'TIMONE'],
             ['chart', 'CHIARA'],
             ['dark', 'SCURA'],
             ['satellite', 'SATELLITE'],
@@ -2138,7 +2176,7 @@ function LayerPopover({ onClose, onDownloadArea }) {
         {LAYER_GROUPS.map(([group, defs]) => (
           <div key={group}>
             <div className="label pb-1 pt-2">{group}</div>
-            {defs.map((l) => (
+            {defs.filter((l) => !(baseStyle === 'timone' && TIMONE_HAS.includes(l.key))).map((l) => (
               <button
                 key={l.key}
                 type="button"

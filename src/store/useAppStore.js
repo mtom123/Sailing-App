@@ -40,7 +40,9 @@ export const useAppStore = create(
       setFollow: (follow) => set({ follow }),
 
       // === Map style ===
-      baseStyle: 'chart', // 'chart' | 'dark' | 'satellite'
+      baseStyle: 'timone', // 'timone' | 'chart' | 'dark' | 'satellite'
+      // 1 = la Carta TIMONE è già stata proposta come sfondo (vedi merge)
+      chartV: 1,
       setBaseStyle: (baseStyle) => set({ baseStyle }),
 
       // === Layers visibility ===
@@ -299,6 +301,9 @@ export const useAppStore = create(
       merge: (persisted, current) => ({
         ...current,
         ...persisted,
+        // Novembre 2026: la Carta TIMONE diventa lo sfondo, una volta sola;
+        // chi poi sceglie un'altra carta la tiene
+        ...(persisted && persisted.chartV !== 1 ? { baseStyle: 'timone', chartV: 1 } : {}),
         layers: { ...current.layers, ...persisted?.layers },
         boat: { ...current.boat, ...persisted?.boat },
         coastBand: { ...current.coastBand, ...persisted?.coastBand },
@@ -308,6 +313,7 @@ export const useAppStore = create(
       }),
       partialize: (s) => ({
         baseStyle: s.baseStyle,
+        chartV: s.chartV,
         layers: s.layers,
         boat: s.boat,
         coastBand: s.coastBand,
