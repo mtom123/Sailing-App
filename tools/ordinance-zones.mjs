@@ -8,7 +8,7 @@
  * la stagione e la fonte; dove l'ordinanza non dà il limite (approx) lo dice.
  *
  * Prima prova: Sestri Levante, Ordinanza di sicurezza balneare n. 53/2026 del
- * Circondario marittimo di Santa Margherita Ligure, art. 29–31. La fascia dei
+ * Circondario marittimo di Santa Margherita Ligure, punti 29–31 (pag. 30). La fascia dei
  * 200 m / 100 m riservata ai bagnanti (art. 5) è già in src/data/coastRules.js.
  *
  * Uso: node tools/ordinance-zones.mjs
@@ -122,7 +122,7 @@ const areas = []
 {
   const coast = await coastline('coast-sestri.json', [44.235, 9.36, 44.295, 9.47])
 
-  // Art. 30 — Baia delle Favole: testata del molo foraneo → punta del pennello alla foce del Gromolo
+  // Punto 30 — Baia delle Favole: testata del molo foraneo → punta del pennello alla foce del Gromolo
   const moleHead = snap(coast, [44.27246, 9.38495], 10)
   const groyneTip = snap(coast, [44.27405, 9.39256], 10)
   const favole = bayPolygon(coast, groyneTip, moleHead)
@@ -134,12 +134,12 @@ const areas = []
       note: 'Vietati gli ormeggi all’ancora e alla ruota dentro la linea tra la testata del molo foraneo del porto e la punta del pennello alla foce del torrente Gromolo.',
       limit: [limitLine(coast, moleHead, groyneTip)],
       season: SML_SEASON,
-      source: { ...SML_53_2026, article: 'art. 30' },
+      source: { ...SML_53_2026, article: 'punto 30' },
     })
   )
   console.log(`Baia delle Favole: ${m2(favole)}`)
 
-  // Art. 29 — Baia di Portobello o del Silenzio. L'ordinanza non dà il limite:
+  // Punto 29 — Baia di Portobello o del Silenzio. L'ordinanza non dà il limite:
   // la linea dalla punta di ponente alla testata della scogliera di levante,
   // su cui sta anche la scogliera staccata dell'imboccatura
   const westPoint = snap(coast, [44.267245, 9.392309], 10)
@@ -154,12 +154,12 @@ const areas = []
       approx: 'L’ordinanza non traccia il limite verso il largo: qui è la linea delle scogliere all’imboccatura.',
       limit: [limitLine(coast, westPoint, eastBreakwater)],
       season: SML_SEASON,
-      source: { ...SML_53_2026, article: 'art. 29' },
+      source: { ...SML_53_2026, article: 'punto 29' },
     })
   )
   console.log(`Baia del Silenzio: ${m2(silenzio)}`)
 
-  // Art. 31 — fascia da 200 a 400 m dalla riva della Baia delle Favole. La
+  // Punto 31 — fascia da 200 a 400 m dalla riva della Baia delle Favole. La
   // spiaggia è la relazione OSM 11314896; la riva sono i vertici di costa
   // che la toccano
   const rel = await cachedJson('rel-11314896.json', () => osmFull('relation', 11314896))
@@ -191,7 +191,7 @@ const areas = []
       note: 'Oltre i 200 m riservati ai bagnanti, fino a 400 m dalla costa: vietati ancoraggio e pesca, vietata la navigazione alle unità da diporto a motore oltre 6 m (salvo i corridoi di lancio). In mare la segnano gavitelli gialli o arancio.',
       approx: 'Fascia calcolata dalla riva OpenStreetMap: in mare fanno fede i gavitelli.',
       season: SML_SEASON,
-      source: { ...SML_53_2026, article: 'art. 31' },
+      source: { ...SML_53_2026, article: 'punto 31' },
     })
   )
   console.log(`Fascia 200–400 m Baia delle Favole: ${m2(band)} (riva ${Math.round(turf.length(shoreLine, { units: 'meters' }))} m)`)

@@ -102,6 +102,9 @@ export const ProtectedAreasLayer = L.Layer.extend({
     if (gen !== this._gen || !this._map) return
     this._group.clearLayers()
     for (const area of [...areas].sort((x, y) => ORDER[x.kind] - ORDER[y.kind])) {
+      // Fuori stagione restano solo i limiti segnati sulle carte (molo–foce):
+      // le fasce senza linea (200–400 m, segnate dai gavitelli d'estate) no
+      if (area.source && !area.limit && !inSeason(area)) continue
       const style = styleOf(area)
       const poly = L.polygon(area.rings, {
         ...style,
