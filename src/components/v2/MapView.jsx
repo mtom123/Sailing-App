@@ -19,6 +19,7 @@ import { ruleTiming } from '../../data/coastRules.js'
 import { ProtectedAreasLayer } from '../../lib/protectedAreasLayer.js'
 import { OrdinancesLayer } from '../../lib/ordinancesLayer.js'
 import { BeachBarsLayer } from '../../lib/beachBarsLayer.js'
+import { YciClubsLayer } from '../../lib/yciClubsLayer.js'
 import { ampContext, ampPageFor, ampPopupHTML } from '../../lib/ampRules.js'
 import { LiguriaHabitatLayer, LiguriaPosidoniaOverview } from '../../lib/liguriaHabitat.js'
 
@@ -1561,6 +1562,17 @@ export default function MapView({
     if (!layers.beachBars && map.hasLayer(layer)) map.removeLayer(layer)
   }, [layers.beachBars, mapReady, route.editing])
 
+  // === Club gemellati e con reciprocità dello YCI, col loro guidone ===
+  useEffect(() => {
+    if (!mapReady) return
+    const map = mapRef.current
+    if (!tileLayerRefs.current.yciClubs) tileLayerRefs.current.yciClubs = new YciClubsLayer({ interactive: true })
+    const layer = tileLayerRefs.current.yciClubs
+    layer.setInteractive(!route.editing)
+    if (layers.yciClubs && !map.hasLayer(layer)) map.addLayer(layer)
+    if (!layers.yciClubs && map.hasLayer(layer)) map.removeLayer(layer)
+  }, [layers.yciClubs, mapReady, route.editing])
+
   // === Zone vietate inserite a mano dalla lente (avvisi ai naviganti) ===
   const userZones = useAppStore((s) => s.userZones)
   const removeUserZone = useAppStore((s) => s.removeUserZone)
@@ -2115,6 +2127,7 @@ function LayerPopover({ onClose, onDownloadArea }) {
         { key: 'sightings', label: 'I miei avvistamenti' },
         { key: 'seamarks', label: 'Fari e boe' },
         { key: 'beachBars', label: 'Baretti e bagni sulla spiaggia (da zoom 14)' },
+        { key: 'yciClubs', label: 'Club YCI gemellati e con reciprocità' },
         { key: 'ais', label: 'Navi AIS' },
       ],
     ],

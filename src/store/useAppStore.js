@@ -62,6 +62,7 @@ export const useAppStore = create(
         coastBand: true,
         ordinances: true,
         beachBars: true,
+        yciClubs: true,
         rain: false,
         current: false,
         offlineZones: true,
