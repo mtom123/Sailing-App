@@ -5,8 +5,8 @@ import { downloadArea, estimateArea, polygonAreaM2 } from '../../lib/offlinePack
 
 /**
  * Zona offline a poligono: un tap per ogni punto attorno alla zona (si
- * chiude da solo), punti trascinabili, un tap sul pallino a metà di un lato
- * per aggiungerne uno lì, INDIETRO toglie l'ultimo. Poi superficie, peso
+ * chiude da solo), punti trascinabili, il pallino a metà di un lato si
+ * trascina (o si tocca) per aggiungere lì un punto, INDIETRO toglie l'ultimo. Poi superficie, peso
  * stimato e due scelte: BASE (zone grandi, fino a zoom 14) o DETTAGLIO
  * (tutti gli zoom, zone più piccole, come le rotte).
  * I tap vanno solo qui finché è aperto.
@@ -21,12 +21,12 @@ const cornerIcon = L.divIcon({
   iconAnchor: [18, 18],
 })
 
-// A metà dei lati: un tap aggiunge lì un punto
+// A metà dei lati: trascinato (o toccato) diventa un punto in più
 const midIcon = L.divIcon({
   className: 'timone-marker',
-  html: `<div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center"><div style="width:12px;height:12px;border-radius:50%;background:rgba(10,22,32,0.7);border:2px solid ${COLOR}"></div></div>`,
-  iconSize: [32, 32],
-  iconAnchor: [16, 16],
+  html: `<div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center"><div style="width:16px;height:16px;border-radius:50%;background:rgba(10,22,32,0.7);border:2px solid ${COLOR}"></div></div>`,
+  iconSize: [44, 44],
+  iconAnchor: [22, 22],
 })
 
 const fmtNm2 = (m2) => (m2 / 1852 ** 2).toLocaleString('it-IT', { maximumFractionDigits: m2 < 1852 ** 2 * 10 ? 1 : 0 })
@@ -96,9 +96,28 @@ export default function AreaDownloadTool({ map, onClose }) {
         const a = points[i]
         const b = points[(i + 1) % points.length]
         const mid = { lat: (a.lat + b.lat) / 2, lon: (a.lon + b.lon) / 2 }
-        L.marker([mid.lat, mid.lon], { icon: midIcon, zIndexOffset: 1400 })
-          .on('click', () => setPoints((list) => [...list.slice(0, i + 1), mid, ...list.slice(i + 1)]))
-          .addTo(mids)
+        const insert = (p) => setPoints((list) => [...list.slice(0, i + 1), p, ...list.slice(i + 1)])
+        // Trascinabile come i punti: sull'iPad un tocco fermo non esiste (il
+        // dito si sposta di qualche pixel) e Leaflet lo prendeva per un
+        // trascinamento della carta, perdendo il tocco. Così il pallino si
+        // tira dove serve e diventa un punto; il tocco fermo lo aggiunge lì
+        const m = L.marker([mid.lat, mid.lon], { icon: midIcon, draggable: true, zIndexOffset: 1400 })
+        m.on('click', () => insert(mid))
+        m.on('drag', (e) => {
+          const { lat, lng } = e.target.getLatLng()
+          const ll2 = [...ll.slice(0, i + 1), [lat, lng], ...ll.slice(i + 1)]
+          if (closed) shape.setLatLngs(ll2)
+          else {
+            line.setLatLngs([])
+            shape.setLatLngs(ll2)
+            if (!group.hasLayer(shape)) shape.addTo(group)
+          }
+        })
+        m.on('dragend', (e) => {
+          const { lat, lng } = e.target.getLatLng()
+          insert({ lat, lon: lng })
+        })
+        m.addTo(mids)
       }
     }
   }, [points, running])
@@ -172,7 +191,7 @@ export default function AreaDownloadTool({ map, onClose }) {
       {ready && !running && (
         <>
           <div className="text-[calc(11px*var(--fs))] tabular-nums text-paper">
-            {fmtNm2(areaM2)} nm² <span className="text-fog">· trascina i punti, ○ su un lato per inserirne uno</span>
+            {fmtNm2(areaM2)} nm² <span className="text-fog">· trascina i punti; tira il ○ di un lato per aggiungerne uno</span>
           </div>
           {[
             ['wide', 'BASE', 'fino a zoom 14, per zone grandi', 'border-[#4A9EFF] bg-[#4A9EFF]/15 text-[#4A9EFF]'],
