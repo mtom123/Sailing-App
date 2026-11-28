@@ -199,6 +199,40 @@ export async function cartaSource() {
   }
 }
 
+// ------------------------------------------------------- per le rotte
+
+/** Tassello dei fondali TIMONE (vettoriale, già decompresso): ArrayBuffer o null */
+export function cartaTile(z, x, y) {
+  return resource(`${CARTA}/${z}/${x}/${y}`, 'tile')
+}
+
+let seamapSource = null
+/**
+ * Tassello dei segnali Open Waters (scogli, relitti, ostruzioni):
+ * { data: ArrayBuffer, z, x, y } (oltre lo zoom massimo della sorgente, il
+ * tassello padre che lo contiene) o null
+ */
+export async function seamapTile(z, x, y) {
+  if (!seamapSource) {
+    seamapSource = chartStyle()
+      .then((style) => {
+        const src = style.sources.seamap
+        return src?.tiles?.[0] ? { url: src.tiles[0].slice(SCHEME.length), maxzoom: src.maxzoom ?? 14 } : null
+      })
+      .catch(() => {
+        seamapSource = null
+        return null
+      })
+  }
+  const src = await seamapSource
+  if (!src) return null
+  // oltre il suo zoom massimo la sorgente non ha tasselli: si legge il padre
+  const dz = Math.max(0, z - src.maxzoom)
+  const t = { z: z - dz, x: x >> dz, y: y >> dz }
+  const data = await resource(src.url.replace('{z}', t.z).replace('{x}', t.x).replace('{y}', t.y), 'tile')
+  return data ? { data, ...t } : null
+}
+
 // ------------------------------------------------- scaricamento delle zone
 
 // Sorgenti vettoriali della base che la carta disegna (gli strati nascosti di

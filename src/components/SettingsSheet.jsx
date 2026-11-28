@@ -588,8 +588,34 @@ export default function SettingsSheet({
               <span className="text-[calc(10px*var(--fs))] text-fog">m margine</span>
             </div>
             <div className="pt-1 text-[calc(10px*var(--fs))] text-fog-dim">
-              La rotta segnala e aggira terra e fondali sotto{' '}
+              La rotta segnala e aggira terra, scogli e fondali sotto{' '}
               {((boat.draftM ?? 1.9) + (boat.safetyMarginM ?? 1)).toFixed(1)} m
+            </div>
+            <label className="flex items-center gap-2 pt-2 text-xs text-paper">
+              <input
+                type="checkbox"
+                checked={boat.routeAuto ?? true}
+                onChange={(e) => setBoat({ routeAuto: e.target.checked })}
+                className="h-5 w-5 flex-none accent-[var(--color-phos)]"
+              />
+              Aggira in automatico mentre traccio la rotta
+            </label>
+            <div className="flex items-center gap-2 pt-1.5">
+              <input
+                type="number"
+                min="0"
+                max="1000"
+                step="10"
+                value={boat.clearanceM ?? 100}
+                onChange={(e) => setBoat({ clearanceM: Math.max(0, Number(e.target.value) || 0) })}
+                className="w-16 rounded-md border border-line bg-surface px-2 py-1.5 text-center text-xs text-paper outline-none focus:border-phos"
+              />
+              <span className="text-[calc(10px*var(--fs))] text-fog">m di distanza minima da costa, bassi e scogli</span>
+            </div>
+            <div className="pt-1 text-[calc(10px*var(--fs))] leading-relaxed text-fog-dim">
+              Fondali e scogli dalla Carta TIMONE, poi Shom ed EMODnet; zone A e divieti d'accesso sempre evitati, parchi
+              solo se conviene. In stagione balneare, in Italia, almeno la fascia dell'ordinanza (200 m, 300 m in Sicilia).
+              Nei passaggi stretti il margine scende quanto basta e la rotta lo dice. Le tratte spostate a mano restano dove le metti.
             </div>
             <div id="settings-anchor" className="label pt-3 pb-1 flex items-center gap-1.5">
               <Anchor size={11} /> Ancora e catena (pianificazione dell'ancoraggio)

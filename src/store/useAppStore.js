@@ -142,6 +142,10 @@ export const useAppStore = create(
         // Rotta: avviso e aggiramento sotto pescaggio + margine
         draftM: 1.9,
         safetyMarginM: 1,
+        // Rotta: aggira da sola mentre la si traccia, a questa distanza da
+        // costa, bassi e scogli (in stagione almeno la fascia balneare)
+        routeAuto: true,
+        clearanceM: 100,
       },
       setBoat: (boat) => set((s) => ({ boat: { ...s.boat, ...boat } })),
 

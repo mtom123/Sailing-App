@@ -56,30 +56,36 @@ import { ampRuleFor, zoneLetter, zoneSummary } from './lib/ampRules.js'
 
 // Adaptive hooks: gli hook leggono dallo store
 function useRouteAdapter(geo) {
-  const { routeDraft, routeEditing, routeNavigating, activeWaypointIdx, planSpeed, departureOffsetH, savedRoutes, addSavedRoute, deleteSavedRoute, setRouteDraft, setRouteEditing, setRouteNavigating, setActiveWaypointIdx, setPlanSpeed, setDepartureOffsetH, boat } = useAppStore()
+  const { routeDraft, routeEditing, routeNavigating, activeWaypointIdx, planSpeed, departureOffsetH, savedRoutes, addSavedRoute, deleteSavedRoute, setRouteDraft, setRouteEditing, setRouteNavigating, setActiveWaypointIdx, setPlanSpeed, setDepartureOffsetH, boat, coastBand } = useAppStore()
   const waypoints = routeDraft.waypoints
 
-  // Terra e bassi fondali lungo le tratte (pescaggio + margine)
+  // Terra e bassi fondali lungo le tratte (pescaggio + margine), scogli e
+  // bassi della Carta TIMONE, e la distanza minima da costa, bassi e scogli
+  // (in stagione almeno la fascia balneare dell'ordinanza)
   const minDepth = (boat.draftM ?? 1.9) + (boat.safetyMarginM ?? 1)
-  const hazards = useRouteHazards(waypoints, minDepth)
+  const checkOpts = useMemo(() => ({ clearanceM: boat.clearanceM ?? 100, bandCfg: coastBand }), [boat.clearanceM, coastBand])
+  const hazards = useRouteHazards(waypoints, minDepth, checkOpts)
   // Waypoint dentro la fascia dalla costa delle ordinanze balneari
   const bandWaypoints = useWaypointBands(waypoints)
 
   // Aggira la tratta i → i+1: inserisce i waypoint intermedi trovati.
   // 'ok' già sicura, 'fixed' aggirata, 'none' nessun passaggio, 'error' dati
   // non disponibili. onProgress(testo) durante il calcolo
-  const fixLeg = async (i, onProgress) => {
-    const a = waypoints[i]
-    const b = waypoints[i + 1]
+  const fixLeg = async (i, onProgress, leg = null) => {
+    const a = leg?.from ?? waypoints[i]
+    const b = leg?.to ?? waypoints[i + 1]
     if (!a || !b) return 'none'
     let points
+    const info = {}
     try {
-      points = await detourLegRefined(a, b, minDepth, onProgress)
+      points = await detourLegRefined(a, b, minDepth, onProgress, { ...checkOpts, info })
     } catch (err) {
       console.warn('Aggiramento non riuscito', err)
       return 'error'
     }
     if (!points) return 'none'
+    // passaggio stretto: il margine scelto è stato ridotto per passare
+    if (info.marginM != null && info.marginM < (checkOpts.clearanceM || 0)) setNarrowNote(Math.round(info.marginM))
     if (!points.length) return 'ok'
     setRouteDraft((d) => {
       const at = d.waypoints.findIndex((w) => w.id === a.id)
@@ -91,6 +97,44 @@ function useRouteAdapter(geo) {
     })
     return 'fixed'
   }
+
+  // Aggiramento automatico mentre si traccia la rotta: ogni tratta nuova (un
+  // waypoint aggiunto o inserito) che passa su terra, bassi, scogli, zone
+  // vietate o troppo vicino alla costa si aggira da sola, una alla volta, una
+  // volta sola. Una tratta spostata a mano no: lì decide chi la sposta, e
+  // resta l'avviso con AGGIRA. Nemmeno le tratte di una rotta già fatta che
+  // si riapre in modifica
+  const [autoBusy, setAutoBusy] = useState(null)
+  const [narrowNote, setNarrowNote] = useState(null) // margine ridotto (m) nell'ultimo aggiramento
+  const autoTried = useRef(new Set())
+  const autoOn = (boat.routeAuto ?? true) && routeEditing
+  useEffect(() => {
+    if (!autoOn || autoBusy) return
+    const legKeyOf = (l) => `${l.from.id}>${l.to.id}`
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      const leg = hazards.legs[i]
+      // il risultato deve essere proprio di questa tratta (il controllo arriva dopo le modifiche)
+      if (!leg || !leg.from || leg.from.id !== waypoints[i].id || leg.to.id !== waypoints[i + 1].id) continue
+      if (leg.from.lat !== waypoints[i].lat || leg.to.lat !== waypoints[i + 1].lat || leg.from.lon !== waypoints[i].lon || leg.to.lon !== waypoints[i + 1].lon) continue
+      const key = legKeyOf(leg)
+      if (autoTried.current.has(key)) continue
+      autoTried.current.add(key) // vista: da qui in poi, se si sposta, decide chi la sposta
+      if (leg.ok || leg.hazards.some((h) => h.endpoint)) continue // waypoint in zona vietata: va spostato a mano
+      setAutoBusy('…')
+      fixLeg(i, (text) => setAutoBusy(text), leg).finally(() => setAutoBusy(null))
+      return
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fixLeg cambia a ogni render
+  }, [autoOn, autoBusy, hazards.legs, waypoints, minDepth, checkOpts])
+  useEffect(() => {
+    if (!routeEditing) {
+      setNarrowNote(null)
+      return
+    }
+    // le tratte che ci sono già quando si entra in modifica restano come sono
+    const wps = useAppStore.getState().routeDraft.waypoints
+    for (let i = 0; i < wps.length - 1; i++) autoTried.current.add(`${wps[i].id}>${wps[i + 1].id}`)
+  }, [routeEditing])
 
   const legs = useMemo(() => routeLegs(waypoints), [waypoints])
   const totalNm = useMemo(() => routeTotalNm(waypoints), [waypoints])
@@ -154,9 +198,13 @@ function useRouteAdapter(geo) {
     setRouteDraft,
     nav,
     minDepth,
+    clearanceM: checkOpts.clearanceM,
     hazards: hazards.legs,
     checkingHazards: hazards.checking,
     fixLeg,
+    autoBusy,
+    autoOn,
+    narrowNote,
     bandWaypoints,
   }
 }

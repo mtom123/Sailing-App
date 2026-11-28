@@ -43,12 +43,25 @@ function hazardText(result, minDepth) {
   if (stuck) return `Waypoint in zona vietata (${stuck.name}): spostalo fuori`
   const nogo = result.hazards.find((h) => h.kind === 'nogo')
   if (nogo) return `Entra in zona vietata: ${nogo.name}`
+  const danger = result.hazards.find((h) => h.kind === 'danger')
+  if (danger) return `Passa su ${danger.name}${danger.depth != null ? ` (${formatDepth(danger.depth)} m)` : ''}, dalla carta`
   const shallow = result.hazards.filter((h) => h.kind === 'shallow' && h.depth != null)
-  if (!shallow.length) return 'Bassi fondali'
-  const worst = shallow.reduce((m, h) => (h.depth < m.depth ? h : m))
-  // EMODnet (celle da ~115 m) sotto costa mescola scogli e mare: va verificato
-  const estimated = worst.source === 'EMODnet' ? ', stimato: verifica a vista' : ''
-  return `Fondale ${formatDepth(worst.depth)} m (minimo ${formatDepth(minDepth)} m${estimated})`
+  if (shallow.length) {
+    const worst = shallow.reduce((m, h) => (h.depth < m.depth ? h : m))
+    // Carta TIMONE: si sa la fascia (fondale fino a…), non il punto esatto
+    if (worst.atMost) return `Fondale fino a ${formatDepth(worst.depth)} m sulla carta (minimo ${formatDepth(minDepth)} m)`
+    // EMODnet (celle da ~115 m) sotto costa mescola scogli e mare: va verificato
+    const estimated = worst.source === 'EMODnet' ? ', stimato: verifica a vista' : ''
+    return `Fondale ${formatDepth(worst.depth)} m (minimo ${formatDepth(minDepth)} m${estimated})`
+  }
+  if (result.hazards.some((h) => h.kind === 'shallow')) return 'Bassi fondali'
+  const near = result.hazards.filter((h) => h.kind === 'near')
+  if (near.length) {
+    const closest = near.reduce((m, h) => (h.depth < m.depth ? h : m))
+    const what = closest.name === 'band' ? 'dentro la fascia balneare di' : 'più vicino del margine di'
+    return `Passa a ${Math.round(closest.depth)} m da costa, bassi o scogli: ${what} ${closest.marginM} m`
+  }
+  return 'Pericoli sulla tratta'
 }
 
 const FIX_MESSAGES = {
@@ -142,7 +155,7 @@ function OrdinanceNotice({ ordinances, className = '' }) {
   )
 }
 
-const isSevere = (h) => h.kind === 'land' || h.kind === 'nogo'
+const isSevere = (h) => h.kind === 'land' || h.kind === 'nogo' || h.kind === 'danger'
 // Waypoint dentro una zona vietata: l'aggiramento non può rimediare
 const isStuck = (result) => result.hazards.some((h) => h.endpoint)
 
@@ -262,19 +275,38 @@ function RouteHazards({ route }) {
       <BandNotice waypoints={route.bandWaypoints} />
     </>
   )
-  if (busy) {
-    return <div className="border-b border-line px-3 py-1.5 text-[calc(10px*var(--fs))] text-fog">Calcolo aggiramento… {busy}</div>
+  const narrow = route.narrowNote != null && (
+    <div className="flex items-center gap-2 border-b border-line px-3 py-1.5 text-[calc(10px*var(--fs))] text-warn">
+      <AlertTriangle size={12} className="flex-none" />
+      <span className="min-w-0 flex-1">Passaggio stretto: per passare il margine è sceso a {route.narrowNote} m (impostato {route.clearanceM} m)</span>
+    </div>
+  )
+  if (busy || route.autoBusy) {
+    return (
+      <div className="border-b border-line px-3 py-1.5 text-[calc(10px*var(--fs))] text-fog">
+        {route.autoBusy ? 'Aggiro in automatico…' : 'Calcolo aggiramento…'} {busy || route.autoBusy}
+      </div>
+    )
   }
   if (route.checkingHazards && !bad.length) {
-    return <div className="border-b border-line px-3 py-1.5 text-[calc(10px*var(--fs))] text-fog">Controllo fondali, costa e aree protette…</div>
+    return <div className="border-b border-line px-3 py-1.5 text-[calc(10px*var(--fs))] text-fog">Controllo fondali, scogli, costa e aree protette…</div>
   }
-  if (!bad.length) return parksRow
+  if (!bad.length) {
+    return (
+      <>
+        {narrow}
+        {parksRow}
+      </>
+    )
+  }
   const kinds = new Set(bad.flatMap((i) => route.hazards[i].hazards.map((h) => h.kind)))
-  const land = kinds.has('land') || kinds.has('nogo')
+  const land = kinds.has('land') || kinds.has('nogo') || kinds.has('danger')
   const what = [
     kinds.has('land') && 'terra',
     kinds.has('nogo') && 'zone vietate',
+    kinds.has('danger') && 'scogli o relitti',
     kinds.has('shallow') && `fondali sotto ${formatDepth(route.minDepth)} m`,
+    kinds.has('near') && `meno di ${route.clearanceM} m da costa o bassi`,
   ].filter(Boolean)
   return (
     <>
@@ -307,6 +339,7 @@ function RouteHazards({ route }) {
           AGGIRA TUTTO
         </button>
       </div>
+      {narrow}
       {parksRow}
     </>
   )

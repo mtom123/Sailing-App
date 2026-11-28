@@ -19,11 +19,16 @@ import { waterRings } from './waterMask.js'
 import { prepareDepth } from './depthAt.js'
 import { protectedAreas, areaLookup, inArea } from './protectedAreas.js'
 import { isMilitary, ordinancesAlongLeg } from './ordinances.js'
+import { chartObstacles, distanceCells, fillAreas, inChartArea } from './chartHazards.js'
+import { BAND_DEFAULTS, bandRegion, bandRule } from './coastBand.js'
+import { ruleTiming } from '../data/coastRules.js'
 
 const MAX_RASTER = 1500 // px per lato del canvas dell'acqua (iPad: memoria)
 const MAX_SAMPLES = 2500 // punti controllati per tratta
 const MAX_CELLS = 250000 // celle della griglia per l'aggiramento
-const SHORE_BUFFER_M = 40 // distanza minima da terra e bassi fondali nell'aggiramento
+const SHORE_BUFFER_M = 40 // margine minimo quando quello scelto chiude il passaggio
+const DANGER_HIT_M = 25 // controllo: una tratta così vicina a uno scoglio ci passa sopra
+const NEAR_TOLERANCE = 0.85 // controllo: sotto questa parte del margine la tratta è troppo vicina
 const ENDPOINT_FREE_M = 500 // aggiramento, attorno ai waypoint: solo la terra blocca (porti e baie)
 const ENDPOINT_SHALLOW_OK_M = 150 // controllo: bassi fondali accanto a un waypoint non segnalati
 const PARK_COST = 3 // aggiramento: un miglio dentro un'area protetta pesa come tre fuori
@@ -112,12 +117,34 @@ async function waterRaster(box, res) {
   if (!rings) return null
 
   const mask = await fillWater(rings, minX, maxY, res, w, h)
-  return (x, y) => {
+  const isWater = (x, y) => {
     const c = Math.floor((x - minX) / res)
     const r = Math.floor((maxY - y) / res)
     if (c < 0 || r < 0 || c >= w || r >= h) return true // fuori: non sappiamo, non blocchiamo
     return mask[r * w + c] === 1
   }
+  isWater.grid = { mask, w, h, minX, maxY, res }
+  return isWater
+}
+
+/*
+ * Fascia balneare in vigore: in Italia, in stagione, navigazione vietata
+ * entro la distanza dell'ordinanza (spiagge; le coste alte hanno meno, qui
+ * per prudenza vale quella delle spiagge). In Francia la bande des 300 m
+ * limita solo la velocità: non conta. 0 se non c'è.
+ */
+export function bandClearanceM(lat, lon, cfg = BAND_DEFAULTS, now = new Date()) {
+  const region = bandRegion(lat, lon)
+  if (region !== 'italy' && region !== 'sicily') return 0
+  const { rule, dM } = bandRule(lat, lon, region, 'beach', cfg)
+  return rule && ruleTiming(rule, now).inSeason ? dM : 0
+}
+
+// Margini laterali di una tratta: { landM: da terra (con la fascia), hazM: da bassi e pericoli }
+function margins(a, b, opts) {
+  const C = opts.clearanceM || 0
+  const band = opts.bandCfg === false ? 0 : bandClearanceM((a.lat + b.lat) / 2, (a.lon + b.lon) / 2, opts.bandCfg || BAND_DEFAULTS)
+  return { landM: Math.max(C, band), hazM: C, band }
 }
 
 const legBox = (a, b, padM) => {
@@ -143,7 +170,7 @@ const boxDeg = ([minX, minY, maxX, maxY]) => {
  *   ordinances: ordinanze recenti delle Capitanerie vicino alla tratta
  *   (solo avvisi, non rendono ok false)
  */
-export async function checkLeg(a, b, minDepth) {
+export async function checkLeg(a, b, minDepth, opts = {}) {
   const pa = project(a.lat, a.lon)
   const pb = project(b.lat, b.lon)
   const len = Math.hypot(pb.x - pa.x, pb.y - pa.y)
@@ -157,20 +184,66 @@ export async function checkLeg(a, b, minDepth) {
   const lls = pts.map(([x, y]) => unproject(x, y))
 
   const res = Math.max(5, len / MAX_RASTER)
-  const box = legBox(a, b, 3 * res)
-  const [isWater, sample, areas, ordinances] = await Promise.all([
+  const m = mercPerM((a.lat + b.lat) / 2)
+  // Margine laterale: il riquadro deve vedere la costa fin là
+  const { landM, hazM, band } = margins(a, b, opts)
+  const box = legBox(a, b, 3 * res + Math.max(landM, hazM) * m)
+  const [isWater, sample, areas, ordinances, chart] = await Promise.all([
     waterRaster(box, res),
     prepareDepth(lls.filter((_, i) => i % 20 === 0 || i === lls.length - 1).map((ll) => [ll.lat, ll.lng])),
     protectedAreas(boxDeg(box)),
     ordinancesAlongLeg(a, b).catch(() => []),
+    chartObstacles(box, minDepth).catch(() => null),
   ])
+  const chartShallow = (chart?.areas || []).filter((z) => z.kind === 'shallow')
+  const chartDanger = chart?.areas.filter((z) => z.kind === 'danger') || []
+  const dangerPts = chart?.points.filter((p) => p.kind === 'danger') || []
+  const soundPts = chart?.points.filter((p) => p.kind === 'shallow') || []
+  const hitR = Math.max(DANGER_HIT_M * m, res)
   const zoneAt = areaLookup(areas.filter((z) => z.kind !== 'military'))
   const militaryAt = areaLookup(areas.filter((z) => z.kind === 'military'))
+
+  // Margine laterale: distanza dalla terra e da bassi e pericoli della carta,
+  // cercata su cerchi sempre più larghi attorno ai punti della tratta (più
+  // leggero di una mappa delle distanze su tutto il riquadro)
+  const grid = isWater?.grid
+  let haz = null
+  if (grid && (landM > 0 || hazM > 0)) {
+    haz = new Uint8Array(grid.w * grid.h)
+    fillAreas([...chartShallow, ...chartDanger], haz, grid)
+  }
+  const hazPts = [...dangerPts, ...soundPts]
+  const cellOf = (x, y) => {
+    const c = Math.floor((x - grid.minX) / grid.res)
+    const r = Math.floor((grid.maxY - y) / grid.res)
+    return c < 0 || r < 0 || c >= grid.w || r >= grid.h ? -1 : r * grid.w + c
+  }
+  // Distanza in metri veri dalla cosa più vicina entro maxM (Infinity se oltre)
+  const nearestM = (x, y, maxM, hit) => {
+    const step = grid.res
+    for (let rr = step; rr <= maxM * m + step / 2; rr += step) {
+      const n = Math.max(12, Math.ceil((2 * Math.PI * rr) / step))
+      for (let k = 0; k < n; k++) {
+        const t = (2 * Math.PI * k) / n
+        if (hit(x + rr * Math.cos(t), y + rr * Math.sin(t))) return rr / m
+      }
+    }
+    return Infinity
+  }
+  const landHit = (x, y) => !isWater(x, y)
+  const hazHit = (x, y) => {
+    const i = cellOf(x, y)
+    return i >= 0 && haz[i] === 1
+  }
+  const nearPtsM = (x, y) => hazPts.reduce((best, p) => Math.min(best, Math.hypot(p.x - x, p.y - y) / m), Infinity)
+  // il margine si guarda a passi di un quarto del margine (o della cella)
+  const marginEvery = Math.max(1, Math.floor((Math.max(grid?.res || 0, Math.min(landM || Infinity, hazM || Infinity) * m * 0.25)) / (len / (pts.length - 1) || 1)))
 
   const hazards = []
   const parks = new Map() // AMP attraversate → zone
   const military = new Set() // zone militari attraversate
   let current = null
+  let nearState = null // ultima misura del margine laterale
   let shallowest = null
   let slice = performance.now()
   for (let i = 0; i < pts.length; i++) {
@@ -192,18 +265,59 @@ export async function checkLeg(a, b, minDepth) {
     }
     // Zona vietata anche sui waypoint: lì nessun aggiramento può rimediare
     let kind = null
+    let name
+    let depth = d ? d.depth : undefined
+    let source = d ? d.source : undefined
+    let atMost = false
+    const fromEnd = Math.min(i, pts.length - 1 - i) * (len / (pts.length - 1))
     if (!ends && isWater && !isWater(x, y)) kind = 'land'
-    else if (zone && zone.kind === 'nogo') kind = 'nogo'
-    else if (!ends && !nearEnd && d && d.depth < minDepth) kind = 'shallow'
-    const name = kind === 'nogo' ? zone.name : undefined
+    else if (zone && zone.kind === 'nogo') {
+      kind = 'nogo'
+      name = zone.name
+    } else if (!ends && !nearEnd) {
+      // Pericoli della carta (scogli, relitti) e bassi della carta, poi EMODnet / Shom
+      const danger = chartDanger.find((z) => inChartArea(z, x, y)) || dangerPts.find((p) => Math.hypot(p.x - x, p.y - y) < hitR)
+      // la fascia più bassa che contiene il punto
+      const shallow = chartShallow.reduce((best, z) => ((!best || z.depth < best.depth) && inChartArea(z, x, y) ? z : best), null)
+      if (danger) {
+        kind = 'danger'
+        name = danger.name
+        depth = danger.depth ?? undefined
+        source = 'Carta TIMONE'
+      } else if (shallow) {
+        kind = 'shallow'
+        depth = shallow.depth
+        source = 'Carta TIMONE'
+        atMost = true
+      } else if (d && d.depth < minDepth) kind = 'shallow'
+      else if (haz && fromEnd > ENDPOINT_FREE_M * m) {
+        // Margine laterale: lontano dai waypoint (porti, baie), non più vicino
+        // di così. Si misura a passi; in mezzo vale l'ultima misura
+        if (i % marginEvery === 0) {
+          const toLand = landM > 0 ? nearestM(x, y, landM, landHit) : Infinity
+          const toHaz = hazM > 0 ? Math.min(nearestM(x, y, hazM, hazHit), nearPtsM(x, y)) : Infinity
+          nearState =
+            toLand < NEAR_TOLERANCE * landM || toHaz < NEAR_TOLERANCE * hazM
+              ? { dist: Math.min(toLand, toHaz), name: band && toLand < band && toLand <= toHaz ? 'band' : 'margin' }
+              : null
+        }
+        if (nearState) {
+          kind = 'near'
+          name = nearState.name
+          depth = nearState.dist
+        }
+      }
+    }
     if (kind && current && current.kind === kind && current.name === name) {
       current.path.push([ll.lat, ll.lng])
-      if (d && d.depth < (current.depth ?? Infinity)) {
-        current.depth = d.depth
-        current.source = d.source
+      if (depth != null && depth < (current.depth ?? Infinity)) {
+        current.depth = depth
+        current.source = source
+        current.atMost = atMost
       }
     } else if (kind) {
-      current = { kind, name, path: [[ll.lat, ll.lng]], depth: d ? d.depth : undefined, source: d ? d.source : undefined }
+      current = { kind, name, path: [[ll.lat, ll.lng]], depth, source, atMost }
+      if (kind === 'near') current.marginM = name === 'band' ? band : hazM
       hazards.push(current)
     } else {
       current = null
@@ -256,7 +370,7 @@ export async function routeLandGrid(a, b) {
   return { minX, maxY, res, w, h, land }
 }
 
-const OPTION_HAZARDS = ['land', 'shallow', 'nogo']
+const OPTION_HAZARDS = ['land', 'shallow', 'nogo', 'danger']
 const ENDS_FREE_M = 926 // attorno a partenza e arrivo decide chi li ha scelti (moli, porti)
 const OBSTACLE_RADIUS_M = 500
 
@@ -357,7 +471,7 @@ class Heap {
  * inserire ([lat, lon][], vuoto se la tratta è già sicura) oppure null se
  * non si trova un passaggio nella zona attorno alla tratta.
  */
-export async function detourLeg(a, b, minDepth, debug = null) {
+export async function detourLeg(a, b, minDepth, debug = null, opts = {}) {
   const pa = project(a.lat, a.lon)
   const pb = project(b.lat, b.lon)
   const len = Math.hypot(pb.x - pa.x, pb.y - pa.y)
@@ -380,7 +494,12 @@ export async function detourLeg(a, b, minDepth, debug = null) {
       probe.push([ll.lat, ll.lng])
     }
   }
-  const [isWater, sample, areas] = await Promise.all([waterRaster(box, res), prepareDepth(probe), protectedAreas(boxDeg(box))])
+  const [isWater, sample, areas, chart] = await Promise.all([
+    waterRaster(box, res),
+    prepareDepth(probe),
+    protectedAreas(boxDeg(box)),
+    chartObstacles(box, minDepth).catch(() => null),
+  ])
   const nogoAreas = areas.filter((z) => z.kind === 'nogo')
   const parkAreas = areas.filter((z) => z.kind === 'protected')
 
@@ -394,6 +513,17 @@ export async function detourLeg(a, b, minDepth, debug = null) {
   const land = new Uint8Array(w * h)
   const nogo = new Uint8Array(w * h)
   const blocked = new Uint8Array(w * h)
+  // Bassi fondali e pericoli della Carta TIMONE (scogli, relitti, quote)
+  const chartBad = new Uint8Array(w * h)
+  if (chart) {
+    const grid = { minX, maxY, res, w, h }
+    fillAreas(chart.areas, chartBad, grid)
+    for (const p of chart.points) {
+      const c = Math.floor((p.x - minX) / res)
+      const r = Math.floor((maxY - p.y) / res)
+      if (c >= 0 && r >= 0 && c < w && r < h) chartBad[r * w + c] = 1
+    }
+  }
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
       const x = cx(c)
@@ -410,27 +540,29 @@ export async function detourLeg(a, b, minDepth, debug = null) {
         continue
       }
       if (nearEnd(x, y)) continue
+      if (chartBad[r * w + c]) {
+        blocked[r * w + c] = 1
+        continue
+      }
       const d = sample(ll.lat, ll.lng)
       if (d && d.depth < minDepth) blocked[r * w + c] = 1
     }
   }
-  // Celle vietate: ostacoli allargati di k celle (margine), ma attorno ai
-  // waypoint vale solo la terra
-  const buildUnsafe = (k) => {
+  // Celle vietate: ostacoli allargati del margine (kLand celle dalla terra,
+  // kHaz da bassi, pericoli e zone vietate), ma attorno ai waypoint vale solo
+  // la terra. Distanze calcolate una volta sola (trasformata di distanza)
+  const landB = new Uint8Array(w * h)
+  const hazB = new Uint8Array(w * h)
+  for (let i = 0; i < w * h; i++) {
+    if (!blocked[i]) continue
+    if (land[i] && !nogo[i]) landB[i] = 1
+    else hazB[i] = 1
+  }
+  const landDist = distanceCells(landB, w, h)
+  const hazDist = distanceCells(hazB, w, h)
+  const buildUnsafe = (kLand, kHaz) => {
     const unsafe = new Uint8Array(w * h)
-    for (let r = 0; r < h; r++) {
-      for (let c = 0; c < w; c++) {
-        if (!blocked[r * w + c]) continue
-        for (let dr = -k; dr <= k; dr++) {
-          const rr = r + dr
-          if (rr < 0 || rr >= h) continue
-          for (let dc = -k; dc <= k; dc++) {
-            const cc = c + dc
-            if (cc >= 0 && cc < w) unsafe[rr * w + cc] = 1
-          }
-        }
-      }
-    }
+    for (let i = 0; i < w * h; i++) unsafe[i] = landDist[i] <= kLand || hazDist[i] <= kHaz ? 1 : 0
     // Attorno ai waypoint solo la terra, allargata di una cella se le celle
     // sono piccole (un molo sottile cade facilmente tra due centri cella)
     const kl = res <= 15 ? 1 : 0
@@ -553,15 +685,30 @@ export async function detourLeg(a, b, minDepth, debug = null) {
     return null
   }
 
-  // Prima con il margine dalla costa; se chiude un passaggio (canali, porti
-  // grandi con celle da ~100 m) si riprova senza: resta in acqua e sopra minDepth
+  // Prima con il margine scelto (e la fascia balneare in stagione); se chiude
+  // un passaggio (canali, bocche strette, porti grandi con celle da ~100 m) si
+  // riprova con la metà, poi con SHORE_BUFFER_M, poi senza: resta comunque in
+  // acqua e sopra minDepth. Il margine usato finisce in opts.info.marginM
+  const { landM, hazM } = margins(a, b, opts)
+  const C = Math.max(hazM, SHORE_BUFFER_M)
+  const ladder = [
+    [Math.max(landM, SHORE_BUFFER_M), C],
+    [C / 2, C / 2],
+    [SHORE_BUFFER_M, SHORE_BUFFER_M],
+    [0, 0],
+  ].filter(([l, z], i, all) => i === 0 || (l < all[i - 1][0] || z < all[i - 1][1]))
+  // Una cella in più: le scorciatoie tra i centri cella tagliano un po' gli angoli
+  const cells = (meters) => (meters > 0 ? Math.ceil((meters * m) / res) + 1 : 0)
   let unsafe = null
   let path = null
-  for (const k of [Math.max(1, Math.round((SHORE_BUFFER_M * m) / res)), 0]) {
-    unsafe = buildUnsafe(k)
+  for (const [lm, zm] of ladder) {
+    unsafe = buildUnsafe(cells(lm), cells(zm))
     path = search(unsafe)
-    if (debug) (debug.tries = debug.tries || []).push({ k, found: !!path })
-    if (path) break
+    if (debug) (debug.tries = debug.tries || []).push({ landM: lm, hazM: zm, found: !!path })
+    if (path) {
+      if (opts.info) opts.info.marginM = Math.min(opts.info.marginM ?? Infinity, zm)
+      break
+    }
   }
   if (debug) Object.assign(debug, { w, h, res, freeR, haveWater: !!isWater })
   if (!path) return null
@@ -629,8 +776,8 @@ export async function detourLeg(a, b, minDepth, debug = null) {
  * tolgono i waypoint superflui. Stesso risultato di detourLeg: punti
  * intermedi, [] se la tratta è già sicura, null se non c'è passaggio.
  */
-export async function detourLegRefined(a, b, minDepth, onProgress = () => {}) {
-  const first = await detourLeg(a, b, minDepth)
+export async function detourLegRefined(a, b, minDepth, onProgress = () => {}, opts = {}) {
+  const first = await detourLeg(a, b, minDepth, null, opts)
   if (!first) return null
   if (!first.length) return []
   const toWp = ([lat, lon]) => ({ lat, lon })
@@ -642,8 +789,8 @@ export async function detourLegRefined(a, b, minDepth, onProgress = () => {}) {
     for (let i = 0; i < all.length - 1; i++) {
       onProgress(`affino ${i + 1}/${all.length - 1}`)
       out.push(all[i])
-      if ((await checkLeg(all[i], all[i + 1], minDepth)).ok) continue
-      const sub = await detourLeg(all[i], all[i + 1], minDepth)
+      if ((await checkLeg(all[i], all[i + 1], minDepth, opts)).ok) continue
+      const sub = await detourLeg(all[i], all[i + 1], minDepth, null, opts)
       if (sub && sub.length) {
         out.push(...sub.map(toWp))
         changed = true
@@ -658,7 +805,7 @@ export async function detourLegRefined(a, b, minDepth, onProgress = () => {}) {
     onProgress(`semplifico ${k + 1}/${pts.length}`)
     const prev = k === 0 ? a : pts[k - 1]
     const next = k === pts.length - 1 ? b : pts[k + 1]
-    const direct = await checkLeg(prev, next, minDepth)
+    const direct = await checkLeg(prev, next, minDepth, opts)
     if (direct.ok && !direct.protected.length) pts.splice(k, 1)
     else k++
   }
