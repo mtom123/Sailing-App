@@ -7,6 +7,7 @@ import { BALEARI_ISOBATH_SOURCE } from './baleariIsobaths.js'
 import { loadTile as loadWaterTile } from './waterMask.js'
 import { shomTileUrl, SHOM_OFFLINE_ZOOMS } from './shomRelief.js'
 import { storeAdopt, storeClearArea, storePut } from './tileStore.js'
+import { chartDownloadJobs, chartTileCount } from './chartCache.js'
 
 /*
  * Carta per l'offline lungo una rotta (una fascia attorno ai tratti) o in
@@ -20,6 +21,8 @@ import { storeAdopt, storeClearArea, storePut } from './tileStore.js'
  * worker li salva nello stesso archivio (area 'geo'). La carta di base Esri non si scarica in blocco
  * (le condizioni d'uso non lo permettono): offline la sostituisce la terra
  * dalla costa OSM, e restano le zone già viste navigando.
+ * Con la Carta TIMONE come sfondo si scarica anche lei (chartCache.js): i
+ * suoi fondali, la base nautica Open Waters, simboli e caratteri.
  */
 
 const OFFLINE_CACHE = 'timone-offline'
@@ -36,8 +39,8 @@ const rad = Math.PI / 180
  * costa meno fine; per gli zoom spinti si scarica poi il dettaglio dove serve.
  */
 export const LEVELS = {
-  detail: { prefix: 'area:', seamarks: [10, 16], bathy: [8, 13], water: [8, 14], hd: true, maxTiles: 12000 },
-  wide: { prefix: 'wide:', seamarks: [10, 14], bathy: [8, 12], water: [8, 11], hd: false, maxTiles: 15000 },
+  detail: { prefix: 'area:', seamarks: [10, 16], bathy: [8, 13], water: [8, 14], hd: true, chart: 15, maxTiles: 12000 },
+  wide: { prefix: 'wide:', seamarks: [10, 14], bathy: [8, 12], water: [8, 11], hd: false, chart: 13, maxTiles: 15000 },
 }
 
 // Tasselli raster dalla mappa (URL e parametri come quando si naviga)
@@ -348,7 +351,12 @@ export async function mapAtRest() {
 async function downloadPlan(plan, { onProgress = () => {}, signal } = {}) {
   navigator.storage?.persist?.().catch(() => {}) // Safari: non cancellare i dati da solo
   const urls = [...new Set(rasterUrls(plan))]
+  // Carta TIMONE (se è lo sfondo): tasselli fino allo zoom del livello
+  const chart = mapLayers.timoneChart
+    ? await chartDownloadJobs((z, ts) => plan.tiles(z, BUFFER_M, ts), plan.level.chart, plan.key, signal).catch(() => [])
+    : []
   const jobs = [
+    ...chart,
     ...urls.map((url) => async () => {
       // Già salvata (vista navigando o in un altro scaricamento): diventa di questo
       if (await storeAdopt(url, plan.key)) return 0
@@ -432,6 +440,8 @@ const AVG_TILE_BYTES = 4500
 const AVG_WATER_BYTES = 60000
 const AVG_BLOCK_BYTES = 130000
 const AVG_SHOM_BYTES = 80000 // tasselli del rilievo da 512 px (in mare aperto molto meno)
+const AVG_CHART_BYTES = 35000 // Carta TIMONE sotto costa: base Open Waters (terra, strade) e fondali
+const CHART_DOCS_BYTES = 5e6 // stile, simboli e caratteri della carta, una volta sola
 
 /**
  * Quanto pesa una zona prima di scaricarla, al livello dato: { tiles, mb,
@@ -454,7 +464,8 @@ export function estimateArea(bounds, level = 'detail') {
     const [z0, z1] = SHOM_OFFLINE_ZOOMS.area
     for (let z = z0; z <= z1; z++) shom += plan.tiles(z, 0, 512).filter((t) => shomTileUrl(t.z, t.x, t.y)).length
   }
-  const mb = (tiles * AVG_TILE_BYTES + water * AVG_WATER_BYTES + blocks * AVG_BLOCK_BYTES + shom * AVG_SHOM_BYTES) / 1e6
+  const chart = mapLayers.timoneChart ? chartTileCount((z, ts) => plan.tiles(z, 0, ts), lv.chart) : 0
+  const mb = (tiles * AVG_TILE_BYTES + water * AVG_WATER_BYTES + blocks * AVG_BLOCK_BYTES + shom * AVG_SHOM_BYTES + (chart ? chart * AVG_CHART_BYTES + CHART_DOCS_BYTES : 0)) / 1e6
   return { tiles, mb, tooBig: tiles > lv.maxTiles }
 }
 

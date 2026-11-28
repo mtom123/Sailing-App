@@ -683,6 +683,8 @@ export default function MapView({
       map.addLayer(refs.base)
     }
     refs.base.setSeamarks?.(!!layers.seamarks)
+    // Gli scaricamenti per l'offline prendono anche la Carta TIMONE se è lo sfondo
+    setOfflineLayers({ timoneChart: timoneOn })
     // Isobate: senza riempimento e chiare sul satellite
     if (refs.isobaths && refs.isobathsImagery !== imagery) {
       refs.isobaths.setParams({ sld_body: isobathSld({ imagery }) })

@@ -29,14 +29,17 @@ export const TimoneChartLayer = L.Layer.extend({
     if (this._failed) return this._showFallback()
     if (!webglOk()) return this._fail('WebGL assente')
     import('./timoneChart.js')
-      .then(({ timoneChart }) => {
-        if (!this._alive || this._failed) return
-        this._gl = timoneChart({
+      .then(({ timoneChart }) =>
+        timoneChart({
           safety: this.options.safety,
           seamarks: this.options.seamarks,
           onLost: (why) => this._alive && this._fail(why),
         })
-        map.addLayer(this._gl)
+      )
+      .then((gl) => {
+        if (!this._alive || this._failed || this._gl) return
+        this._gl = gl
+        map.addLayer(gl)
       })
       .catch((err) => this._fail(err?.message || 'modulo non caricato'))
   },

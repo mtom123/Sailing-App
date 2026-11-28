@@ -9,23 +9,19 @@
  *
  * Questo modulo è grande (MapLibre) e si carica solo quando serve, da
  * timoneChartLayer.js, che pensa anche al ripiego sulla carta Esri.
+ * Ogni richiesta della carta passa dal protocollo timone:// (chartCache.js),
+ * che salva tutto nell'archivio: così la carta c'è anche senza rete.
  */
 import * as maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
-import { PMTiles, Protocol } from 'pmtiles'
 import { MaplibreGL } from '@maplibre/maplibre-gl-leaflet'
-
-export const CHART_PMTILES = 'https://carta.martinomotti.com/carta.pmtiles'
-const BASE_STYLE = 'https://tiles.openwaters.io/seamap/style.json'
+import { cartaSource, chartProtocol, chartStyle } from './chartCache.js'
 
 // Il nome del worker MapLibre lo calcola la libreria dal proprio indirizzo:
 // impacchettata da Vite non lo trova, quindi glielo diamo noi
 maplibregl.setWorkerUrl(workerUrl)
-const protocol = new Protocol()
-maplibregl.addProtocol('pmtiles', protocol.tile)
-const pmtiles = new PMTiles(CHART_PMTILES)
-protocol.add(pmtiles)
+maplibregl.addProtocol('timone', chartProtocol)
 
 // Fondali della base Open Waters: al loro posto quelli TIMONE
 const OW_DEPTH = ['depth-shading', 'depth-areas', 'unsurveyed', 'depth-hillshade', 'contour-lines', 'contour-labels', 'soundings']
@@ -78,18 +74,11 @@ function dots() {
 }
 
 async function addTimoneDepths(gl, safety) {
-  const [h, md] = await Promise.all([pmtiles.getHeader(), pmtiles.getMetadata()]).catch(() => [null, null])
-  if (!gl.getStyle()) return
+  const source = await cartaSource().catch(() => null)
+  if (!gl.getStyle() || !source) return ''
   gl.addImage('hatch', hatch())
   gl.addImage('dots', dots())
-  gl.addSource('carta', {
-    type: 'vector',
-    url: 'pmtiles://' + CHART_PMTILES,
-    minzoom: h?.minZoom ?? 5,
-    maxzoom: h?.maxZoom ?? 14,
-    bounds: h ? [h.minLon, h.minLat, h.maxLon, h.maxLat] : undefined,
-    attribution: md?.attribution ?? '',
-  })
+  gl.addSource('carta', source)
   const before = gl.getLayer('land_area') ? 'land_area' : undefined // la terra copre fasce e linee
   gl.addLayer({
     id: 'carta-depare', type: 'fill', source: 'carta', 'source-layer': 'depare',
@@ -134,7 +123,7 @@ async function addTimoneDepths(gl, safety) {
     },
     paint: { 'text-color': soundingColor(safety), 'text-halo-color': 'rgba(255,255,255,0.8)', 'text-halo-width': 1 },
   })
-  return md?.attribution || ''
+  return source.attribution || ''
 }
 
 // Strato Leaflet. options: safety (m), seamarks (bool), onLost() se WebGL cade
@@ -204,9 +193,11 @@ export const TimoneGL = MaplibreGL.extend({
   },
 })
 
-export function timoneChart({ safety, seamarks, onLost }) {
+// Lo stile si prepara prima (indirizzi su timone://, anche dall'archivio offline)
+export async function timoneChart({ safety, seamarks, onLost }) {
+  const style = await chartStyle()
   return new TimoneGL({
-    style: BASE_STYLE,
+    style,
     safety,
     seamarks,
     onLost,
