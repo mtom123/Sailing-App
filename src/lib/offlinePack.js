@@ -444,8 +444,8 @@ export async function mapAtRest() {
   while (Date.now() < holdUntil) await new Promise((resolve) => setTimeout(resolve, 200))
 }
 
-async function downloadPlan(plan, { onProgress = () => {}, signal } = {}) {
-  navigator.storage?.persist?.().catch(() => {}) // Safari: non cancellare i dati da solo
+// Lavori di un piano: ognuno ritorna i byte scaricati (0 se c'era già)
+async function planJobs(plan, signal) {
   const urls = [...new Set(rasterUrls(plan))]
   // Carta TIMONE (se è lo sfondo): tasselli fino allo zoom del livello
   const chart = mapLayers.timoneChart
@@ -464,6 +464,35 @@ async function downloadPlan(plan, { onProgress = () => {}, signal } = {}) {
     }),
     ...(await dataJobs(plan)),
   ]
+  return jobs
+}
+
+/**
+ * Scarica uno o più piani in un'unica coda (il primo è quello chiesto, gli
+ * altri di contorno); ogni piano ha il suo riepilogo. Ritorna quello del primo.
+ */
+async function downloadPlan(plans, { onProgress = () => {}, signal } = {}) {
+  navigator.storage?.persist?.().catch(() => {}) // Safari: non cancellare i dati da solo
+  plans = Array.isArray(plans) ? plans : [plans]
+  const perPlan = []
+  const jobs = []
+  for (const plan of plans) {
+    const own = { bytes: 0, items: 0, failed: 0 }
+    perPlan.push(own)
+    for (const job of await planJobs(plan, signal)) {
+      own.items++
+      jobs.push(async () => {
+        try {
+          const size = await job()
+          if (typeof size === 'number') own.bytes += size
+          return size
+        } catch (err) {
+          own.failed++
+          throw err
+        }
+      })
+    }
+  }
 
   const state = { done: 0, total: jobs.length, bytes: 0, failed: 0 }
   onProgress({ ...state })
@@ -487,9 +516,13 @@ async function downloadPlan(plan, { onProgress = () => {}, signal } = {}) {
   await Promise.all(Array.from({ length: PARALLEL }, worker))
   if (signal?.aborted) throw new DOMException('Annullato', 'AbortError')
 
-  const summary = { at: Date.now(), bytes: state.bytes, items: state.total, failed: state.failed }
+  const at = Date.now()
   const meta = readMeta()
-  meta[plan.key] = summary
+  plans.forEach((plan, i) => {
+    meta[plan.key] = { at, ...perPlan[i] }
+  })
+  // il riepilogo per chi l'ha chiesto: tutto quanto scaricato
+  const summary = { at, bytes: state.bytes, items: state.total, failed: state.failed }
   try {
     localStorage.setItem(META_KEY, JSON.stringify(meta))
   } catch {
@@ -530,7 +563,40 @@ export async function corridorCounts(points) {
  * [{ lat, lon }] (almeno 3 punti) o un rettangolo (L.LatLngBounds)
  */
 export function downloadArea(shape, opts, level = 'detail') {
-  return downloadPlan(areaPlan(shape, LEVELS[level]), opts)
+  const plans = [areaPlan(shape, LEVELS[level])]
+  const around = level === 'detail' ? surroundBounds(shape) : null
+  if (around) plans.push(areaPlan(around, LEVELS.wide))
+  return downloadPlan(plans, opts)
+}
+
+/*
+ * Col dettaglio anche la base attorno: offline, allargando la vista, fuori
+ * dalla zona la carta non resta vuota. Un rettangolo SURROUND_M più largo
+ * per lato (la base pesa poco); se è troppo grande, meno largo.
+ */
+const SURROUND_M = [18520, 9260, 3704] // 10, 5, 2 miglia
+function surroundBounds(shape) {
+  const b = Array.isArray(shape) ? polyBounds(shape) : shape
+  const lat = b.getCenter().lat
+  for (const m of SURROUND_M) {
+    const dLat = m / 111320
+    const dLon = m / (111320 * Math.cos(lat * rad))
+    const out = L.latLngBounds([b.getSouth() - dLat, b.getWest() - dLon], [b.getNorth() + dLat, b.getEast() + dLon])
+    if (!estimateArea(out, 'wide').tooBig) return out
+  }
+  return null
+}
+
+/**
+ * Peso in più della base attorno a una zona in dettaglio: { mb, nm } o null.
+ * Dentro la zona i tasselli della base ci sono già (il dettaglio li comprende)
+ */
+export function estimateSurround(shape) {
+  const around = surroundBounds(shape)
+  if (!around) return null
+  const b = Array.isArray(shape) ? polyBounds(shape) : shape
+  const nm = Math.round(((around.getNorth() - b.getNorth()) * 111320) / 1852)
+  return { mb: Math.max(0, estimateArea(around, 'wide').mb - estimateArea(shape, 'wide').mb), nm }
 }
 
 // Medie viste sulle rotte scaricate: pochi KB a tassello raster, di più

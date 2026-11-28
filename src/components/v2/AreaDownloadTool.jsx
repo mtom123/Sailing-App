@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import { CloudDownload } from 'lucide-react'
-import { downloadArea, estimateArea, polygonAreaM2 } from '../../lib/offlinePack.js'
+import { downloadArea, estimateArea, estimateSurround, polygonAreaM2 } from '../../lib/offlinePack.js'
 
 /**
  * Zona offline a poligono: un tap per ogni punto attorno alla zona (si
  * chiude da solo), punti trascinabili, il pallino a metà di un lato si
  * trascina (o si tocca) per aggiungere lì un punto, INDIETRO toglie l'ultimo. Poi superficie, peso
  * stimato e due scelte: BASE (zone grandi, fino a zoom 14) o DETTAGLIO
- * (tutti gli zoom, zone più piccole, come le rotte).
+ * (tutti gli zoom, zone più piccole, come le rotte; con la base attorno,
+ * per allargare la vista offline).
  * I tap vanno solo qui finché è aperto.
  */
 
@@ -128,7 +129,13 @@ export default function AreaDownloadTool({ map, onClose }) {
   }, [points])
 
   const ready = points.length >= 3
-  const est = useMemo(() => (ready ? { wide: estimateArea(points, 'wide'), detail: estimateArea(points, 'detail') } : null), [points, ready])
+  const est = useMemo(() => {
+    if (!ready) return null
+    const detail = estimateArea(points, 'detail')
+    // col dettaglio si scarica anche la base attorno
+    const around = estimateSurround(points)
+    return { wide: estimateArea(points, 'wide'), detail: { ...detail, mb: detail.mb + (around?.mb || 0) }, around }
+  }, [points, ready])
   const areaM2 = ready ? polygonAreaM2(points) : 0
 
   const start = async (level) => {
@@ -195,7 +202,7 @@ export default function AreaDownloadTool({ map, onClose }) {
           </div>
           {[
             ['wide', 'BASE', 'fino a zoom 14, per zone grandi', 'border-[#4A9EFF] bg-[#4A9EFF]/15 text-[#4A9EFF]'],
-            ['detail', 'DETTAGLIO', 'tutti gli zoom, porti e passaggi', 'border-phos bg-phos/15 text-phos'],
+            ['detail', 'DETTAGLIO', `tutti gli zoom, porti e passaggi${est.around ? `; con la base per ${est.around.nm} miglia attorno` : ''}`, 'border-phos bg-phos/15 text-phos'],
           ].map(([level, label, hint, color]) => (
             <div key={level} className="flex items-center gap-2 border-t border-line pt-1.5">
               <div className="min-w-0 flex-1 text-[calc(10px*var(--fs))] leading-snug text-fog">
@@ -226,7 +233,7 @@ export default function AreaDownloadTool({ map, onClose }) {
       )}
       {job?.status === 'done' && (
         <div className="text-[calc(11px*var(--fs))] text-paper">
-          {job.level === 'wide' ? 'Base scaricata' : 'Dettaglio scaricato'} · {fmtMb(job.info.bytes / 1e6)}
+          {job.level === 'wide' ? 'Base scaricata' : est?.around ? 'Dettaglio e base attorno scaricati' : 'Dettaglio scaricato'} · {fmtMb(job.info.bytes / 1e6)}
           {job.info.failed > 0 && <span className="text-warn"> · {job.info.failed} pezzi non scaricati: riprova</span>}
         </div>
       )}
