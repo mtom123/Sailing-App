@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { formatCoord, formatDeg, metersToNm, haversine, bearing, cardinal } from '../../lib/geo.js'
@@ -6,7 +7,7 @@ import { useAppStore } from '../../store/useAppStore.js'
 import { logStep, failStep, hideLoadingScreen } from '../../lib/debugLogger.js'
 import { EMODNET_WMS_URL, EMODNET_DEPTH_LAYER, isobathSld } from '../../lib/isobaths.js'
 import { SEAGRASS_WMS_URL, SEAGRASS_LAYER, seagrassSld } from '../../lib/seagrass.js'
-import { DepthZoneLayer, IsobathLayer } from '../../lib/isobathLayer.js'
+import { DepthZoneLayer, IsobathLayer, ensurePane } from '../../lib/isobathLayer.js'
 import { FineDepthZoneLayer } from '../../lib/fineDepthZones.js'
 import SearchBox from './SearchBox.jsx'
 import { seaPoint } from '../../lib/placeSearch.js'
@@ -2230,6 +2231,16 @@ function FloatingHUD({ geo }) {
   )
 }
 
+/*
+ * Frecce di vento e corrente: un foglio dentro un piano della carta, sopra
+ * fondali e linee ma sotto simboli (600) e schede (700). Prima stava sopra
+ * tutta la carta e copriva le schede dei club, dei baretti, delle ancore…
+ */
+function arrowPane(map, name, zIndex) {
+  ensurePane(map, name, zIndex)
+  return map.getPane(name)
+}
+
 function WindCanvas({ map, field }) {
   const canvasRef = useRef(null)
   useEffect(() => {
@@ -2243,6 +2254,8 @@ function WindCanvas({ map, field }) {
     const colorFor = (speed) => scaleColor(WIND_SCALE, speed)
     const draw = () => {
       raf = null
+      // Il foglio sta dentro la carta: si riallinea allo schermo a ogni disegno
+      L.DomUtil.setPosition(canvas, map.containerPointToLayerPoint([0, 0]))
       const container = map.getContainer()
       const w = container.clientWidth
       const h = container.clientHeight
@@ -2322,7 +2335,7 @@ function WindCanvas({ map, field }) {
       map.off('moveend zoomend resize viewreset', schedule)
     }
   }, [map, field])
-  return <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 z-[500]" />
+  return createPortal(<canvas ref={canvasRef} className="pointer-events-none absolute left-0 top-0" />, arrowPane(map, 'windArrowPane', 450))
 }
 
 function CurrentCanvas({ map, field, timeOffset = 0 }) {
@@ -2336,6 +2349,8 @@ function CurrentCanvas({ map, field, timeOffset = 0 }) {
     let lastH = 0
     const draw = () => {
       raf = null
+      // Il foglio sta dentro la carta: si riallinea allo schermo a ogni disegno
+      L.DomUtil.setPosition(canvas, map.containerPointToLayerPoint([0, 0]))
       const container = map.getContainer()
       const w = container.clientWidth
       const h = container.clientHeight
@@ -2444,5 +2459,5 @@ function CurrentCanvas({ map, field, timeOffset = 0 }) {
       map.off('moveend zoomend resize viewreset', schedule)
     }
   }, [map, field, timeOffset])
-  return <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 z-[510]" />
+  return createPortal(<canvas ref={canvasRef} className="pointer-events-none absolute left-0 top-0" />, arrowPane(map, 'currentArrowPane', 455))
 }
