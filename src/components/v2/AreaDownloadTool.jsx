@@ -1,13 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import { CloudDownload } from 'lucide-react'
-import { haversine } from '../../lib/geo.js'
-import { downloadArea, estimateArea } from '../../lib/offlinePack.js'
+import { downloadArea, estimateArea, polygonAreaM2 } from '../../lib/offlinePack.js'
 
 /**
- * Zona offline a rettangolo: tap su due angoli opposti (poi trascinabili),
- * dimensioni e peso stimato, poi due scelte: BASE (zone grandi, fino a
- * zoom 14) o DETTAGLIO (tutti gli zoom, zone più piccole, come le rotte).
+ * Zona offline a poligono: un tap per ogni punto attorno alla zona (si
+ * chiude da solo), punti trascinabili, un tap sul pallino a metà di un lato
+ * per aggiungerne uno lì, INDIETRO toglie l'ultimo. Poi superficie, peso
+ * stimato e due scelte: BASE (zone grandi, fino a zoom 14) o DETTAGLIO
+ * (tutti gli zoom, zone più piccole, come le rotte).
  * I tap vanno solo qui finché è aperto.
  */
 
@@ -20,23 +21,37 @@ const cornerIcon = L.divIcon({
   iconAnchor: [18, 18],
 })
 
-const fmtNm = (m) => (m / 1852).toLocaleString('it-IT', { maximumFractionDigits: m < 18520 ? 1 : 0 })
+// A metà dei lati: un tap aggiunge lì un punto
+const midIcon = L.divIcon({
+  className: 'timone-marker',
+  html: `<div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center"><div style="width:12px;height:12px;border-radius:50%;background:rgba(10,22,32,0.7);border:2px solid ${COLOR}"></div></div>`,
+  iconSize: [32, 32],
+  iconAnchor: [16, 16],
+})
+
+const fmtNm2 = (m2) => (m2 / 1852 ** 2).toLocaleString('it-IT', { maximumFractionDigits: m2 < 1852 ** 2 * 10 ? 1 : 0 })
 const fmtMb = (mb) => `${mb.toLocaleString('it-IT', { maximumFractionDigits: mb < 10 ? 1 : 0 })} MB`
 
 export default function AreaDownloadTool({ map, onClose }) {
-  const [corners, setCorners] = useState([]) // [{ lat, lon }] fino a 2
+  const [points, setPoints] = useState([]) // [{ lat, lon }] in ordine attorno alla zona
   const [job, setJob] = useState(null) // { status: 'running'|'done'|'error', progress, info, error }
   const layersRef = useRef(null)
   const ctrlRef = useRef(null)
   const running = job?.status === 'running'
+  const runningRef = useRef(false)
+  runningRef.current = running
 
-  // Tap sulla carta: primo e secondo angolo
+  // Tap sulla carta: un punto in più (non mentre scarica)
   useEffect(() => {
     if (!map) return undefined
     const group = L.layerGroup().addTo(map)
-    const rect = L.rectangle([[0, 0], [0, 0]], { color: COLOR, weight: 2, dashArray: '6 5', fillOpacity: 0.12, interactive: false })
-    layersRef.current = { group, rect, markers: [] }
-    const onClick = (e) => setCorners((c) => (c.length < 2 ? [...c, { lat: e.latlng.lat, lon: e.latlng.lng }] : c))
+    const style = { color: COLOR, weight: 2, dashArray: '6 5', fillOpacity: 0.12, interactive: false }
+    const shape = L.polygon([], style)
+    const line = L.polyline([], style)
+    layersRef.current = { group, shape, line, markers: [], mids: L.layerGroup().addTo(group) }
+    const onClick = (e) => {
+      if (!runningRef.current) setPoints((c) => [...c, { lat: e.latlng.lat, lon: e.latlng.lng }])
+    }
     map.on('click', onClick)
     map.getContainer().classList.add('cursor-crosshair')
     return () => {
@@ -48,18 +63,18 @@ export default function AreaDownloadTool({ map, onClose }) {
     }
   }, [map])
 
-  // Angoli trascinabili (gli stessi marker, per non interrompere il trascinamento) e rettangolo
+  // Punti trascinabili (gli stessi marker, per non interrompere il trascinamento), lati e pallini
   useEffect(() => {
     const layers = layersRef.current
     if (!layers) return
-    const { group, rect, markers } = layers
-    while (markers.length > corners.length) group.removeLayer(markers.pop())
-    corners.forEach((p, i) => {
+    const { group, shape, line, markers, mids } = layers
+    while (markers.length > points.length) group.removeLayer(markers.pop())
+    points.forEach((p, i) => {
       if (!markers[i]) {
         const m = L.marker([p.lat, p.lon], { icon: cornerIcon, draggable: true, zIndexOffset: 1500 }).addTo(group)
         m.on('drag', (e) => {
           const { lat, lng } = e.target.getLatLng()
-          setCorners((list) => list.map((q, j) => (j === i ? { lat, lon: lng } : q)))
+          setPoints((list) => list.map((q, j) => (j === i ? { lat, lon: lng } : q)))
         })
         markers[i] = m
       } else {
@@ -68,30 +83,43 @@ export default function AreaDownloadTool({ map, onClose }) {
       }
       markers[i].dragging?.[running ? 'disable' : 'enable']()
     })
-    if (corners.length === 2) {
-      rect.setBounds([[corners[0].lat, corners[0].lon], [corners[1].lat, corners[1].lon]])
-      if (!group.hasLayer(rect)) rect.addTo(group)
-    } else if (group.hasLayer(rect)) group.removeLayer(rect)
-  }, [corners, running])
+    const ll = points.map((p) => [p.lat, p.lon])
+    const closed = points.length >= 3
+    shape.setLatLngs(closed ? ll : [])
+    line.setLatLngs(points.length === 2 ? ll : [])
+    if (closed && !group.hasLayer(shape)) shape.addTo(group)
+    if (points.length === 2 && !group.hasLayer(line)) line.addTo(group)
+    mids.clearLayers()
+    if (!running && points.length >= 2) {
+      const edges = closed ? points.length : 1
+      for (let i = 0; i < edges; i++) {
+        const a = points[i]
+        const b = points[(i + 1) % points.length]
+        const mid = { lat: (a.lat + b.lat) / 2, lon: (a.lon + b.lon) / 2 }
+        L.marker([mid.lat, mid.lon], { icon: midIcon, zIndexOffset: 1400 })
+          .on('click', () => setPoints((list) => [...list.slice(0, i + 1), mid, ...list.slice(i + 1)]))
+          .addTo(mids)
+      }
+    }
+  }, [points, running])
 
-  // Rettangolo spostato dopo uno scaricamento: si torna alla stima
+  // Zona cambiata dopo uno scaricamento: si torna alla stima
   useEffect(() => {
     setJob((j) => (j?.status === 'running' ? j : null))
-  }, [corners])
+  }, [points])
 
-  const bounds = corners.length === 2 ? L.latLngBounds([corners[0].lat, corners[0].lon], [corners[1].lat, corners[1].lon]) : null
-  const est = bounds ? { wide: estimateArea(bounds, 'wide'), detail: estimateArea(bounds, 'detail') } : null
-  const widthM = bounds ? haversine(bounds.getCenter().lat, bounds.getWest(), bounds.getCenter().lat, bounds.getEast()) : 0
-  const heightM = bounds ? haversine(bounds.getSouth(), bounds.getWest(), bounds.getNorth(), bounds.getWest()) : 0
+  const ready = points.length >= 3
+  const est = useMemo(() => (ready ? { wide: estimateArea(points, 'wide'), detail: estimateArea(points, 'detail') } : null), [points, ready])
+  const areaM2 = ready ? polygonAreaM2(points) : 0
 
   const start = async (level) => {
-    if (!bounds || est[level].tooBig) return
+    if (!ready || est[level].tooBig) return
     const ctrl = new AbortController()
     ctrlRef.current = ctrl
     setJob({ status: 'running', level, progress: { done: 0, total: 0, bytes: 0 } })
     let last = 0
     try {
-      const info = await downloadArea(bounds, {
+      const info = await downloadArea(points, {
         signal: ctrl.signal,
         onProgress: (progress) => {
           const now = Date.now()
@@ -120,6 +148,11 @@ export default function AreaDownloadTool({ map, onClose }) {
         <CloudDownload size={14} className="text-phos" />
         <span className="text-[calc(11px*var(--fs))] font-semibold tracking-wider text-phos">ZONA OFFLINE</span>
         <span className="ml-auto flex gap-1.5">
+          {!running && points.length > 0 && (
+            <button type="button" onClick={() => setPoints((c) => c.slice(0, -1))} className={`${btn} border-line text-fog`}>
+              INDIETRO
+            </button>
+          )}
           {running ? (
             <button type="button" onClick={cancel} className={`${btn} border-line text-fog`}>
               ANNULLA
@@ -131,15 +164,15 @@ export default function AreaDownloadTool({ map, onClose }) {
           )}
         </span>
       </div>
-      {!bounds && (
+      {!ready && (
         <div className="text-[calc(11px*var(--fs))] text-fog">
-          {corners.length ? 'tocca l’angolo opposto' : 'tocca un angolo della zona da scaricare'}
+          {points.length ? 'tocca il punto successivo (ne servono almeno 3)' : 'tocca i punti attorno alla zona da scaricare, uno dopo l’altro'}
         </div>
       )}
-      {bounds && !running && (
+      {ready && !running && (
         <>
           <div className="text-[calc(11px*var(--fs))] tabular-nums text-paper">
-            {fmtNm(widthM)} × {fmtNm(heightM)} nm <span className="text-fog">· trascina gli angoli per correggere</span>
+            {fmtNm2(areaM2)} nm² <span className="text-fog">· trascina i punti, ○ su un lato per inserirne uno</span>
           </div>
           {[
             ['wide', 'BASE', 'fino a zoom 14, per zone grandi', 'border-[#4A9EFF] bg-[#4A9EFF]/15 text-[#4A9EFF]'],
@@ -150,7 +183,7 @@ export default function AreaDownloadTool({ map, onClose }) {
                 <span className="font-semibold text-paper">{label}</span> · {hint}
                 <br />
                 {est[level].tooBig ? (
-                  <span className="text-warn">zona troppo grande, stringi il rettangolo</span>
+                  <span className="text-warn">zona troppo grande, stringi il poligono</span>
                 ) : (
                   <span className="tabular-nums">circa {fmtMb(est[level].mb)}</span>
                 )}

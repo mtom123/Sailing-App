@@ -1626,7 +1626,7 @@ export default function MapView({
   }, [userZones, route.editing, mapReady, removeUserZone, updateUserZone])
 
   const [rulerOn, setRulerOn] = useState(false)
-  const [areaOn, setAreaOn] = useState(false) // rettangolo per la zona offline
+  const [areaOn, setAreaOn] = useState(false) // poligono per la zona offline
   toolsRef.current = { rulerOn, areaOn } // per il tap sulla carta (gestore creato una volta)
   const toggleRuler = () => {
     if (!rulerOn) {

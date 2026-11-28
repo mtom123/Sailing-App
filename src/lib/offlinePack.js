@@ -11,7 +11,7 @@ import { chartDownloadJobs, chartTileCount } from './chartCache.js'
 
 /*
  * Carta per l'offline lungo una rotta (una fascia attorno ai tratti) o in
- * una zona disegnata col rettangolo, con
+ * una zona disegnata col poligono (o col rettangolo, le zone di prima), con
  * segnalamenti (OpenSeaMap), batimetria e isobate EMODnet, rilievo Shom
  * (se acceso), griglie di profondità, costa OSM (che offline disegna anche la terra), isobate di
  * dettaglio Shom e Regione Liguria, aree protette e ordinanze.
@@ -111,6 +111,86 @@ function splitBounds(b, step) {
   return out
 }
 
+// ---------------------------------------------------------------- poligoni
+// Zona disegnata a punti: [{ lat, lon }], almeno 3, chiusa da sola.
+// I lati si trattano come rette in lat/lon: su pochi km la differenza con
+// la Mercatore della carta è sotto il metro.
+
+const tileLat = (y, n) => Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n))) / rad
+
+/** Intervalli di longitudine [w, e] occupati dal poligono nella fascia di latitudini [south, north] */
+function stripRanges(poly, south, north) {
+  const out = []
+  // i lati dentro la fascia
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i]
+    const b = poly[(i + 1) % poly.length]
+    const lo = Math.max(Math.min(a.lat, b.lat), south)
+    const hi = Math.min(Math.max(a.lat, b.lat), north)
+    if (lo > hi) continue
+    if (a.lat === b.lat) {
+      out.push([Math.min(a.lon, b.lon), Math.max(a.lon, b.lon)])
+      continue
+    }
+    const at = (lat) => a.lon + ((lat - a.lat) / (b.lat - a.lat)) * (b.lon - a.lon)
+    const l1 = at(lo)
+    const l2 = at(hi)
+    out.push([Math.min(l1, l2), Math.max(l1, l2)])
+  }
+  // e l'interno, a metà fascia: dove nessun lato passa, la fascia è tutta dentro o tutta fuori
+  const mid = (south + north) / 2
+  const xs = []
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i]
+    const b = poly[(i + 1) % poly.length]
+    if (a.lat > mid !== b.lat > mid) xs.push(a.lon + ((mid - a.lat) / (b.lat - a.lat)) * (b.lon - a.lon))
+  }
+  xs.sort((p, q) => p - q)
+  for (let i = 0; i + 1 < xs.length; i += 2) out.push([xs[i], xs[i + 1]])
+  return out
+}
+
+const polyBounds = (poly) =>
+  L.latLngBounds(
+    [Math.min(...poly.map((p) => p.lat)), Math.min(...poly.map((p) => p.lon))],
+    [Math.max(...poly.map((p) => p.lat)), Math.max(...poly.map((p) => p.lon))]
+  )
+
+/** Tasselli {x, y, z} che toccano il poligono */
+export function polygonTiles(poly, z, tileSize = 256) {
+  const n = (2 ** z * 256) / tileSize
+  const b = polyBounds(poly)
+  const out = []
+  for (let y = tileY(b.getNorth(), n); y <= tileY(b.getSouth(), n); y++) {
+    const xs = new Set()
+    for (const [w, e] of stripRanges(poly, tileLat(y + 1, n), tileLat(y, n))) {
+      for (let x = tileX(w, n); x <= tileX(e, n); x++) xs.add(x)
+    }
+    for (const x of xs) out.push({ x, y, z })
+  }
+  return out
+}
+
+/** Il riquadro tocca il poligono? */
+function boundsHitPolygon(b, poly) {
+  return stripRanges(poly, b.getSouth(), b.getNorth()).some(([w, e]) => w <= b.getEast() && e >= b.getWest())
+}
+
+/** Superficie del poligono in metri quadri (piano locale) */
+export function polygonAreaM2(poly) {
+  const lat0 = poly.reduce((s, p) => s + p.lat, 0) / poly.length
+  const mLon = 111320 * Math.cos(lat0 * rad)
+  let a = 0
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i]
+    const q = poly[(i + 1) % poly.length]
+    a += p.lon * mLon * q.lat * 111320 - q.lon * mLon * p.lat * 111320
+  }
+  return Math.abs(a) / 2
+}
+
+const polyKey = (poly) => poly.map((p) => `${p.lat.toFixed(5)},${p.lon.toFixed(5)}`).join(';')
+
 const routeKey = (points) => points.map((p) => `${p.lat.toFixed(4)},${p.lon.toFixed(4)}`).join(';')
 
 // ------------------------------------------------ dettaglio solo sotto costa
@@ -205,7 +285,17 @@ function routePlan(points, runs = null) {
   }
 }
 
-function areaPlan(bounds, level = LEVELS.detail) {
+function areaPlan(shape, level = LEVELS.detail) {
+  if (Array.isArray(shape)) {
+    return {
+      key: `${level.prefix}${polyKey(shape)}`,
+      kind: 'area',
+      level,
+      tiles: (z, bufM, tileSize) => polygonTiles(shape, z, tileSize),
+      views: splitBounds(polyBounds(shape), 0.05).filter((v) => boundsHitPolygon(v, shape)),
+    }
+  }
+  const bounds = shape
   return {
     key: `${level.prefix}${bounds.toBBoxString()}`,
     kind: 'area',
@@ -227,24 +317,30 @@ export const OFFLINE_EVENT = 'timone-offline' // sulla window, a ogni nuovo scar
 
 /**
  * Zone già scaricate, per mostrarle sulla carta: { kind: 'route', points,
- * bufferM } (fascia attorno ai tratti) o { kind: 'area', bounds }, con
- * level 'detail' o 'wide'
+ * bufferM } (fascia attorno ai tratti), { kind: 'polygon', points } o
+ * { kind: 'area', bounds } (i rettangoli di prima), con level 'detail' o 'wide'
  */
 export function offlineZones() {
   const zones = []
+  const parse = (s) =>
+    s.split(';').map((p) => {
+      const [lat, lon] = p.split(',').map(Number)
+      return { lat, lon }
+    })
+  const valid = (pts) => pts.every((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon))
   for (const key of Object.keys(readMeta())) {
     const wide = key.startsWith(LEVELS.wide.prefix)
-    if (wide || key.startsWith(LEVELS.detail.prefix)) {
+    if ((wide || key.startsWith(LEVELS.detail.prefix)) && key.includes(';')) {
+      const points = parse(key.slice(5))
+      if (points.length >= 3 && valid(points)) zones.push({ kind: 'polygon', level: wide ? 'wide' : 'detail', points })
+    } else if (wide || key.startsWith(LEVELS.detail.prefix)) {
       const [w, so, e, n] = key.slice(5).split(',').map(Number)
       if ([w, so, e, n].every(Number.isFinite)) {
         zones.push({ kind: 'area', level: wide ? 'wide' : 'detail', bounds: L.latLngBounds([so, w], [n, e]) })
       }
     } else {
-      const points = key.split(';').map((p) => {
-        const [lat, lon] = p.split(',').map(Number)
-        return { lat, lon }
-      })
-      if (points.length >= 2 && points.every((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon))) {
+      const points = parse(key)
+      if (points.length >= 2 && valid(points)) {
         zones.push({ kind: 'route', level: 'detail', points, bufferM: BUFFER_M })
       }
     }
@@ -429,9 +525,12 @@ export async function corridorCounts(points) {
   return { runs: runs.map((r) => [end(r[0]), end(r[r.length - 1])]), before: { raster: count(full), water: water(full) }, after: { raster: count(cut), water: water(cut) } }
 }
 
-/** Scarica la zona del rettangolo (L.LatLngBounds) al livello dato ('detail' | 'wide') */
-export function downloadArea(bounds, opts, level = 'detail') {
-  return downloadPlan(areaPlan(bounds, LEVELS[level]), opts)
+/**
+ * Scarica la zona al livello dato ('detail' | 'wide'): un poligono
+ * [{ lat, lon }] (almeno 3 punti) o un rettangolo (L.LatLngBounds)
+ */
+export function downloadArea(shape, opts, level = 'detail') {
+  return downloadPlan(areaPlan(shape, LEVELS[level]), opts)
 }
 
 // Medie viste sulle rotte scaricate: pochi KB a tassello raster, di più
@@ -447,9 +546,9 @@ const CHART_DOCS_BYTES = 5e6 // stile, simboli e caratteri della carta, una volt
  * Quanto pesa una zona prima di scaricarla, al livello dato: { tiles, mb,
  * tooBig }. Oltre il tetto di tasselli del livello è troppo grande.
  */
-export function estimateArea(bounds, level = 'detail') {
+export function estimateArea(shape, level = 'detail') {
   const lv = LEVELS[level]
-  const plan = areaPlan(bounds, lv)
+  const plan = areaPlan(shape, lv)
   const count = ([z0, z1]) => {
     let n = 0
     for (let z = z0; z <= z1; z++) n += plan.tiles(z, 0).length
@@ -457,8 +556,13 @@ export function estimateArea(bounds, level = 'detail') {
   }
   const tiles = count(lv.seamarks) + count(lv.bathy)
   const water = count(lv.water)
-  const blocks =
-    (blockIndex(bounds.getEast()) - blockIndex(bounds.getWest()) + 1) * (blockIndex(bounds.getNorth()) - blockIndex(bounds.getSouth()) + 1)
+  const blockKeys = new Set()
+  for (const v of plan.views) {
+    for (let bx = blockIndex(v.getWest()); bx <= blockIndex(v.getEast()); bx++) {
+      for (let by = blockIndex(v.getSouth()); by <= blockIndex(v.getNorth()); by++) blockKeys.add(`${bx},${by}`)
+    }
+  }
+  const blocks = blockKeys.size
   let shom = 0
   if (mapLayers.shomRelief?._map && lv.hd) {
     const [z0, z1] = SHOM_OFFLINE_ZOOMS.area

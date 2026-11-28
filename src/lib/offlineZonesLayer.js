@@ -4,8 +4,8 @@ import { OFFLINE_EVENT, offlineZones } from './offlinePack.js'
 
 /*
  * Zone scaricate per l'offline: verde il dettaglio (fasce attorno alle
- * rotte, larghe un miglio per lato con i waypoint arrotondati, e rettangoli
- * a tutti gli zoom), azzurro la base larga (fino a zoom 14). Le forme sono
+ * rotte, larghe un miglio per lato con i waypoint arrotondati, e poligoni o
+ * rettangoli a tutti gli zoom), azzurro la base larga (fino a zoom 14). Le forme sono
  * piene e la trasparenza è del piano intero: dove si sovrappongono il
  * colore resta uguale invece di scurirsi. In SVG: sono poche forme.
  */
@@ -55,6 +55,10 @@ export const OfflineZonesLayer = L.Layer.extend({
     for (const zone of offlineZones()) {
       const level = zone.level === 'wide' ? 'wide' : 'detail'
       const style = { renderer: this._renderers[level], stroke: false, fillColor: STYLES[level].color, fillOpacity: 1, interactive: false }
+      if (zone.kind === 'polygon') {
+        L.polygon(zone.points.map((p) => [p.lat, p.lon]), style).addTo(this._group)
+        continue
+      }
       if (zone.kind === 'area') {
         L.rectangle(zone.bounds, style).addTo(this._group)
         continue
