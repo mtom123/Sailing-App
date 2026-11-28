@@ -142,6 +142,11 @@ export const TimoneGL = MaplibreGL.extend({
   onAdd(map) {
     MaplibreGL.prototype.onAdd.call(this, map)
     const gl = this._glMap
+    // Trasparente ai tocchi, come le immagini delle carte di Leaflet: MapLibre
+    // ascolta i tocchi sul suo riquadro anche se non interattivo, e su iPad la
+    // pressione lunga (profondità, vento, corrente) non arrivava più alla carta
+    this._container.style.pointerEvents = 'none'
+    gl.getCanvas().style.pointerEvents = 'none'
     // Anche gl.remove() perde il contesto apposta: quello non è un guasto
     gl.getCanvas().addEventListener('webglcontextlost', () => {
       if (!this._removing) this.options.onLost?.('webgl perso')
