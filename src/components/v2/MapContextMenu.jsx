@@ -31,18 +31,66 @@ const compass = (deg) => {
   return `${d}° ${cardinal(d)}`
 }
 
+// Oltre questa distanza il dato del punto di griglia non vale più per il punto toccato
+const NEAR_MAX_KM = 30
+// Da qui in su si dice da dove viene il dato ("a 4 km, al largo")
+const FAR_NOTE_KM = 3
+const kmBetween = (a, b) => {
+  const dy = (a.lat - b.lat) * 111.2
+  const dx = (a.lon - b.lon) * 111.2 * Math.cos((a.lat * Math.PI) / 180)
+  return Math.hypot(dx, dy)
+}
+const timeIndex = (times, timeMs) => {
+  let best = 0
+  let bestD = Infinity
+  for (let i = 0; i < times.length; i++) {
+    const d = Math.abs(new Date(times[i]).getTime() - timeMs)
+    if (d < bestD) {
+      bestD = d
+      best = i
+    }
+  }
+  return best
+}
+// Il punto di griglia più vicino che ha il dato: sotto costa il modello delle
+// onde dà "terra", e con le previsioni a metà (limite delle richieste) mancano
+// interi punti. { value, km } o null
+function nearestValue(grid, point, timeMs, pick) {
+  let best = null
+  for (const p of grid) {
+    if (!p.times?.length) continue
+    const km = kmBetween(point, p)
+    if (km > NEAR_MAX_KM || (best && km >= best.km)) continue
+    const value = pick(p, timeIndex(p.times, timeMs))
+    if (value != null && Number.isFinite(value.v ?? value)) best = { value, km }
+  }
+  return best
+}
+
 // Vento, onda e corrente nel punto, all'ora del cursore del tempo
 function forecastAt(point, grib, currentField, timeMs) {
   const times = grib?.grid?.[0]?.times
-  if (!times?.length) return null
+  if (!times?.length) return { none: true }
   const from = new Date(times[0]).getTime()
   const to = new Date(times[times.length - 1]).getTime()
   if (timeMs < from - FORECAST_SLACK_MS || timeMs > to + FORECAST_SLACK_MS) return { old: true }
-  const wind = sampleWind(grib, point.lat, point.lon, timeMs)
-  const { wave } = sampleSea(grib, point.lat, point.lon, timeMs)
+  let wind = sampleWind(grib, point.lat, point.lon, timeMs)
+  let windKm = 0
+  if (!(wind.speed > 0)) {
+    const n = nearestValue(grib.grid, point, timeMs, (p, i) => (p.wind?.[i] != null ? { v: p.wind[i], dir: p.windDir?.[i] ?? 0 } : null))
+    wind = n ? { speed: n.value.v, dir: n.value.dir } : null
+    windKm = n?.km ?? 0
+  }
+  let { gust } = sampleSea(grib, point.lat, point.lon, timeMs)
+  // onda col suo verso e periodo, dal punto del mare più vicino che li ha
+  const w = nearestValue(grib.grid, point, timeMs, (p, i) => (p.wave?.[i] != null ? { v: p.wave[i], dir: p.waveDir?.[i] ?? null, per: p.wavePeriod?.[i] ?? null } : null))
+  const wave = w ? w.value : null
+  const waveKm = w?.km ?? 0
+  if (!(gust > 0)) gust = nearestValue(grib.grid, point, timeMs, (p, i) => p.gust?.[i] ?? null)?.value ?? null
   const current = currentField ? sampleCurrent(currentField, point.lat, point.lon, timeMs) : null
-  return { wind, wave, current }
+  return { wind, windKm, wave, waveKm, gust, current }
 }
+const farNote = (km) => (km >= FAR_NOTE_KM ? ` (a ${Math.round(km)} km, al largo)` : '')
 
 export default function MapContextMenu({
   map,
@@ -320,14 +368,34 @@ export default function MapContextMenu({
             )}
           </div>
           {forecast?.old && <div className="mt-1 text-[calc(10px*var(--fs))] text-warn">Previsione scaduta: niente meteo qui</div>}
-          {forecast?.wind?.speed > 0 && (
+          {forecast?.none && <div className="mt-1 text-[calc(10px*var(--fs))] text-fog">Vento e onda: previsioni non ancora scaricate per questa zona</div>}
+          {forecast && !forecast.old && !forecast.none && (
             <div className="mt-1 text-[calc(10px*var(--fs))] text-fog">
-              Vento <span className="font-mono text-xs font-semibold text-paper">{Math.round(forecast.wind.speed)} kn</span> da {compass(forecast.wind.dir)}
+              Vento{' '}
+              {forecast.wind ? (
+                <>
+                  <span className="font-mono text-xs font-semibold text-paper">{Math.round(forecast.wind.speed)} kn</span>
+                  {forecast.gust > forecast.wind.speed + 2 && <> (raffiche <span className="font-mono text-xs font-semibold text-paper">{Math.round(forecast.gust)}</span>)</>} da {compass(forecast.wind.dir)}
+                  {farNote(forecast.windKm)}
+                </>
+              ) : (
+                '— (nessuna previsione vicina)'
+              )}
             </div>
           )}
-          {forecast?.wave > 0 && (
+          {forecast && !forecast.old && !forecast.none && (
             <div className="text-[calc(10px*var(--fs))] text-fog">
-              Onda <span className="font-mono text-xs font-semibold text-paper">{oneDecimal(forecast.wave)} m</span>
+              Onda{' '}
+              {forecast.wave ? (
+                <>
+                  <span className="font-mono text-xs font-semibold text-paper">{oneDecimal(forecast.wave.v)} m</span>
+                  {forecast.wave.dir != null && <> da {compass(forecast.wave.dir)}</>}
+                  {forecast.wave.per > 0 && <>, {Math.round(forecast.wave.per)} s</>}
+                  {farNote(forecast.waveKm)}
+                </>
+              ) : (
+                '— (nessun dato del mare vicino)'
+              )}
             </div>
           )}
           {forecast?.current?.speed > 0 && (
